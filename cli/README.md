@@ -126,7 +126,7 @@ Three separate verbs, each requiring credentials:
 
 | Command | CODA6X body | HT-EM5 | CODA-57 |
 | --- | --- | --- | --- |
-| `reboot` | `{"reboot":1}` to `CM/Reboot` | `PUT /ms/1/0xb00 {"data":[1]}` | unsupported |
+| `reboot` | `{"reboot":1}` to `CM/Reboot` | `POST /ms/1/0xb00/PUT {"data":[1]}` | unsupported |
 | `factory-reset` | `{"factoryReset":1}` | unsupported | unsupported |
 | `hard-reset` | `{"restoreReset":1}` | unsupported | unsupported |
 
