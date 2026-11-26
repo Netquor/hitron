@@ -1,0 +1,452 @@
+{
+  "metadata": {
+    "timestamp": "2026-04-27T20:08:00.987329Z",
+    "device_ip": "192.168.100.1"
+  },
+  "metrics": {
+    "router_sysinfo": {
+      "hwVersion": "1A",
+      "swVersion": "8.5.0.0.3b2",
+      "serialNumber": "AN50258036AE",
+      "systemTime": "Mon Apr 27, 2026, 15:07:57",
+      "rfMac": "B0:F5:30:87:C8:7C",
+      "systemUptime": "134h:54m:33s"
+    },
+    "cm_docsisprovision": {
+      "hwInit": "Success",
+      "findDownstream": "Success",
+      "ranging": "Success",
+      "dhcp": "Success",
+      "timeOfday": "Success",
+      "downloadCfg": "Success",
+      "registration": "Success",
+      "bpiStatus": "AUTH:authorized, TEK:operational"
+    },
+    "cm_dsinfo": {
+      "Freq_List": [
+        {
+          "portId": 25,
+          "frequency": "267000000",
+          "modulation": "2",
+          "signalStrength": "8.098",
+          "snr": "43.377",
+          "channelId": "1",
+          "dsoctets": "34 * 2e32   1203911172",
+          "correcteds": "0",
+          "uncorrect": "0"
+        },
+        {
+          "portId": 26,
+          "frequency": "291000000",
+          "modulation": "2",
+          "signalStrength": "7.286",
+          "snr": "44.626",
+          "channelId": "5",
+          "dsoctets": "34 * 2e32   1404569813",
+          "correcteds": "0",
+          "uncorrect": "0"
+        },
+        {
+          "portId": 27,
+          "frequency": "273000000",
+          "modulation": "2",
+          "signalStrength": "7.804",
+          "snr": "44.626",
+          "channelId": "2",
+          "dsoctets": "34 * 2e32   1658936608",
+          "correcteds": "0",
+          "uncorrect": "0"
+        },
+        {
+          "portId": 28,
+          "frequency": "279000000",
+          "modulation": "2",
+          "signalStrength": "7.899",
+          "snr": "44.626",
+          "channelId": "3",
+          "dsoctets": "34 * 2e32   1868286982",
+          "correcteds": "0",
+          "uncorrect": "0"
+        },
+        {
+          "portId": 29,
+          "frequency": "285000000",
+          "modulation": "2",
+          "signalStrength": "7.349",
+          "snr": "44.626",
+          "channelId": "4",
+          "dsoctets": "34 * 2e32   1973057562",
+          "correcteds": "0",
+          "uncorrect": "0"
+        },
+        {
+          "portId": 30,
+          "frequency": "297000000",
+          "modulation": "2",
+          "signalStrength": "7.549",
+          "snr": "44.626",
+          "channelId": "6",
+          "dsoctets": "42 * 2e32   326628858",
+          "correcteds": "0",
+          "uncorrect": "0"
+        },
+        {
+          "portId": 31,
+          "frequency": "303000000",
+          "modulation": "2",
+          "signalStrength": "7.741",
+          "snr": "44.626",
+          "channelId": "7",
+          "dsoctets": "42 * 2e32   589381881",
+          "correcteds": "0",
+          "uncorrect": "0"
+        },
+        {
+          "portId": 32,
+          "frequency": "309000000",
+          "modulation": "2",
+          "signalStrength": "7.968",
+          "snr": "43.377",
+          "channelId": "8",
+          "dsoctets": "42 * 2e32   826357576",
+          "correcteds": "0",
+          "uncorrect": "0"
+        }
+      ]
+    },
+    "cm_sysinfo": {
+      "ntAccess": "Permitted",
+      "ip": "10.33.143.251 / 10.33.143.251",
+      "subMask": "255.255.192.0",
+      "gw": "10.33.128.1",
+      "lease": "D: 05 H: 00 M: 00 S: 00",
+      "Configname": "CBR8_Bundle2_Default-1.cfg"
+    },
+    "cm_usinfo": {
+      "Freq_List": [
+        {
+          "portId": "1",
+          "frequency": "14000000",
+          "modtype": "64QAM",
+          "signalStrength": "31.000",
+          "bandwidth": "6400000",
+          "channelId": "10",
+          "scdmaMode": "ATDMA"
+        },
+        {
+          "portId": "2",
+          "frequency": "20400000",
+          "modtype": "64QAM",
+          "signalStrength": "31.000",
+          "bandwidth": "6400000",
+          "channelId": "9",
+          "scdmaMode": "ATDMA"
+        }
+      ]
+    },
+    "cm_dsofdm": {
+      "Freq_List": [
+        {
+          "receive": "0",
+          "ffttype": "4K",
+          "Subcarr0freqFreq": "296600000",
+          "plclock": "YES",
+          "ncplock": "YES",
+          "mdc1lock": "YES",
+          "plcpower": "8.539063",
+          "SNR": "48",
+          "dsoctets": "60117881694",
+          "correcteds": "104423533",
+          "uncorrect": "0",
+          "index": 1
+        },
+        {
+          "receive": "2",
+          "ffttype": "4K",
+          "Subcarr0freqFreq": "470600000",
+          "plclock": "YES",
+          "ncplock": "YES",
+          "mdc1lock": "YES",
+          "plcpower": "7.779825",
+          "SNR": "48",
+          "dsoctets": "61414327134",
+          "correcteds": "84013",
+          "uncorrect": "0",
+          "index": 2
+        },
+        {
+          "receive": "3",
+          "ffttype": "4K",
+          "Subcarr0freqFreq": "644600000",
+          "plclock": "YES",
+          "ncplock": "YES",
+          "mdc1lock": "YES",
+          "plcpower": "8.752851",
+          "SNR": "48",
+          "dsoctets": "71333575136",
+          "correcteds": "1946",
+          "uncorrect": "8",
+          "index": 3
+        },
+        {
+          "receive": "4",
+          "ffttype": "4K",
+          "Subcarr0freqFreq": "815600000",
+          "plclock": "YES",
+          "ncplock": "YES",
+          "mdc1lock": "YES",
+          "plcpower": "8.673513",
+          "SNR": "47",
+          "dsoctets": "73026628902",
+          "correcteds": "2415702",
+          "uncorrect": "0",
+          "index": 4
+        },
+        {
+          "receive": "1",
+          "ffttype": "NA",
+          "Subcarr0freqFreq": "NA",
+          "plclock": "NO",
+          "ncplock": "NO",
+          "mdc1lock": "NO",
+          "plcpower": "NA",
+          "SNR": "NA",
+          "dsoctets": "NA",
+          "correcteds": "NA",
+          "uncorrect": "NA",
+          "index": 5
+        }
+      ]
+    },
+    "cm_usofdm": {
+      "Freq_List": [
+        {
+          "uschindex": "1",
+          "state": "OPERATE",
+          "frequency": "22000000",
+          "digAtten": "0.5792",
+          "channelBw": "58.8000",
+          "repPower": "48.6526",
+          "repPower1_6": "33.0000",
+          "fftVal": "2K"
+        },
+        {
+          "uschindex": "0",
+          "state": "OPERATE",
+          "frequency": "104800000",
+          "digAtten": "1.0260",
+          "channelBw": "92.0000",
+          "repPower": "54.0967",
+          "repPower1_6": "36.5000",
+          "fftVal": "2K"
+        },
+        {
+          "uschindex": "2",
+          "state": "DISABLED",
+          "frequency": "0",
+          "digAtten": "0.0000",
+          "channelBw": "0.0000",
+          "repPower": -99.0,
+          "repPower1_6": "-1.0000",
+          "fftVal": "4K"
+        },
+        {
+          "uschindex": "3",
+          "state": "DISABLED",
+          "frequency": "0",
+          "digAtten": "0.0000",
+          "channelBw": "0.0000",
+          "repPower": -99.0,
+          "repPower1_6": "-1.0000",
+          "fftVal": "4K"
+        },
+        {
+          "uschindex": "4",
+          "state": "DISABLED",
+          "frequency": "0",
+          "digAtten": "0.0000",
+          "channelBw": "0.0000",
+          "repPower": -99.0,
+          "repPower1_6": "-1.0000",
+          "fftVal": "4K"
+        },
+        {
+          "uschindex": "5",
+          "state": "DISABLED",
+          "frequency": "0",
+          "digAtten": "0.0000",
+          "channelBw": "0.0000",
+          "repPower": -99.0,
+          "repPower1_6": "-1.0000",
+          "fftVal": "4K"
+        },
+        {
+          "uschindex": "6",
+          "state": "DISABLED",
+          "frequency": "0",
+          "digAtten": "0.0000",
+          "channelBw": "0.0000",
+          "repPower": -99.0,
+          "repPower1_6": "-1.0000",
+          "fftVal": "4K"
+        }
+      ]
+    },
+    "cm_log": {
+      "Log_List": [
+        {
+          "index": "1",
+          "time": "04/27/26 00:14:18",
+          "type": "68010600",
+          "priority": "notice",
+          "event": "DHCP Renew - lease parameters tftp file-^1/3F20834D/Hitron modified;CM-MAC=b0:f5:30:87:c8:7c;CMTS-MAC=00:90:f0:80:00:00;CM-QOS=1.1;CM-VER=4.0;"
+        },
+        {
+          "index": "2",
+          "time": "04/26/26 13:01:02",
+          "type": "67061601",
+          "priority": "notice",
+          "event": "US profile assignment change.  US Chan ID: 43; Previous Profile: 9; New Profile: 6.;CM-MAC=b0:f5:30:87:c8:7c;CMTS-MAC=00:90:f0:80:00:00;CM-QOS=1.1;CM-VER=4.0;"
+        },
+        {
+          "index": "3",
+          "time": "04/22/26 00:14:18",
+          "type": "82001200",
+          "priority": "warning",
+          "event": "RNG-RSP CCAP Commanded Power in Excess of 6 dB Below the Value Corresponding to the Top of the DRW;CM-MAC=b0:f5:30:87:c8:7c;CMTS-MAC=00:90:f0:80:00:00;CM-QOS=1.1;CM-VER=4.0;"
+        },
+        {
+          "index": "4",
+          "time": "04/22/26 00:14:18",
+          "type": "73050400",
+          "priority": "warning",
+          "event": "REG-RSP-MP Mismatch Between Calculated Value for P1.6hi Compared to CCAP Provided Value;CM-MAC=b0:f5:30:87:c8:7c;CMTS-MAC=00:90:f0:80:00:00;CM-QOS=1.1;CM-VER=4.0;"
+        },
+        {
+          "index": "5",
+          "time": "04/22/26 00:14:17",
+          "type": "90000000",
+          "priority": "warning",
+          "event": "MIMO Event MIMO: Stored MIMO=-1 post cfg file MIMO=-1;CM-MAC=b0:f5:30:87:c8:7c;CMTS-MAC=00:90:f0:80:00:00;CM-QOS=1.1;CM-VER=4.0;"
+        },
+        {
+          "index": "6",
+          "time": "01/01/70 00:00:40",
+          "type": "90000006",
+          "priority": "notice",
+          "event": "CM Reboot Reason : POWER_ON;CM-MAC=b0:f5:30:87:c8:7c;CMTS-MAC=00:00:00:00:00:00;CM-QOS=1.1;CM-VER=4.0;"
+        },
+        {
+          "index": "7",
+          "time": "04/17/26 11:15:53",
+          "type": "67061601",
+          "priority": "notice",
+          "event": "US profile assignment change.  US Chan ID: 44; Previous Profile: 12; New Profile: 6.;CM-MAC=b0:f5:30:87:c8:7c;CMTS-MAC=00:90:f0:a0:00:00;CM-QOS=1.1;CM-VER=4.0;"
+        },
+        {
+          "index": "8",
+          "time": "04/17/26 11:15:19",
+          "type": "82001200",
+          "priority": "warning",
+          "event": "RNG-RSP CCAP Commanded Power in Excess of 6 dB Below the Value Corresponding to the Top of the DRW;CM-MAC=b0:f5:30:87:c8:7c;CMTS-MAC=00:90:f0:a0:00:00;CM-QOS=1.1;CM-VER=4.0;"
+        },
+        {
+          "index": "9",
+          "time": "04/17/26 11:15:19",
+          "type": "73050400",
+          "priority": "warning",
+          "event": "REG-RSP-MP Mismatch Between Calculated Value for P1.6hi Compared to CCAP Provided Value;CM-MAC=b0:f5:30:87:c8:7c;CMTS-MAC=00:90:f0:a0:00:00;CM-QOS=1.1;CM-VER=4.0;"
+        },
+        {
+          "index": "10",
+          "time": "04/17/26 11:15:18",
+          "type": "90000000",
+          "priority": "warning",
+          "event": "MIMO Event MIMO: Stored MIMO=-1 post cfg file MIMO=-1;CM-MAC=b0:f5:30:87:c8:7c;CMTS-MAC=00:90:f0:a0:00:00;CM-QOS=1.1;CM-VER=4.0;"
+        },
+        {
+          "index": "11",
+          "time": "04/17/26 11:14:01",
+          "type": "90000008",
+          "priority": "notice",
+          "event": "CM Reboot Reason : SW_UPGRADE_REBOOT;CM-MAC=b0:f5:30:87:c8:7c;CMTS-MAC=00:90:f0:a0:00:00;CM-QOS=1.1;CM-VER=4.0;"
+        },
+        {
+          "index": "12",
+          "time": "04/17/26 11:14:00",
+          "type": "69011200",
+          "priority": "notice",
+          "event": "SW download Successful - Via Config file"
+        },
+        {
+          "index": "13",
+          "time": "04/17/26 11:12:22",
+          "type": "74010100",
+          "priority": "notice",
+          "event": "CM-STATUS message sent.  Event Type Code: 16; Chan ID: 193; DSID: N/A; MAC Addr: N/A; OFDM/OFDMA Profile ID: 3.;CM-MAC=b0:f5:30:87:c8:7c;CMTS-MAC=00:90:f0:a0:00:00;CM-QOS=1.1;CM-VER=4.0;"
+        },
+        {
+          "index": "14",
+          "time": "04/17/26 11:11:07",
+          "type": "67061601",
+          "priority": "notice",
+          "event": "US profile assignment change.  US Chan ID: 44; Previous Profile: 12; New Profile: 6.;CM-MAC=b0:f5:30:87:c8:7c;CMTS-MAC=00:90:f0:a0:00:00;CM-QOS=1.1;CM-VER=4.0;"
+        },
+        {
+          "index": "15",
+          "time": "04/17/26 11:10:42",
+          "type": "69010200",
+          "priority": "notice",
+          "event": "SW Download INIT - Via Config file ^1/B3285DB7/Hitron/CODA60"
+        },
+        {
+          "index": "16",
+          "time": "04/17/26 11:10:32",
+          "type": "82000200",
+          "priority": "critical",
+          "event": "No Ranging Response received - T3 time-out;CM-MAC=b0:f5:30:87:c8:7c;CMTS-MAC=00:90:f0:a0:00:00;CM-QOS=1.1;CM-VER=4.0;"
+        },
+        {
+          "index": "17",
+          "time": "04/17/26 11:10:31",
+          "type": "82001200",
+          "priority": "warning",
+          "event": "RNG-RSP CCAP Commanded Power in Excess of 6 dB Below the Value Corresponding to the Top of the DRW;CM-MAC=b0:f5:30:87:c8:7c;CMTS-MAC=00:90:f0:a0:00:00;CM-QOS=1.1;CM-VER=4.0;"
+        },
+        {
+          "index": "18",
+          "time": "04/17/26 11:10:31",
+          "type": "73050400",
+          "priority": "warning",
+          "event": "REG-RSP-MP Mismatch Between Calculated Value for P1.6hi Compared to CCAP Provided Value;CM-MAC=b0:f5:30:87:c8:7c;CMTS-MAC=00:90:f0:a0:00:00;CM-QOS=1.1;CM-VER=4.0;"
+        },
+        {
+          "index": "19",
+          "time": "04/17/26 11:10:30",
+          "type": "90000000",
+          "priority": "warning",
+          "event": "MIMO Event MIMO: Stored MIMO=-1 post cfg file MIMO=-1;CM-MAC=b0:f5:30:87:c8:7c;CMTS-MAC=00:90:f0:a0:00:00;CM-QOS=1.1;CM-VER=4.0;"
+        },
+        {
+          "index": "20",
+          "time": "01/01/70 00:00:54",
+          "type": "82000200",
+          "priority": "critical",
+          "event": "No Ranging Response received - T3 time-out;CM-MAC=b0:f5:30:87:c8:7c;CMTS-MAC=00:90:f0:a0:00:00;CM-QOS=1.1;CM-VER=4.0;"
+        }
+      ]
+    },
+    "advanced_advancedswitch": {
+      "advSwitch_List": [
+        {
+          "portId": 1,
+          "power": "true",
+          "neg": "Auto",
+          "speed": "1Gbps",
+          "duplex": "full",
+          "linked": "up"
+        }
+      ]
+    }
+  }
+}

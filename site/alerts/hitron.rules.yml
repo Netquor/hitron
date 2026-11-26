@@ -1,0 +1,54 @@
+groups:
+  - name: hitron
+    interval: 30s
+    rules:
+      - alert: HitronSourceDown
+        expr: hitron_exporter_up == 0
+        for: 2m
+        labels: {severity: critical}
+        annotations:
+          summary: "Hitron source {{ $labels.source }} is unreachable"
+          description: "hitron-exporter has failed to poll {{ $labels.source }} for 2 minutes."
+      - alert: HitronProvisioningFailed
+        expr: min by (source) (modem_docsis_provisioning_step_success) == 0
+        for: 10m
+        labels: {severity: warning}
+        annotations:
+          summary: "DOCSIS provisioning incomplete on {{ $labels.source }}"
+          description: "At least one provisioning step is not Success."
+      - alert: HitronDownstreamPowerOutOfSpec
+        expr: min by (source) (modem_downstream_channel_power_dbmv) < -6 or max by (source) (modem_downstream_channel_power_dbmv) > 15
+        for: 10m
+        labels: {severity: warning}
+        annotations:
+          summary: "Downstream power outside -6..15 dBmV on {{ $labels.source }}"
+      - alert: HitronUpstreamPowerOutOfSpec
+        expr: min by (source) (modem_upstream_channel_power_dbmv) < 35 or max by (source) (modem_upstream_channel_power_dbmv) > 48
+        for: 10m
+        labels: {severity: warning}
+        annotations:
+          summary: "Upstream power outside 35..48 dBmV on {{ $labels.source }}"
+      - alert: HitronLowDownstreamSNR
+        expr: min by (source) (modem_downstream_channel_snr_db) < 33
+        for: 10m
+        labels: {severity: warning}
+        annotations:
+          summary: "Downstream SNR below 33 dB on {{ $labels.source }}"
+      - alert: HitronUncorrectableErrors
+        expr: sum by (source) (rate(modem_downstream_channel_uncorrectable_total[5m])) > 1
+        for: 10m
+        labels: {severity: warning}
+        annotations:
+          summary: "Uncorrectable codewords on {{ $labels.source }}"
+      - alert: HitronMocaLinkDown
+        expr: hitron_moca_link_up == 0
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: "MoCA link down on {{ $labels.host }}"
+      - alert: HitronExporterScrapeSlow
+        expr: hitron_exporter_scrape_duration_seconds > 20
+        for: 5m
+        labels: {severity: info}
+        annotations:
+          summary: "Polling {{ $labels.source }} is slow"

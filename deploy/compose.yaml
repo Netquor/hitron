@@ -1,0 +1,91 @@
+# End-to-end demo stack: exporter -> Prometheus -> Grafana, with optional Loki.
+#
+#   cd deploy
+#   cp .env.example .env      # set device IPs
+#   docker compose up -d
+#   open http://localhost:3000
+#
+# Grafana is provisioned with the Prometheus datasource and both dashboards;
+# no clicking required.
+
+services:
+  exporter:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    image: ghcr.io/netquor/hitron-exporter:local
+    restart: unless-stopped
+    command:
+      - "--port=9877"
+      - "--interval=30"
+      - "--coda60=${CODA60_HOST:-}"
+      - "--coda57=${CODA57_HOST:-}"
+      - "--ht-em5=${HT_EM5_HOST:-}"
+      - "--otlp-endpoint=${OTLP_ENDPOINT:-}"
+    environment:
+      HITRON_DS_SPEC_MIN: "${DS_SPEC_MIN:--6}"
+      HITRON_DS_SPEC_MAX: "${DS_SPEC_MAX:-15}"
+      HITRON_US_SPEC_MIN: "${US_SPEC_MIN:-35}"
+      HITRON_US_SPEC_MAX: "${US_SPEC_MAX:-48}"
+    ports:
+      - "9877:9877"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://127.0.0.1:9877/healthz',timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  prometheus:
+    image: prom/prometheus:v2.53.0
+    restart: unless-stopped
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.retention.time=30d"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./grafana/prometheus/rules:/etc/prometheus/rules:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "9090:9090"
+    depends_on:
+      - exporter
+
+  grafana:
+    image: grafana/grafana:11.1.0
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: "${GRAFANA_PASSWORD:-admin}"
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+
+  loki:
+    image: grafana/loki:3.1.0
+    restart: unless-stopped
+    command: ["-config.file=/etc/loki/local-config.yaml"]
+    ports:
+      - "3100:3100"
+
+  promtail:
+    image: grafana/promtail:3.1.0
+    restart: unless-stopped
+    volumes:
+      - ./promtail/promtail.yml:/etc/promtail/config.yml:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    command: ["-config.file=/etc/promtail/config.yml"]
+    depends_on:
+      - loki
+
+volumes:
+  prometheus-data:
+  grafana-data:

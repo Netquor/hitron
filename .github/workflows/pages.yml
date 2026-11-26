@@ -1,0 +1,75 @@
+name: Publish docs site
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "site/**"
+      - "specs/openapi-coda60.yaml"
+      - "dashboards/**"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Sync spec, dashboards, and rules into the site
+        run: |
+          python3 - <<'PY'
+          import json, pathlib, shutil
+          import yaml
+
+          root = pathlib.Path(".")
+          site = root / "site"
+          spec = yaml.safe_load((root / "specs/openapi-coda60.yaml").read_text())
+          (site / "openapi.json").write_text(json.dumps(spec, indent=2) + "\n")
+
+          (site / "dashboards").mkdir(exist_ok=True)
+          for name in ("hitron-coda6x.json", "hitron-ht-em5.json"):
+              shutil.copy(root / "dashboards" / name, site / "dashboards" / name)
+
+          (site / "alerts").mkdir(exist_ok=True)
+          shutil.copy(
+              root / "deploy/grafana/prometheus/rules/hitron.rules.yml",
+              site / "alerts/hitron.rules.yml",
+          )
+          shutil.copy(root / "llms.txt", site / "llms.txt")
+          PY
+
+      - name: Verify the spec the site will serve
+        run: |
+          pip install pyyaml openapi-spec-validator
+          python3 - <<'PY'
+          import json
+          from openapi_spec_validator import validate
+
+          validate(json.load(open("site/openapi.json")))
+          print("site/openapi.json is valid OpenAPI 3.0")
+          PY
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
