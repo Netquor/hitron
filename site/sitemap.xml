@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-  <url><loc>https://netquor.github.io/hitron/</loc></url>
-  <url><loc>https://netquor.github.io/hitron/llms.txt</loc></url>
-  <url><loc>https://netquor.github.io/hitron/openapi.json</loc></url>
+  <url><loc>https://hitron.netquor.dev/</loc></url>
+  <url><loc>https://hitron.netquor.dev/llms.txt</loc></url>
+  <url><loc>https://hitron.netquor.dev/openapi.json</loc></url>
 </urlset>

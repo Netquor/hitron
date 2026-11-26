@@ -15,7 +15,7 @@ firmware's own, including typos such as `Raidos_List`.
 - [Getting started, end to end](https://github.com/Netquor/hitron/blob/main/docs/GETTING-STARTED.md): install, verify, export, scrape, alert, troubleshoot.
 - [Grafana tutorial](https://github.com/Netquor/hitron/blob/main/docs/GRAFANA.md): dashboards, panels, alerts, Loki.
 - [Reverse-engineering knowledge base](https://github.com/Netquor/hitron/blob/main/docs/KB.md): auth model, shell sinks, firmware quirks.
-- [Static site](https://netquor.github.io/hitron/): API console, live charts, logs.
+- [Static site](https://hitron.netquor.dev/): API console, live charts, logs.
 - [Source](https://github.com/Netquor/hitron)
 
 ## API specifications
