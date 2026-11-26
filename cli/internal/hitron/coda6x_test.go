@@ -251,3 +251,80 @@ func TestCoda6XLoginSendsModelForm(t *testing.T) {
 		t.Fatalf("login body = %v", model)
 	}
 }
+
+func TestAveragesUseSameChannelsAsRange(t *testing.T) {
+	s := &Snapshot{
+		DS:    []Channel{{Power: 2, HasPower: true}, {Power: 4, HasPower: true}, {HasPower: false}},
+		OFDM:  []OFDMChannel{{PLCPower: 6, HasPLCPower: true}},
+		US:    []Channel{{Power: 32, HasPower: true}, {Power: 31.75, HasPower: true}},
+		OFDMA: []OFDMAChannel{{Power16: 34, HasPower16: true}, {Power16: 99, HasPower16: true, Disabled: true}},
+	}
+	if avg, ok := s.DSAverage(); !ok || avg != 4 { // (2+4+6)/3
+		t.Fatalf("DSAverage = %v, %v; want 4", avg, ok)
+	}
+	// OFDMA gets +6: (32 + 31.75 + 40) / 3; the disabled channel is ignored.
+	want := (32 + 31.75 + 40) / 3.0
+	if avg, ok := s.USAverage(); !ok || avg != want {
+		t.Fatalf("USAverage = %v, %v; want %v", avg, ok, want)
+	}
+	if _, ok := (&Snapshot{}).DSAverage(); ok {
+		t.Fatalf("empty snapshot should report no average")
+	}
+}
+
+func TestCMTSMacFromLogs(t *testing.T) {
+	logs := []LogEntry{
+		{Event: "MDD message timeout;CM-MAC=c0:3f:0e:5a:1b:2c;CMTS-MAC=00:00:00:00:00:00;CM-QOS=1.1;CM-VER=3.1;"},
+		{Event: "Unrelated event"},
+		{Event: "SYNC Timing Synchronization failure;CM-MAC=c0:3f:0e:5a:1b:2c;CMTS-MAC=a4:7b:2c:11:22:33;CM-QOS=1.1;CM-VER=3.1;"},
+		{Event: "Older;CMTS-MAC=ff:ee:dd:cc:bb:aa;"},
+	}
+	if got := CMTSMacFromLogs(logs); got != "A4:7B:2C:11:22:33" {
+		t.Fatalf("CMTSMacFromLogs = %q; want the newest non-zero MAC", got)
+	}
+	if got := CMTSMacFromLogs([]LogEntry{{Event: "nothing here"}}); got != "" {
+		t.Fatalf("got %q, want empty", got)
+	}
+}
+
+func TestFriendlyLogEvents(t *testing.T) {
+	now := time.Date(2026, 11, 26, 12, 0, 0, 0, time.UTC)
+	tail := ";CM-MAC=b0:f5:30:da:e6:a0;CMTS-MAC=00:90:f0:78:00:00;CM-QOS=1.1;CM-VER=4.0;"
+	cases := []struct {
+		entry LogEntry
+		want  string
+		sev   Severity
+	}{
+		{LogEntry{Time: "11/26/26 09:19:38", Type: "67061601", Priority: "notice",
+			Event: "US profile assignment change.  US Chan ID: 42; Previous Profile: 9; New Profile: 6." + tail},
+			"US ch 42 profile 9 → 6", SevNotice},
+		{LogEntry{Priority: "critical", Event: "No Ranging Response received - T3 time-out" + tail}, "Ranging timed out (T3)", SevCritical},
+		{LogEntry{Priority: "critical", Event: "Received Response to Broadcast Maintenance Request, But no Unicast Maintenance opportunities received - T4 time out" + tail}, "Maintenance timed out (T4)", SevCritical},
+		{LogEntry{Priority: "warning", Event: "Lost MDD Timeout" + tail}, "Lost downstream MDD (timeout)", SevWarning},
+		{LogEntry{Priority: "notice", Event: "CM Reboot Reason : SW_UPGRADE_REBOOT" + tail}, "Reboot · software upgrade", SevNotice},
+		{LogEntry{Priority: "notice", Event: "CM Reboot Reason : POWER_ON" + tail}, "Reboot · power on", SevNotice},
+		{LogEntry{Priority: "warning", Event: "MIMO Event MIMO: Stored MIMO=-1 post cfg file MIMO=-1" + tail}, "MIMO setting: stored -1, config file -1", SevWarning},
+		{LogEntry{Priority: "notice", Event: "SW download Successful - Via NMS"}, "Firmware download finished", SevNotice},
+		{LogEntry{Priority: "notice", Event: "DHCP Renew - lease parameters tftp file-^1/36269148/Hitron modified" + tail}, "DHCP renew · config file path changed", SevNotice},
+		{LogEntry{Priority: "notice", Event: "CM-STATUS message sent. Event Type Code: 24; Chan ID: 159 ; DSID: N/A; MAC Addr: N/A; OFDM/OFDMA Profile ID: 0 1 ." + tail},
+			"OFDM profile recovered · ch 159 · profile 0 1", SevNotice},
+		{LogEntry{Priority: "notice", Event: "CM-STATUS message sent. Event Type Code: 4; Chan ID: 159 ; DSID: N/A; MAC Addr: N/A; OFDM/OFDMA Profile ID: N/A." + tail},
+			"Secondary channel MDD recovered · ch 159", SevNotice},
+		{LogEntry{Priority: "5", Type: "Information", Event: "Something unfamiliar" + tail}, "Something unfamiliar", SevWarning},
+	}
+	for _, c := range cases {
+		got := c.entry.friendlyAt(now)
+		if got.Summary != c.want || got.Severity != c.sev {
+			t.Errorf("%q\n got %q (%s)\nwant %q (%s)", c.entry.Event, got.Summary, got.Severity, c.want, c.sev)
+		}
+		if strings.Contains(got.Message, "CM-MAC") {
+			t.Errorf("trailer not removed: %q", got.Message)
+		}
+	}
+	if f := (LogEntry{Time: "11/26/26 09:19:38"}).friendlyAt(now); f.When != "Nov 26 09:19" {
+		t.Errorf("when = %q", f.When)
+	}
+	if f := (LogEntry{Time: "12/31/69 18:00:41"}).friendlyAt(now); !f.ClockUnset || f.When != "" {
+		t.Errorf("unset clock = %+v", f)
+	}
+}

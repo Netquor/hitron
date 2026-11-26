@@ -3,8 +3,9 @@ package ui
 import (
 	"fmt"
 	"io"
+	"sort"
+	"strconv"
 	"strings"
-	"time"
 
 	"github.com/Netquor/hitron/cli/internal/hitron"
 )
@@ -68,17 +69,21 @@ func identityPairs(s *hitron.Snapshot) [][2]string {
 		{"Hardware", s.Hardware},
 		{"Serial", s.Serial},
 		{"RF MAC", s.RFMac},
+		{"CMTS MAC", s.CMTSMac},
 		{"Uptime", uptime},
 		{"WAN IP", s.WANIP},
 		{"Gateway", s.Gateway},
 		{"Netmask", s.Netmask},
-		{"Lease", s.Lease},
-		{"Config", s.ConfigName},
+		{"Lease", friendlyLease(s.Lease)},
+		{"Config file", s.ConfigName},
 		{"Access", s.AccessType},
 	}
 	if s.Kind == hitron.KindMoca {
-		pairs[7][0] = "Device IP"
-		pairs[0][1] = s.Model
+		for i := range pairs {
+			if pairs[i][0] == "WAN IP" {
+				pairs[i][0] = "Device IP"
+			}
+		}
 	}
 	return pairs
 }
@@ -91,20 +96,22 @@ func Identity(w io.Writer, s *hitron.Snapshot) {
 func specLine(s *hitron.Snapshot) []string {
 	lines := make([]string, 0, 2)
 	if ok, low, high := s.DSInSpec(); s.DSHasReadings() {
-		state := Red("out of spec")
+		state := PillBad("OUT OF SPEC")
 		if ok {
-			state = Green("in spec")
+			state = PillGood("IN SPEC")
 		}
+		avg, _ := s.DSAverage()
 		lines = append(lines, "  "+Dim(pad("Downstream", 11))+"  "+
-			fmt.Sprintf("%+.1f to %+.1f dBmV", low, high)+"  "+Dim("(-6 to +15)")+"  "+state)
+			fmt.Sprintf("%+.1f to %+.1f dBmV", low, high)+"  "+fmt.Sprintf("avg %+.1f", avg)+"  "+Dim("(-6 to +15)")+"  "+state)
 	}
 	if ok, low, high := s.USInSpec(); s.USHasReadings() {
-		state := Red("out of spec")
+		state := PillBad("OUT OF SPEC")
 		if ok {
-			state = Green("in spec")
+			state = PillGood("IN SPEC")
 		}
+		avg, _ := s.USAverage()
 		lines = append(lines, "  "+Dim(pad("Upstream", 11))+"  "+
-			fmt.Sprintf("%.1f to %.1f dBmV", low, high)+"  "+Dim("(35 to 48)")+"  "+state)
+			fmt.Sprintf("%.1f to %.1f dBmV", low, high)+"  "+fmt.Sprintf("avg %.1f", avg)+"  "+Dim("(35 to 48)")+"  "+state)
 	}
 	return lines
 }
@@ -135,101 +142,154 @@ func Provision(w io.Writer, s *hitron.Snapshot) {
 	writeLines(w, []string{"  " + strings.Join(parts, Dim("  ·  "))})
 }
 
-// Channels prints every downstream and upstream channel.
+// chanOrder sorts channel IDs numerically; IDs that are not numbers go last.
+func chanOrder(id string) int {
+	n, err := strconv.Atoi(strings.TrimSpace(id))
+	if err != nil {
+		return 1 << 30
+	}
+	return n
+}
+
+// codewordCell renders corrected/uncorrectable codeword counters as one
+// "14/640" cell. Any uncorrectable codeword is red; corrected counts are
+// green while small, yellow when large and red when very large. They are
+// cumulative since the modem last (re)locked, so only the uncorrectables are
+// treated as a real fault at any size.
+func codewordCell(has bool, corrected, uncorrect uint64) string {
+	if !has && corrected == 0 && uncorrect == 0 {
+		return Dim("—")
+	}
+	c := Green(formatCount(corrected))
+	switch {
+	case corrected >= 1_000_000:
+		c = Red(formatCount(corrected))
+	case corrected >= 100_000:
+		c = Yellow(formatCount(corrected))
+	}
+	u := Green(formatCount(uncorrect))
+	if uncorrect > 0 {
+		u = Red(formatCount(uncorrect))
+	}
+	// The modem reports no total-codeword counter, so the percentage is the
+	// uncorrectable share of the codewords that were errored at all.
+	pct := Green("0.00%")
+	if uncorrect > 0 {
+		share := 100 * float64(uncorrect) / float64(corrected+uncorrect)
+		text := fmt.Sprintf("%.2f%%", share)
+		if share < 0.01 {
+			text = "<0.01%"
+		}
+		pct = Red(text)
+	}
+	return c + Dim("/") + u + " " + pct
+}
+
+func typeCell(label string) string {
+	if label == "SC-QAM" {
+		return label
+	}
+	return Cyan(label)
+}
+
+func countSummary(parts ...string) string {
+	return Dim(strings.Join(parts, " · "))
+}
+
+// Channels prints one downstream and one upstream table. Each row is typed:
+// SC-QAM (incl. ATDMA upstream), OFDM (downstream) or OFDMA (upstream). Disabled
+// OFDMA channels carry no signal and are left out, with a count in the
+// heading.
 func Channels(w io.Writer, s *hitron.Snapshot) {
-	fmt.Fprintln(w, "  "+Bold("Downstream")+"  "+Dim(fmt.Sprintf("%d SC-QAM", len(s.DS))))
-	if len(s.DS) == 0 {
-		fmt.Fprintln(w, "  "+Dim("No SC-QAM channels reported."))
+	ds := append([]hitron.Channel(nil), s.DS...)
+	sort.SliceStable(ds, func(i, j int) bool { return chanOrder(ds[i].ID) < chanOrder(ds[j].ID) })
+	ofdm := append([]hitron.OFDMChannel(nil), s.OFDM...)
+	sort.SliceStable(ofdm, func(i, j int) bool { return chanOrder(ofdm[i].Index) < chanOrder(ofdm[j].Index) })
+
+	total := len(ds) + len(ofdm)
+	if total == 0 {
+		fmt.Fprintln(w, "  "+Bold("Downstream"))
+		fmt.Fprintln(w, "  "+Dim("No downstream channels reported."))
 	} else {
-		rows := make([][]string, 0, len(s.DS))
-		for _, ch := range s.DS {
-			corrected := "—"
-			if ch.Corrected != 0 || ch.Uncorrect != 0 {
-				corrected = formatCount(ch.Corrected)
-			}
+		fmt.Fprintln(w, "  "+Bold("Downstream")+"  "+countSummary(
+			fmt.Sprintf("%d channels", total),
+			fmt.Sprintf("%d SC-QAM", len(ds)),
+			fmt.Sprintf("%d OFDM", len(ofdm))))
+		rows := make([][]string, 0, total)
+		for _, ch := range ds {
+			cw := codewordCell(ch.HasCodewords, ch.Corrected, ch.Uncorrect)
 			rows = append(rows, []string{
-				emptyDash(ch.ID),
-				freq(ch.Frequency),
-				powerCell(ch.Power, ch.HasPower, -6, 15),
-				snrCell(ch.SNR, ch.HasSNR),
-				emptyDash(ch.Modulation),
-				corrected,
-				formatCount(ch.Uncorrect),
+				typeCell("SC-QAM"), emptyDash(ch.ID), freq(ch.Frequency),
+				powerCell(ch.Power, ch.HasPower, -6, 15), snrCell(ch.SNR, ch.HasSNR),
+				emptyDash(ch.Modulation), Dim("—"), cw,
+			})
+		}
+		for _, ch := range ofdm {
+			cw := codewordCell(ch.HasCounters, ch.Corrected, ch.Uncorrect)
+			rows = append(rows, []string{
+				typeCell("OFDM"), emptyDash(ch.Index), freq(ch.Frequency),
+				plcPowerCell(ch.PLCPower, ch.HasPLCPower), snrCell(ch.SNR, ch.HasSNR),
+				emptyDash(ch.FFTType), lockText(ch.PLCLock, ch.NCPLock, ch.MDC1Lock), cw,
 			})
 		}
 		writeLines(w, columns(
-			[]string{"Ch", "Frequency", "Power", "SNR", "Modulation", "Corrected", "Uncorrect"},
+			[]string{"Type", "Ch", "Frequency", "Power", "SNR", "Mod/FFT", "Locks", "CCWE/UCCWE"},
 			rows,
-			[]int{4, 11, 8, 7, 10, 10, 10},
+			[]int{7, 4, 11, 7, 6, 8, 12, 25},
 		))
 	}
 
-	if len(s.OFDM) > 0 {
-		fmt.Fprintln(w, "\n  "+Bold("Downstream OFDM")+"  "+Dim(fmt.Sprintf("%d", len(s.OFDM))))
-		rows := make([][]string, 0, len(s.OFDM))
-		for _, ch := range s.OFDM {
-			locks := lockText(ch.PLCLock, ch.NCPLock, ch.MDC1Lock)
-			rows = append(rows, []string{
-				emptyDash(ch.Index),
-				freq(ch.Frequency),
-				plcPowerCell(ch.PLCPower, ch.HasPLCPower),
-				snrCell(ch.SNR, ch.HasSNR),
-				emptyDash(ch.FFTType),
-				locks,
-				formatCount(ch.Corrected),
-			})
+	us := append([]hitron.Channel(nil), s.US...)
+	sort.SliceStable(us, func(i, j int) bool { return chanOrder(us[i].ID) < chanOrder(us[j].ID) })
+	var ofdma []hitron.OFDMAChannel
+	disabled := 0
+	for _, ch := range s.OFDMA {
+		if ch.Disabled {
+			disabled++
+			continue
 		}
-		writeLines(w, columns(
-			[]string{"Idx", "Frequency", "PLC pwr", "SNR", "FFT", "Locks", "Corrected"},
-			rows,
-			[]int{4, 11, 8, 7, 6, 12, 10},
-		))
+		ofdma = append(ofdma, ch)
 	}
+	sort.SliceStable(ofdma, func(i, j int) bool { return chanOrder(ofdma[i].Index) < chanOrder(ofdma[j].Index) })
 
-	fmt.Fprintln(w, "\n  "+Bold("Upstream")+"  "+Dim(fmt.Sprintf("%d SC-QAM", len(s.US))))
-	if len(s.US) == 0 {
+	fmt.Fprintln(w)
+	total = len(us) + len(ofdma)
+	if total == 0 {
+		fmt.Fprintln(w, "  "+Bold("Upstream"))
 		fmt.Fprintln(w, "  "+Dim("No upstream channels reported."))
-	} else {
-		rows := make([][]string, 0, len(s.US))
-		for _, ch := range s.US {
-			mode := ch.Mode
-			if mode == "" {
-				mode = ch.Modulation
-			}
-			rows = append(rows, []string{
-				emptyDash(ch.ID),
-				freq(ch.Frequency),
-				emptyDash(mode),
-				bandwidth(ch.Bandwidth),
-				powerCell(ch.Power, ch.HasPower, 35, 48),
-			})
-		}
-		writeLines(w, columns(
-			[]string{"Ch", "Frequency", "Mode", "Bandwidth", "Power"},
-			rows,
-			[]int{4, 11, 9, 11, 8},
-		))
+		return
 	}
-
-	if len(s.OFDMA) > 0 {
-		fmt.Fprintln(w, "\n  "+Bold("Upstream OFDMA")+"  "+Dim(fmt.Sprintf("%d", len(s.OFDMA))))
-		rows := make([][]string, 0, len(s.OFDMA))
-		for _, ch := range s.OFDMA {
-			rows = append(rows, []string{
-				emptyDash(ch.Index),
-				emptyDash(ch.State),
-				freq(ch.Frequency),
-				bandwidthMHz(ch.Bandwidth),
-				ofdmaPowerCell(ch.Power16, ch.HasPower16, !ch.Disabled),
-				fmt.Sprintf("%.1f", ch.DigAtten),
-			})
-		}
-		writeLines(w, columns(
-			[]string{"Idx", "State", "Frequency", "BW MHz", "Power (+6)", "Atten"},
-			rows,
-			[]int{4, 11, 11, 8, 11, 6},
-		))
+	summary := []string{
+		fmt.Sprintf("%d channels", total),
+		fmt.Sprintf("%d SC-QAM", len(us)),
+		fmt.Sprintf("%d OFDMA", len(ofdma)),
 	}
+	if disabled > 0 {
+		summary = append(summary, fmt.Sprintf("%d disabled hidden", disabled))
+	}
+	fmt.Fprintln(w, "  "+Bold("Upstream")+"  "+countSummary(summary...))
+	rows := make([][]string, 0, total)
+	for _, ch := range us {
+		mode := ch.Mode
+		if mode == "" {
+			mode = ch.Modulation
+		}
+		rows = append(rows, []string{
+			typeCell("SC-QAM"), emptyDash(ch.ID), freq(ch.Frequency), bandwidth(ch.Bandwidth),
+			powerCell(ch.Power, ch.HasPower, 35, 48), emptyDash(mode), Dim("—"),
+		})
+	}
+	for _, ch := range ofdma {
+		rows = append(rows, []string{
+			typeCell("OFDMA"), emptyDash(ch.Index), freq(ch.Frequency), bandwidthMHzCell(ch.Bandwidth),
+			ofdmaPowerCell(ch.Power16, ch.HasPower16, true), emptyDash(ch.State), fmt.Sprintf("%.1f", ch.DigAtten),
+		})
+	}
+	writeLines(w, columns(
+		[]string{"Type", "Ch", "Frequency", "Bandwidth", "Power", "Mode", "Atten"},
+		rows,
+		[]int{7, 4, 11, 10, 7, 9, 6},
+	))
 }
 
 // System prints identity, provisioning, and switch ports.
@@ -270,17 +330,45 @@ func Logs(w io.Writer, s *hitron.Snapshot, limit int) {
 	}
 	rows := make([][]string, 0, limit)
 	for _, entry := range s.Logs[:limit] {
-		priority := entry.Priority
-		if entry.Type != "" {
-			priority = entry.Type
+		ev := entry.Friendly()
+		when := ev.When
+		if ev.ClockUnset {
+			when = Dim("no clock")
+		} else if when == "" {
+			when = Dim("—")
 		}
-		rows = append(rows, []string{entry.Time, emptyDash(priority), entry.Event})
+		rows = append(rows, []string{when, severityCell(ev.Severity), eventText(ev)})
 	}
 	writeLines(w, columns(
 		[]string{"Time", "Level", "Event"},
 		rows,
-		[]int{24, 11, 80},
+		[]int{13, 5, 80},
 	))
+}
+
+func severityCell(sev hitron.Severity) string {
+	switch sev {
+	case hitron.SevCritical:
+		return Red("CRIT")
+	case hitron.SevError:
+		return Red("ERR")
+	case hitron.SevWarning:
+		return Yellow("WARN")
+	case hitron.SevNotice:
+		return Dim("note")
+	default:
+		return Dim("info")
+	}
+}
+
+// eventText colours the summary by severity and highlights the arrow in
+// "from → to" changes.
+func eventText(ev hitron.FriendlyEvent) string {
+	text := strings.ReplaceAll(ev.Summary, " → ", " "+AccentBold("→")+" ")
+	if ev.Severity == hitron.SevCritical || ev.Severity == hitron.SevError {
+		return Red(ev.Summary)
+	}
+	return text
 }
 
 // Moca prints the HT-EM5 view.
@@ -388,128 +476,6 @@ func All(w io.Writer, s *hitron.Snapshot, logLimit int) {
 	Warnings(w, s)
 }
 
-// Frame is one complete TUI screen, clipped to the terminal height.
-func Frame(s *hitron.Snapshot, width, height int, interval time.Duration, auto bool, errText string) []string {
-	lines := []string{}
-	now := time.Now().Format("15:04:05")
-	state := "paused"
-	if auto {
-		state = "auto " + interval.String()
-	}
-	lines = append(lines, Bold("hitron-cli")+"  "+Title(s)+"  "+Dim(now+"  "+state))
-	if errText != "" {
-		lines = append(lines, Red("error: ")+errText)
-	} else {
-		lines = append(lines, specLine(s)...)
-	}
-	lines = append(lines, "")
-
-	lines = append(lines, "  "+Bold("Downstream"))
-	if len(s.DS) == 0 {
-		lines = append(lines, "  "+Dim("none"))
-	}
-	for _, ch := range s.DS {
-		lines = append(lines, "  "+pad(emptyDash(ch.ID), 4)+" "+
-			pad(freq(ch.Frequency), 11)+" "+
-			pad(powerCell(ch.Power, ch.HasPower, -6, 15), 8)+" "+
-			pad(snrCell(ch.SNR, ch.HasSNR), 7)+" "+
-			pad(emptyDash(ch.Modulation), 10))
-	}
-	if len(s.OFDM) > 0 {
-		lines = append(lines, "  "+Bold("Downstream OFDM"))
-		for _, ch := range s.OFDM {
-			lines = append(lines, "  "+pad(emptyDash(ch.Index), 4)+" "+
-				pad(freq(ch.Frequency), 11)+" "+
-				pad(plcPowerCell(ch.PLCPower, ch.HasPLCPower), 8)+" "+
-				pad(snrCell(ch.SNR, ch.HasSNR), 7)+" "+
-				pad(emptyDash(ch.FFTType), 5))
-		}
-	}
-
-	lines = append(lines, "", "  "+Bold("Upstream"))
-	if len(s.US) == 0 {
-		lines = append(lines, "  "+Dim("none"))
-	}
-	for _, ch := range s.US {
-		mode := ch.Mode
-		if mode == "" {
-			mode = ch.Modulation
-		}
-		lines = append(lines, "  "+pad(emptyDash(ch.ID), 4)+" "+
-			pad(freq(ch.Frequency), 11)+" "+
-			pad(powerCell(ch.Power, ch.HasPower, 35, 48), 8)+" "+
-			pad(emptyDash(mode), 8)+" "+
-			pad(bandwidth(ch.Bandwidth), 10))
-	}
-	if len(s.OFDMA) > 0 {
-		lines = append(lines, "  "+Bold("Upstream OFDMA"))
-		for _, ch := range s.OFDMA {
-			lines = append(lines, "  "+pad(emptyDash(ch.Index), 4)+" "+
-				pad(emptyDash(ch.State), 10)+" "+
-				pad(freq(ch.Frequency), 11)+" "+
-				pad(ofdmaPowerCell(ch.Power16, ch.HasPower16, !ch.Disabled), 8)+" "+
-				pad(bandwidthMHz(ch.Bandwidth), 6))
-		}
-	}
-
-	if s.MoCA != nil {
-		lines = append(lines, "", "  "+Bold("MoCA"))
-		lines = append(lines, "  "+pad(emptyDash(s.MoCA.NetworkVersion), 5)+" "+
-			pad(fmt.Sprintf("%d MHz", s.MoCA.LOFMHz), 9)+" "+
-			pad(emptyDash(s.MoCA.AdapterName), 12)+" "+
-			pad(fmt.Sprintf("%d nodes", len(s.MoCA.Nodes)), 8))
-	}
-
-	if len(s.Logs) > 0 {
-		lines = append(lines, "", "  "+Bold("Logs"))
-		for _, entry := range s.Logs[:minInt(5, len(s.Logs))] {
-			text := entry.Event
-			if width > 12 {
-				text = truncate(text, width-4)
-			}
-			lines = append(lines, "  "+Dim(truncate(entry.Time, 16)+"  ")+text)
-		}
-	}
-
-	footer := "  " + Dim("q quit  r refresh  a auto  h help")
-	if errText != "" {
-		footer = "  " + Dim("q quit  r retry  a auto  h help")
-	}
-	lines = append(lines, "", footer)
-
-	if height > 4 && len(lines) > height {
-		lines = append(lines[:height-2], lines[len(lines)-1])
-	}
-	if width > 0 {
-		for index, line := range lines {
-			lines[index] = truncate(line, width)
-		}
-	}
-	return lines
-}
-
-// HelpOverlay is the key help shown inside the TUI.
-func HelpOverlay(width int) []string {
-	lines := []string{
-		"",
-		"  " + Bold("Keys"),
-		"  " + Dim("q") + "        quit",
-		"  " + Dim("r") + "        refresh now",
-		"  " + Dim("a") + "        toggle automatic refresh",
-		"  " + Dim("space") + "    refresh now",
-		"  " + Dim("h") + "        close this help",
-		"",
-		"  " + Bold("Notes"),
-		"  " + Dim("· Reads never log in on the analyzed firmware."),
-		"  " + Dim("· Destructive actions are separate commands, never keys."),
-		"  " + Dim("· Use --once for a one-shot report, --json for machine output."),
-	}
-	for index, line := range lines {
-		lines[index] = truncate(line, width)
-	}
-	return lines
-}
-
 func powerCell(power float64, has bool, low, high float64) string {
 	if !has {
 		return Dim("—")
@@ -568,11 +534,11 @@ func bandwidth(hz float64) string {
 	return fmt.Sprintf("%.1f MHz", hz/1e6)
 }
 
-func bandwidthMHz(mhz float64) string {
+func bandwidthMHzCell(mhz float64) string {
 	if mhz == 0 {
 		return Dim("—")
 	}
-	return fmt.Sprintf("%.1f", mhz)
+	return fmt.Sprintf("%.1f MHz", mhz)
 }
 
 func formatUptime(seconds int64) string {
@@ -584,11 +550,11 @@ func formatUptime(seconds int64) string {
 	minutes := (seconds % 3600) / 60
 	switch {
 	case days > 0:
-		return fmt.Sprintf("%dd %dh %dm", days, hours, minutes)
+		return fmt.Sprintf("%s %d h %d m", plural(int(days), "day"), hours, minutes)
 	case hours > 0:
-		return fmt.Sprintf("%dh %dm", hours, minutes)
+		return fmt.Sprintf("%d h %d m", hours, minutes)
 	default:
-		return fmt.Sprintf("%dm %ds", minutes, seconds%60)
+		return fmt.Sprintf("%d m %d s", minutes, seconds%60)
 	}
 }
 

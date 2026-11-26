@@ -146,17 +146,67 @@ stops; it does not try a plausible-looking URL on a live modem.
 ## Live view
 
 `monitor`, or `stats` in a terminal, draws a full-screen report and refreshes
-on `--interval`.
+on `--interval` (default 5s; 1s on the CODA-57 and CODA-60).
+
+The summary opens with four big-number cards (downstream power, upstream
+power, weakest downstream SNR, uncorrectable codewords), then trend graphs, a
+device block (serial, RF MAC, CMTS MAC, firmware, config file), the DOCSIS
+provisioning steps, typed channel tables with a `CCWE/UCCWE` codeword column
+and a decoded, shortened event log. The mouse wheel scrolls.
 
 | Key | Action |
 | --- | --- |
 | `q` | quit |
 | `r`, `space` | refresh now |
 | `a` | toggle automatic refresh |
+| `g` | toggle trend graphs |
+| `z` | zero the FEC counters: show counts since pressed, press again to restore. The modem has no reset, so nothing is written to it. |
+| `t` | next colour theme, remembered for next time |
+| `b` | toggle the gradient background (24-bit colour terminals only) |
+| `x`, the Reboot button | reboot, after a confirmation (see below) |
+| `j`, `k`, arrows | scroll |
 | `h`, `?` | help overlay |
+| `1` | summary |
+| `2`, `s` | live spectrum |
+| `3`, `c` | constellation (I/Q) |
+| `[`, `]` | previous / next analyser channel |
+| `,`, `.` | fine-tune the spectrum centre by 1 MHz |
 
-Destructive actions are deliberately not keys. They are separate commands with
-their own confirmation.
+Themes are `neon` (default), `synthwave`, `dracula`, `nord`, `gruvbox` and
+`matrix`. Choose one with `--theme NAME` or `HITRON_THEME`; the `t` key saves
+your choice. `--no-bg` turns off the background and `--no-mouse` stops the
+mouse being captured so text can be selected normally.
+
+**Reboot** is the only write in the TUI. `x` (or a click on the Reboot button)
+opens a dialog that asks you to type the word `reboot`; nothing is sent before
+that. The CODA6X accepts the reboot from the LAN without a login, so no
+credentials are requested; `--user` and `--password` are used only if the
+device refuses the anonymous call. The HT-EM5 asks for its login, and the
+CODA-57 has no reboot button. Factory reset and hard reset are not in the TUI;
+they stay separate commands with their own confirmation.
+
+### Spectrum and constellation
+
+Both views read `/1/Device/Spectrum` on the CODA6X and are unavailable on the
+other families. The firmware drives one shared hardware tuner, so the client
+keeps captures sequential and draws whatever the tuner actually returned:
+
+- **Spectrum** is a braille trace of one 6 MHz window (300 points at 20 kHz
+  spacing on a CODA-60). `[`/`]` jumps between the analyser's downstream
+  channels, `,`/`.` tunes by 1 MHz. The header carries the raw min/max/average
+  dBmV; the vertical axis trims the tuner's 30–40 dB edge roll-off so the
+  channel itself fills the panel. The `RTData` power/MER snapshot sits below it.
+- **Constellation** plots the 256 I/Q samples for one analyser port, auto-scaled
+  to the returned cloud, with modulation, bandwidth, MER, and power in the
+  header. Ports are the analyser's own ids (a live CODA-60 reports `0, 25..31`
+  for eight downstream channels), not DOCSIS channel numbers.
+
+`FreqPower` only accepts at most one non-zero fractional digit (`637.5`, never
+`637.500`); a value that misses the handler's regex silently falls back to the
+645/637.5/643.5 defaults. The client formats frequencies accordingly.
+
+An inactive constellation port, or a tuner that has not settled, answers `200`
+with an empty list. The TUI says so instead of treating it as an error.
 
 ## Exit codes
 

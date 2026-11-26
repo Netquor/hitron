@@ -174,6 +174,9 @@ type Snapshot struct {
 	Hardware string `json:"hardware,omitempty"`
 	Serial   string `json:"serial,omitempty"`
 	RFMac    string `json:"rf_mac,omitempty"`
+	// CMTSMac is read from the DOCSIS event log; the device API has no field
+	// for it, so it is empty until a log line names one.
+	CMTSMac string `json:"cmts_mac,omitempty"`
 
 	UptimeSeconds int64 `json:"uptime_seconds,omitempty"`
 	HasUptime     bool  `json:"-"`
@@ -277,6 +280,51 @@ func (s *Snapshot) USInSpec() (ok bool, min, max float64) {
 		return false, 0, 0
 	}
 	return min >= 35.0 && max <= 48.0, min, max
+}
+
+// DSAverage is the mean downstream power in dBmV over the same channels
+// DSInSpec checks (SC-QAM power plus OFDM PLC power). It is the arithmetic
+// mean of the dBmV readings, not a power-domain average.
+func (s *Snapshot) DSAverage() (avg float64, ok bool) {
+	sum, n := 0.0, 0
+	for _, ch := range s.DS {
+		if ch.HasPower {
+			sum += ch.Power
+			n++
+		}
+	}
+	for _, ch := range s.OFDM {
+		if ch.HasPLCPower {
+			sum += ch.PLCPower
+			n++
+		}
+	}
+	if n == 0 {
+		return 0, false
+	}
+	return sum / float64(n), true
+}
+
+// USAverage is the upstream half of DSAverage. Enabled OFDMA channels use
+// repPower1_6 + 6 dB, the same 6.4 MHz-equivalent USInSpec compares.
+func (s *Snapshot) USAverage() (avg float64, ok bool) {
+	sum, n := 0.0, 0
+	for _, ch := range s.US {
+		if ch.HasPower {
+			sum += ch.Power
+			n++
+		}
+	}
+	for _, ch := range s.OFDMA {
+		if !ch.Disabled && ch.HasPower16 {
+			sum += ch.Power16 + 6.0
+			n++
+		}
+	}
+	if n == 0 {
+		return 0, false
+	}
+	return sum / float64(n), true
 }
 
 // DSHasReadings reports whether any downstream power was reported. A genuine

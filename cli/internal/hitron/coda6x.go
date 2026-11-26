@@ -163,13 +163,15 @@ func parseCodaDS(snap *Snapshot, data map[string]any) {
 		channel := Channel{
 			ID:         str(item["channelId"]),
 			PortID:     str(item["portId"]),
-			Modulation: str(item["modulation"]),
+			Modulation: dsModulation(str(item["modulation"])),
 		}
 		channel.Frequency, _ = num(item["frequency"])
 		channel.Power, channel.HasPower = signal(item["signalStrength"])
 		channel.SNR, channel.HasSNR = signal(item["snr"])
-		channel.Corrected, _ = counter(item["correcteds"])
-		channel.Uncorrect, _ = counter(item["uncorrect"])
+		hasC, hasU := false, false
+		channel.Corrected, hasC = counter(item["correcteds"])
+		channel.Uncorrect, hasU = counter(item["uncorrect"])
+		channel.HasCodewords = hasC && hasU
 		if channel.ID == "" && channel.Frequency == 0 {
 			continue
 		}
@@ -211,8 +213,10 @@ func parseCodaOFDM(snap *Snapshot, data map[string]any) {
 		channel.PLCLock, _ = flag(item["plclock"])
 		channel.NCPLock, _ = flag(item["ncplock"])
 		channel.MDC1Lock, _ = flag(item["mdc1lock"])
-		channel.Corrected, _ = counter(item["correcteds"])
-		channel.Uncorrect, _ = counter(item["uncorrect"])
+		hasC, hasU := false, false
+		channel.Corrected, hasC = counter(item["correcteds"])
+		channel.Uncorrect, hasU = counter(item["uncorrect"])
+		channel.HasCounters = hasC && hasU
 		channel.Octets, _ = counter(item["dsoctets"])
 		if channel.Frequency == 0 && !hasPower && !hasSNR {
 			// Unused OFDM slots are returned with an index and nothing else.
@@ -306,4 +310,14 @@ func (c *Client) HardReset(ctx context.Context) (map[string]any, error) {
 		return nil, fmt.Errorf("hard reset on %s: %w (CODA6X only)", c.Kind.Label(), ErrUnsupported)
 	}
 	return c.coda6xAction(ctx, map[string]int{"restoreReset": 1})
+}
+
+// dsModulation names the raw downstream modulation code. Only "2" is confirmed
+// (the modem's web page shows 256QAM for it); other codes pass through as
+// reported rather than being guessed.
+func dsModulation(code string) string {
+	if code == "2" {
+		return "256QAM"
+	}
+	return code
 }

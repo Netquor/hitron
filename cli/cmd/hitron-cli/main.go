@@ -26,13 +26,19 @@ type options struct {
 	token    string
 	timeout  time.Duration
 	interval time.Duration
-	limit    int
+	// intervalSet is true when --interval or HITRON_INTERVAL chose the value,
+	// so a per-model default does not override it.
+	intervalSet bool
+	limit       int
 
 	json     bool
 	noColor  bool
 	confirm  bool
 	once     bool
 	noBanner bool
+	noMouse  bool
+	noBg     bool
+	theme    string
 
 	command string
 	topic   string
@@ -73,6 +79,10 @@ func run(argv []string) int {
 	}
 
 	ui.Color = !opts.noColor && os.Getenv("NO_COLOR") == "" && os.Getenv("TERM") != "dumb"
+	if err := chooseTheme(opts.theme); err != nil {
+		fmt.Fprintln(os.Stderr, "hitron-cli: "+err.Error())
+		return 2
+	}
 	if !opts.json && !opts.noBanner {
 		fmt.Fprintln(os.Stderr, ui.Banner(version))
 		fmt.Fprintln(os.Stderr)
@@ -203,11 +213,118 @@ func runSnapshot(ctx context.Context, client *hitron.Client, opts options) int {
 	return 0
 }
 
+// chooseTheme picks the palette: --theme, then HITRON_THEME, then the one the
+// `t` key saved last time. A bad name from the flag or environment is an error;
+// a stale saved name is ignored.
+func chooseTheme(flagValue string) error {
+	for _, name := range []string{flagValue, os.Getenv("HITRON_THEME")} {
+		if name == "" {
+			continue
+		}
+		if !ui.SetTheme(name) {
+			return fmt.Errorf("unknown theme %q (themes: %s)", name, strings.Join(ui.ThemeNames(), ", "))
+		}
+		return nil
+	}
+	if saved := ui.SavedTheme(); saved != "" {
+		ui.SetTheme(saved)
+	}
+	return nil
+}
+
 func runMonitor(ctx context.Context, client *hitron.Client, opts options) int {
+	// The CODA-57 and CODA-60 answer local reads quickly, so they refresh every
+	// second unless the user picked an interval.
+	if !opts.intervalSet && (client.Kind == hitron.KindCoda6X || client.Kind == hitron.KindCoda57) {
+		opts.interval = time.Second
+	}
 	fetch := func(runCtx context.Context) (*hitron.Snapshot, error) {
 		return snapshotWithTimeout(runCtx, client, opts.timeout)
 	}
-	if err := ui.RunTUI(ctx, fetch, opts.interval, client.Addr()); err != nil {
+	// Analyser reads share one hardware tuner on the modem, so each gets its
+	// own generous timeout and the TUI never runs two at once.
+	analyser := func(runCtx context.Context) (context.Context, context.CancelFunc) {
+		return context.WithTimeout(runCtx, opts.timeout*2)
+	}
+	tui := ui.TUIOptions{
+		Channels: func(runCtx context.Context) ([]hitron.SpectrumChannel, error) {
+			callCtx, cancel := analyser(runCtx)
+			defer cancel()
+			return client.SpectrumChannels(callCtx)
+		},
+		Sweep: func(runCtx context.Context, centerMHz float64) (*hitron.SpectrumSweep, error) {
+			callCtx, cancel := analyser(runCtx)
+			defer cancel()
+			return client.SpectrumSweep(callCtx, centerMHz)
+		},
+		RealTime: func(runCtx context.Context) ([]hitron.RealTimeFrame, error) {
+			callCtx, cancel := analyser(runCtx)
+			defer cancel()
+			return client.RealTimeSpectrum(callCtx)
+		},
+		Constellation: func(runCtx context.Context, portID int) (*hitron.Constellation, error) {
+			callCtx, cancel := analyser(runCtx)
+			defer cancel()
+			return client.Constellation(callCtx, portID)
+		},
+		Fetch:        fetch,
+		Interval:     opts.interval,
+		Host:         client.Addr(),
+		NoMouse:      opts.noMouse,
+		NoBackground: opts.noBg,
+	}
+	// Reboot is offered where the CLI's own reboot command works. The CODA-57
+	// has no confirmed write endpoint, so it gets no button at all.
+	if client.Kind != hitron.KindCoda57 {
+		// On the CODA6X the reboot call is accepted from the LAN with no
+		// login, and customers are usually never given one, so the dialog
+		// asks for none. A login supplied with --user/--password is only used
+		// if the device refuses the anonymous call.
+		tui.NoLogin = client.Kind == hitron.KindCoda6X
+		tui.Reboot = func(runCtx context.Context, user, pass string) (string, error) {
+			// Work on a copy so the polling client's credentials never change
+			// underneath an in-flight read.
+			act := *client
+			act.DefaultCreds = false
+			callCtx, cancel := context.WithTimeout(runCtx, opts.timeout*2)
+			defer cancel()
+			send := func() (map[string]any, error) { return act.Reboot(callCtx) }
+			var result map[string]any
+			var err error
+			if user == "" && pass == "" {
+				result, err = send()
+				if err != nil {
+					return "", fmt.Errorf("%w (the device wants a login; run with --user and --password)", err)
+				}
+			} else {
+				act.Creds = hitron.Credentials{Username: user, Password: pass}
+				if tui.NoLogin {
+					// Try anonymously first; log in only if refused.
+					if result, err = send(); err != nil {
+						result = nil
+					}
+				}
+				if result == nil {
+					if err := act.Login(runCtx); err != nil {
+						return "", err
+					}
+					if result, err = send(); err != nil {
+						return "", err
+					}
+				}
+			}
+			if code := fmt.Sprint(result["errCode"]); code != "" && code != "000" && code != "<nil>" {
+				return "", fmt.Errorf("device answered errCode %s %v", code, result["errMsg"])
+			}
+			return fmt.Sprintf("Reboot sent to %s (%s)", client.Addr(), client.Kind.Label()), nil
+		}
+		// A login given on the command line or in the environment is kept as
+		// a fallback; the confirmation still has to be typed.
+		if !client.DefaultCreds && opts.user != "" && opts.password != "" {
+			tui.Username, tui.Password = opts.user, opts.password
+		}
+	}
+	if err := ui.RunTUI(ctx, tui); err != nil {
 		return fail(err)
 	}
 	return 0
@@ -266,7 +383,7 @@ func runAction(ctx context.Context, client *hitron.Client, opts options) int {
 		return 0
 	}
 	fmt.Printf("%s sent to %s (%s)\n", action, client.Addr(), client.Kind.Label())
-	if code := fmt.Sprint(result["errCode"]); code != "" && code != "000" {
+	if code := fmt.Sprint(result["errCode"]); code != "" && code != "000" && code != "<nil>" {
 		fmt.Printf("device answered errCode %s %v\n", code, result["errMsg"])
 	}
 	return 0
@@ -298,6 +415,7 @@ func parseArgs(argv []string) (options, error) {
 	if value := os.Getenv("HITRON_INTERVAL"); value != "" {
 		if parsed, err := parseInterval(value); err == nil {
 			opts.interval = parsed
+			opts.intervalSet = true
 		}
 	}
 
@@ -366,6 +484,7 @@ func parseArgs(argv []string) (options, error) {
 					return opts, fmt.Errorf("--interval: %w", err)
 				}
 				opts.interval = parsed
+				opts.intervalSet = true
 			case "--limit":
 				got, err := takeValue()
 				if err != nil {
@@ -386,6 +505,16 @@ func parseArgs(argv []string) (options, error) {
 				opts.once = true
 			case "--no-banner":
 				opts.noBanner = true
+			case "--no-mouse":
+				opts.noMouse = true
+			case "--no-bg":
+				opts.noBg = true
+			case "--theme":
+				got, err := takeValue()
+				if err != nil {
+					return opts, err
+				}
+				opts.theme = got
 			case "--help":
 				opts.command = "help"
 			case "--version":
@@ -519,7 +648,7 @@ channel, MoCA (on an HT-EM5), logs, and switch ports.
 Flags:
   --once            print one report and exit (no TUI)
   --json            machine-readable snapshot
-  --interval 5s     live refresh interval
+  --interval 5s     live refresh interval (default 1s on CODA-57 / CODA-60)
   --limit 20        log lines in the one-shot report
   --host 10.0.0.1   gateway address
 
@@ -537,15 +666,43 @@ Keys:
   q        quit
   r        refresh now
   a        toggle automatic refresh
+  g        toggle trend graphs
+  t        next theme (remembered for next time)
+  j / k    scroll (the mouse wheel works too)
+  x        reboot, after a confirmation (also the Reboot button)
+  z        zero the FEC counters (counts since pressed; the modem has no reset)
   space    refresh now
   h        help overlay
+  1        summary
+  2 / s    live spectrum (6 MHz capture)
+  3 / c    constellation (I/Q)
+  [ ]      previous / next analyser channel
+  , .      fine-tune the spectrum centre by 1 MHz
+
+Themes: neon (default), synthwave, dracula, nord, gruvbox, matrix.
+Pick one with --theme NAME or HITRON_THEME; the t key saves your choice.
+
+Reboot: x (or a click on the Reboot button) opens a dialog that asks for the
+login (not on the CODA6X, which needs none from the LAN), then makes you
+type the word reboot. Nothing is sent before that. Factory reset and hard reset are not in
+the TUI; they stay separate commands. The CODA-57 has no reboot button.
+
+Flags:
+  --theme NAME   color theme
+  --no-mouse     do not capture the mouse (lets you select text normally)
+  --no-bg        no gradient background (it is also skipped unless the terminal
+                 reports 24-bit colour via COLORTERM; b toggles it live)
 
 The TUI needs a real terminal. Use --once to get the same report as text, or
---json for a snapshot. Destructive actions are deliberately not keys in the
-TUI; they are separate commands with their own confirmation.
+--json for a snapshot.
+
+The spectrum and constellation views exist only on the CODA6X family. Both read
+the same single hardware tuner, so captures are sequential: one 6 MHz window
+per refresh. Inactive constellation ports answer 200 with an empty cloud.
 
 Examples:
   hitron-cli monitor --host 192.168.100.1 --interval 3s
+  hitron-cli monitor --theme dracula
   hitron-cli monitor --once --no-color`
 	case "detect":
 		return `hitron-cli detect — identify the device
@@ -582,7 +739,9 @@ spec check, DOCSIS provisioning milestones, and Ethernet port state.
 Usage:
   hitron-cli channels [host] [flags]
 
-Prints SC-QAM downstream and upstream channels, then OFDM and OFDMA channels.
+Prints one downstream table (SC-QAM and OFDM) and one upstream table (SC-QAM
+and OFDMA), each row typed and sorted by channel. Disabled OFDMA channels are
+hidden and counted in the heading.
 Power is colored against the Midco envelope: downstream -6 to +15 dBmV,
 upstream 35 to 48 dBmV (OFDMA uses repPower1_6 + 6 dB).
 
@@ -647,7 +806,8 @@ right before it acts, so the action is one traceable operation.`
   HITRON_PASSWORD    password
   HITRON_APP_TOKEN   CODA6X Ht-App-Auth token
   HITRON_TIMEOUT     request timeout in seconds (10)
-  HITRON_INTERVAL    live refresh interval (5s)
+  HITRON_INTERVAL    live refresh interval (5s; 1s on CODA-57 / CODA-60)
+  HITRON_THEME       color theme (neon, synthwave, dracula, nord, gruvbox, matrix)
   NO_COLOR           disable ANSI color
 
 Flags always override the environment.`
@@ -744,13 +904,16 @@ Global flags:
   -p, --password PASS    password
       --token TOKEN      CODA6X Ht-App-Auth app token
       --timeout 10s      per-request timeout
-      --interval 5s      TUI refresh interval
+      --interval 5s      TUI refresh interval (1s default on CODA-57 / CODA-60)
       --limit 20         log lines
       --once             one report, no TUI
       --json             machine-readable output
       --no-color         plain text
       --confirm          skip the y/N question on a destructive command
       --no-banner        suppress the startup art
+      --theme NAME       TUI color theme (neon, synthwave, dracula, nord, gruvbox, matrix)
+      --no-mouse         do not capture the mouse in the TUI
+      --no-bg            no gradient background in the TUI
   -h, --help             this text
   -V, --version          version
 
