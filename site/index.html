@@ -21,6 +21,7 @@
   <nav class="topnav">
     <a href="#quickstart">Quickstart</a>
     <a href="#explorer">API console</a>
+    <a href="#local">Run locally</a>
     <a href="#charts">Live charts</a>
     <a href="#dashboards">Grafana</a>
     <a href="#telemetry">Telemetry</a>
@@ -49,7 +50,7 @@
       <a class="btn ghost" href="https://github.com/Netquor/hitron">GitHub ↗</a>
     </div>
     <div class="cmd" role="group" aria-label="Install command">
-      <code id="install-cmd">pip install -e ".[dev]" &amp;&amp; hitron-exporter --coda60 192.168.100.1</code>
+      <code id="install-cmd">curl -fsSL https://hitron.netquor.dev/install.sh | bash -s -- --run</code>
       <button class="copy" data-copy="#install-cmd" type="button">Copy</button>
     </div>
   </div>
@@ -153,8 +154,8 @@ hitron coda60 192.168.100.1 | head</code></pre>
     <span id="auth-state" class="pill muted">not logged in</span>
   </div>
   <p class="muted small" id="proxy-hint">
-    Static hosting (GitHub Pages) cannot call <code>http://192.168.100.1</code> because of mixed content and CORS.
-    Run <code>hitron site --device 192.168.100.1</code> locally and use <code>/proxy</code>.
+    <span id="proxy-hint-text">Static hosting (GitHub Pages) cannot call <code>http://192.168.100.1</code> because of mixed content and CORS.
+    Run <code>hitron site --device 192.168.100.1</code> locally and use <code>/proxy</code>.</span>
   </p>
 
   <div class="explorer">
@@ -183,6 +184,35 @@ hitron coda60 192.168.100.1 | head</code></pre>
       </div>
     </div>
     <pre id="resp-body" class="code-block">Send a request to see the response.</pre>
+  </div>
+</section>
+
+<section id="local" class="section">
+  <div class="section-head">
+    <h2>Run the API console locally</h2>
+    <p>The published page is static, so it cannot call your modem. One line installs an isolated virtualenv, starts the site, and proxies <code>/proxy</code> to the gateway on the same origin.</p>
+  </div>
+  <div class="cards three">
+    <article class="card">
+      <h3>One line</h3>
+      <pre><code>curl -fsSL https://hitron.netquor.dev/install.sh | bash -s -- \
+  --run --device 192.168.100.1</code></pre>
+      <p class="muted">Open <code>http://127.0.0.1:8000</code>. No sudo, no system packages, nothing outside <code>~/.local/share/hitron</code>.</p>
+    </article>
+    <article class="card">
+      <h3>Read-only, if you prefer</h3>
+      <pre><code>curl -fsSL https://hitron.netquor.dev/install.sh | bash -s -- \
+  --run --device 192.168.100.1 --read-only</code></pre>
+      <p class="muted">The proxy answers <code>GET</code>/<code>HEAD</code> only and returns 403 for anything that could reboot the modem.</p>
+    </article>
+    <article class="card">
+      <h3>Already have Python 3.11+?</h3>
+      <pre><code>git clone https://github.com/Netquor/hitron
+cd hitron &amp;&amp; python3 -m venv .venv
+. .venv/bin/activate &amp;&amp; pip install -e .
+hitron site --device 192.168.100.1</code></pre>
+      <p class="muted"><a href="https://github.com/Netquor/hitron/blob/main/docs/LOCAL-PROXY.md">Step-by-step guide and troubleshooting →</a></p>
+    </article>
   </div>
 </section>
 

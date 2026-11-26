@@ -229,7 +229,16 @@ pre code { background: none; padding: 0; color: inherit; }
   border: 1px solid var(--line); border-radius: 7px; min-width: 9rem;
 }
 #base-url { min-width: 16rem; }
-#proxy-hint { margin: 0 0 1.4rem; }
+#proxy-hint {
+  margin: 0 0 1.4rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--bg-raise);
+}
+#proxy-hint.warn { border-left: 4px solid var(--warn); }
+#proxy-hint.ok { border-left: 4px solid var(--ok); }
+#proxy-hint code { white-space: normal; overflow-wrap: anywhere; }
 
 .explorer {
   display: grid; grid-template-columns: minmax(15rem, 22rem) 1fr;

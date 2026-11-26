@@ -61,7 +61,7 @@ def find_site_dir(explicit: str | None = None) -> Path:
     )
 
 
-def _handler(site_dir: Path, device: str | None):
+def _handler(site_dir: Path, device: str | None, read_only: bool = False):
     class Handler(SimpleHTTPRequestHandler):
         server_version = "hitron-site/0.2"
 
@@ -79,6 +79,13 @@ def _handler(site_dir: Path, device: str | None):
                 return False
             if not device:
                 self._json_error(502, "no --device configured for the proxy")
+                return True
+            if read_only and self.command not in ("GET", "HEAD"):
+                self._json_error(
+                    403,
+                    "read-only mode: this proxy does not forward "
+                    f"{self.command}. Restart without --read-only to allow writes.",
+                )
                 return True
 
             upstream_path = parsed.path[len(PROXY_PREFIX):] or "/"
@@ -182,12 +189,18 @@ def main(argv: list[str] | None = None) -> None:
     ap.add_argument("--listen", default=os.environ.get("HITRON_SITE_LISTEN", "127.0.0.1"))
     ap.add_argument("--device", default=os.environ.get("HITRON_SITE_DEVICE") or None, help="gateway address used by /proxy")
     ap.add_argument("--dir", default=None, help="site directory (defaults to ./site)")
+    ap.add_argument(
+        "--read-only",
+        action="store_true",
+        help="proxied requests may only read (GET/HEAD); write verbs return 403",
+    )
     args = ap.parse_args(argv)
 
     site_dir = find_site_dir(args.dir)
-    handler = _handler(site_dir, args.device)
+    handler = _handler(site_dir, args.device, read_only=args.read_only)
     server = ThreadingHTTPServer((args.listen, args.port), handler)
-    print(f"hitron site: http://{args.listen}:{args.port}  (site={site_dir}, device={args.device or 'none'})")
+    mode = "read-only" if args.read_only else "read/write"
+    print(f"hitron site: http://{args.listen}:{args.port}  (site={site_dir}, device={args.device or 'none'}, {mode})")
     print("API console base URL: /proxy" if args.device else "start with --device to enable the API console proxy")
     try:
         server.serve_forever()

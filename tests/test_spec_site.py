@@ -157,3 +157,50 @@ def test_exporter_cli_declares_every_format():
     from hitron.exporter import main  # importable without a device
 
     assert callable(main)
+
+
+def test_installer_is_shipped_with_the_site():
+    script = ROOT / "install.sh"
+    assert script.is_file()
+    assert (ROOT / "site" / "install.sh").read_text() == script.read_text()
+    text = script.read_text()
+    # The one-liner documented everywhere must be the one the script supports.
+    assert "--run" in text
+    assert "--read-only" in text
+    assert "https://github.com/$REPO/archive/$REF.tar.gz" in text
+
+
+def test_local_proxy_guide_is_linked():
+    guide = ROOT / "docs" / "LOCAL-PROXY.md"
+    assert guide.is_file()
+    body = guide.read_text()
+    assert "install.sh" in body
+    assert "--read-only" in body
+    assert "fetch failed" in body
+    assert "LOCAL-PROXY.md" in (ROOT / "README.md").read_text()
+
+
+def test_read_only_proxy_refuses_writes():
+    import http.client
+    import threading
+    from http.server import ThreadingHTTPServer
+
+    from hitron.site import _handler
+
+    server = ThreadingHTTPServer(
+        ("127.0.0.1", 0),
+        _handler(ROOT / "site", "127.0.0.1:9", read_only=True),
+    )
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        conn = http.client.HTTPConnection("127.0.0.1", server.server_port, timeout=5)
+        conn.request("POST", "/proxy/1/Device/CM/Reboot", body='model={"reboot":1}')
+        response = conn.getresponse()
+        payload = response.read().decode()
+        assert response.status == 403
+        assert "read-only" in payload
+        conn.close()
+    finally:
+        server.shutdown()
+        server.server_close()

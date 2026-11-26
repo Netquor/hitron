@@ -36,10 +36,25 @@ Guides: [`docs/GETTING-STARTED.md`](docs/GETTING-STARTED.md) (end to end),
 
 ## Install
 
+One line, no sudo, isolated virtualenv under `~/.local/share/hitron`:
+
+```bash
+curl -fsSL https://hitron.netquor.dev/install.sh | bash
+```
+
+It links `~/.local/bin/hitron` and `hitron-exporter`. Add `-s -- --run` to start
+the local docs site and gateway proxy immediately. There is **no PyPI
+package**: `pip install hitron` is an unrelated project.
+
+Manual install from a checkout:
+
 ```bash
 python3 -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 ```
+
+See [`docs/LOCAL-PROXY.md`](docs/LOCAL-PROXY.md) for the one-liner, `pipx`/`uv`
+equivalents, and troubleshooting.
 
 ## CLI
 
@@ -130,18 +145,23 @@ nodes, PHY rates, Ethernet counters). Eight Prometheus alert rules ship in
 `deploy/grafana/prometheus/rules/hitron.rules.yml`. Importable copies are in
 `dashboards/`; the tour is in [`docs/GRAFANA.md`](docs/GRAFANA.md).
 
-## Static site
+## Static site and local proxy
 
 ```bash
+curl -fsSL https://hitron.netquor.dev/install.sh | bash -s -- --run --device 192.168.100.1
+# or, from a checkout:
 hitron site --device 192.168.100.1 --port 8000
 ```
 
 Serves `site/` and proxies `/proxy/...` to the gateway, which is what makes the
-in-page API console work despite mixed-content and CORS. The site includes the
-full API browser generated from `site/openapi.json`, live RF charts, the DOCSIS
-event log, a downloadable request log, and the dashboard downloads. It is plain
-HTML/CSS/JS, so GitHub Pages can host it directly (Pages cannot proxy, so on
-Pages the console explains how to run it locally).
+in-page API console work despite mixed-content and CORS. Add `--read-only` to
+answer `GET`/`HEAD` only and return 403 for reboots and other writes.
+
+The site includes the full API browser generated from `site/openapi.json`, live
+RF charts, the DOCSIS event log, a downloadable request log, and the dashboard
+downloads. It is plain HTML/CSS/JS, so GitHub Pages can host it directly. Pages
+cannot proxy, so the published console explains how to start the local one
+instead of failing with a bare "fetch failed".
 
 ## Library
 

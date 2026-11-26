@@ -477,6 +477,17 @@ async function sendSelected(alsoChart) {
     const text = await response.text();
     const elapsed = performance.now() - started;
 
+    if (!response.ok && request.url.startsWith('/proxy') && !proxyAvailable()) {
+      $('#resp-body').textContent =
+        `HTTP ${response.status}: this page is hosted statically and has no /proxy.\n\n` + proxyHint();
+      statusEl.textContent = `${response.status} static host`;
+      statusEl.className = 'pill bad';
+      $('#resp-time').textContent = `${elapsed.toFixed(0)} ms`;
+      $('#resp-size').textContent = `${text.length} B`;
+      logRequest(request.method, request.url, response.status, elapsed, 'no local proxy');
+      return;
+    }
+
     let pretty = text;
     let parsed = null;
     try {
@@ -503,8 +514,9 @@ async function sendSelected(alsoChart) {
     statusEl.className = 'pill bad';
     $('#resp-body').textContent =
       `Request failed: ${error.message}\n\n` +
-      `If you opened this page from GitHub Pages, the browser blocks direct calls to the gateway ` +
-      `(mixed content / CORS). Run "hitron site --device <gateway-ip>" locally and use the /proxy base URL.`;
+      (proxyAvailable()
+        ? 'The local page is up, but the proxy could not reach the gateway. Check --device and that the modem is on this LAN.'
+        : proxyHint());
     logRequest(request.method, request.url, 0, elapsed, error.message);
   }
 }
@@ -702,13 +714,32 @@ function renderRequestLog() {
     </tr>`).join('') || '<tr><td colspan="5" class="muted">No requests yet.</td></tr>';
 }
 
+function proxyAvailable() {
+  return ['127.0.0.1', 'localhost', '::1', '[::1]'].includes(location.hostname) &&
+    location.protocol.startsWith('http');
+}
+
+function proxyHint() {
+  return 'Start the local site + proxy:\n\n' +
+    '  curl -fsSL https://hitron.netquor.dev/install.sh | bash -s -- --run --device 192.168.100.1\n\n' +
+    'Then open http://127.0.0.1:8000 and leave the base URL at /proxy.\n' +
+    'Guide: https://github.com/Netquor/hitron/blob/main/docs/LOCAL-PROXY.md';
+}
+
 async function fetchJson(path) {
   const base = $('#base-url').value.trim().replace(/\/+$/, '');
   const started = performance.now();
   const response = await fetch(`${base}${path}`, { credentials: 'include', cache: 'no-store' });
   const text = await response.text();
   logRequest('GET', `${base}${path}`, response.status, performance.now() - started);
-  return JSON.parse(text);
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status} for ${base}${path}${proxyAvailable() ? '' : ' - this host has no /proxy'}`);
+  }
+  try {
+    return JSON.parse(text);
+  } catch (_) {
+    throw new Error(`expected JSON from ${base}${path}, got ${response.headers.get('content-type') || 'unknown content'}`);
+  }
 }
 
 async function fetchRfPoints() {
@@ -728,7 +759,8 @@ async function fetchRfPoints() {
   } catch (error) {
     pill.textContent = 'fetch failed';
     pill.className = 'pill bad';
-    toast('RF fetch failed — use the local proxy');
+    toast(proxyAvailable() ? 'RF fetch failed — check the gateway address' : 'RF fetch needs the local proxy — see "Run the API console locally"');
+    console.error('RF fetch failed:', error);
   }
 }
 
@@ -829,7 +861,27 @@ function wireUi() {
 /* boot                                                                */
 /* ------------------------------------------------------------------ */
 
+function renderProxyHint() {
+  const hint = $('#proxy-hint');
+  const text = $('#proxy-hint-text');
+  if (!hint || !text) return;
+  if (proxyAvailable()) {
+    hint.classList.add('ok');
+    text.innerHTML =
+      'Local proxy active: <code>/proxy</code> forwards to the gateway. ' +
+      'Start with <code>--read-only</code> to block reboots and other writes.';
+  } else {
+    hint.classList.add('warn');
+    text.innerHTML =
+      'This page is static, so <code>/proxy</code> does not exist. Install and start it with ' +
+      '<code>curl -fsSL https://hitron.netquor.dev/install.sh | bash -s -- --run --device 192.168.100.1</code>, ' +
+      'then open <code>http://127.0.0.1:8000</code>. ' +
+      '<a href="https://github.com/Netquor/hitron/blob/main/docs/LOCAL-PROXY.md">Guide</a>.';
+  }
+}
+
 wireUi();
+renderProxyHint();
 loadHistory();
 renderRequestLog();
 loadSpec().catch((error) => {
