@@ -113,8 +113,12 @@ if command -v git >/dev/null 2>&1; then
 fi
 URL="https://github.com/$REPO/archive/$RESOLVED.tar.gz"
 echo "hitron: installing $REF from $REPO"
+# First pass resolves dependencies; the second always replaces the app itself,
+# because pip answers "Requirement already satisfied" for a direct URL when the
+# version number is unchanged, which silently kept the previous code on reruns.
+"$PREFIX/venv/bin/python" -m pip install --quiet --disable-pip-version-check "$URL"
 "$PREFIX/venv/bin/python" -m pip install --quiet --disable-pip-version-check \
-  --no-cache-dir --upgrade "$URL"
+  --no-cache-dir --force-reinstall --no-deps "$URL"
 
 ln -sf "$PREFIX/venv/bin/hitron" "$BINDIR/hitron"
 ln -sf "$PREFIX/venv/bin/hitron-exporter" "$BINDIR/hitron-exporter" 2>/dev/null || true

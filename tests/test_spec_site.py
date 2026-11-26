@@ -170,6 +170,8 @@ def test_installer_is_shipped_with_the_site():
     assert "--read-only" in text
     assert "https://github.com/$REPO/archive/$RESOLVED.tar.gz" in text
     assert "git ls-remote" in text
+    # pip skips an unchanged direct-URL version, so an update must reinstall.
+    assert "--force-reinstall" in text
 
 
 def test_local_proxy_guide_is_linked():
