@@ -471,9 +471,9 @@ func Frame(s *hitron.Snapshot, width, height int, interval time.Duration, auto b
 		}
 	}
 
-	footer := "  " + Dim("q quit  r refresh  a auto  1 stats  2 spectrum  3 constellation  h help")
+	footer := "  " + Dim("q quit  r refresh  a auto  1 stats  2 spectrum  3 constellation  x FEC reset  h help")
 	if errText != "" {
-		footer = "  " + Dim("q quit  r retry  a auto  2 spectrum  3 constellation  h help")
+		footer = "  " + Dim("q quit  r retry  a auto  2 spectrum  3 constellation  x FEC reset  h help")
 	}
 	lines = append(lines, "", footer)
 
@@ -504,6 +504,7 @@ func HelpOverlay(width int) []string {
 		"  " + Dim("a") + "        toggle automatic refresh",
 		"  " + Dim("[ ]") + "      previous / next analyser channel",
 		"  " + Dim(", .") + "      fine-tune the spectrum centre by 1 MHz",
+		"  " + Dim("x") + "        reset the downstream FEC counters (3.0 + OFDM)",
 		"  " + Dim("h") + "        close this help",
 		"",
 		"  " + Bold("Notes"),
@@ -511,6 +512,7 @@ func HelpOverlay(width int) []string {
 		"  " + Dim("· One hardware tuner serves every capture; requests stay sequential."),
 		"  " + Dim("· The spectrum axis trims the tuner's edge roll-off; the header keeps raw min/max."),
 		"  " + Dim("· Inactive constellation ports answer empty; that is not an error."),
+		"  " + Dim("· x clears counters on the device; the OFDM stop is partial on this build."),
 		"  " + Dim("· Use --once for a one-shot report, --json for machine output."),
 	}
 	for index, line := range lines {

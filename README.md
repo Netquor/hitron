@@ -146,8 +146,9 @@ anonymously (prompting once if a device gates the read), uses HTTP Basic for
 the HT-EM5, and checks every RF reading against the Midco envelope. In the live
 view, `1` is the summary, `2` a live 6 MHz spectrum trace, and `3` the I/Q
 constellation for one downstream port; the last two exist only on the CODA6X.
-Destructive actions are separate verbs with a `y/N` prompt that `--confirm`
-skips:
+`x` is the one write bound to a key: it clears the DOCSIS 3.0 and OFDM
+downstream FEC counters together. Reboots and resets are separate verbs with a
+`y/N` prompt that `--confirm` skips:
 
 ```bash
 ./hitron-cli reboot        192.168.100.1 -u admin -p admin
@@ -317,13 +318,18 @@ from guesswork, and verified against `ModelInfo.php`/`AdminPassword.php`:
 
 | Method | Device endpoint | What it does |
 | --- | --- | --- |
-| `login(user, password)` | `POST /1/Device/Users/Login` | Required before any other write; keeps the session cookie for the rest of this client's life. |
-| `reboot()` | `POST /1/Device/CM/Reboot`, `{"reboot": 1}` | Sets a TR-181 reboot flag for a backend process to act on. |
-| `factory_reset()` | same endpoint, `{"factoryReset": 1}` | Sets the factory-reset flag the same way. Destroys all configuration. |
-| `hard_reset_and_reboot()` | same endpoint, `{"restoreReset": 1}` | The PHP handler `exec()`s `reboot` directly — immediate, no flag indirection. The point of no return. |
+| `login(user, password)` | `POST /1/Device/Users/Login` | Required before the other writes; keeps the session cookie for the rest of this client's life. `reset_fec()` does not need it. |
+| `reboot()` | `POST /1/Device/CM/Reboot`, `{"reboot":1,"factoryReset":0,"restoreReset":0}` | Sets a TR-181 reboot flag for a backend process to act on. Measured inert on 8.7.1.0.1b4: `errCode 000`, no reboot. |
+| `factory_reset()` | same endpoint, `{"reboot":0,"factoryReset":1,"restoreReset":0}` | Sets the factory-reset flag the same way. Destroys all configuration. Not measured. |
+| `hard_reset_and_reboot()` | same endpoint, `{"reboot":0,"factoryReset":0,"restoreReset":1}` | The PHP handler `exec()`s `reboot` directly — immediate, no flag indirection. Measured working: the socket closes with no reply, the unit is back about two minutes later. The point of no return. |
+| `reset_fec()` | `PUT /1/Device/CM/DsInfo`, `PUT /1/Device/CM/DsOfdm` | Clears the DOCSIS 3.0 and OFDM downstream FEC counters. Bare PUTs, no body, no login. The 3.0 stop is complete; the OFDM stop clears some channels per call and is retried. |
 | `set_admin_password(...)` | `POST /1/Device/Manage/Password` | Changes the admin password. |
 | `set_admin_username(...)` | `POST /1/Device/Manage/Username` | Changes the admin username. |
 | `set_wifi_radio(index, settings)` | `PUT /1/Device/WiFi/Radios/{index}` | Server-validated radio config write. |
+
+The reboot body always carries all three flags: `ModelInfo::doRebootAction()`
+reads every flag before it picks a branch, so a partial body is a PHP 8 fatal
+(HTTP 500), not `errCode 001`.
 
 `Coda57Client` has **no write methods** — the one script this project was
 built from (`hitron-client/main.py`) never implemented one, and no write

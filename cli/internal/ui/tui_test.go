@@ -52,3 +52,25 @@ func TestNextChannelCarriesTheAnalyserPort(t *testing.T) {
 		t.Fatalf("port = %d, want 25", got.PortID)
 	}
 }
+
+func TestWithStatusKeepsTheFooterInPlace(t *testing.T) {
+	lines := []string{"header", "body", "", "  q quit  h help"}
+	got := withStatus(lines, "  FEC reset: 3.0 1/1 cleared, OFDM 2/3 cleared")
+	if len(got) != len(lines) {
+		t.Fatalf("status changed the frame height: %d -> %d", len(lines), len(got))
+	}
+	if got[2] != "  FEC reset: 3.0 1/1 cleared, OFDM 2/3 cleared" {
+		t.Fatalf("status line = %q", got[2])
+	}
+	if got[3] != lines[3] {
+		t.Fatalf("footer moved: %q", got[3])
+	}
+}
+
+func TestWithStatusAppendsWhenTheSlotIsTaken(t *testing.T) {
+	lines := []string{"header", "body", "  channels 267 [273]", "  q quit"}
+	got := withStatus(lines, "  FEC reset failed: boom")
+	if len(got) != len(lines)+1 || got[len(got)-1] != "  FEC reset failed: boom" {
+		t.Fatalf("status = %v", got)
+	}
+}

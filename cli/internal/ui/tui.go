@@ -21,6 +21,9 @@ type LiveSource struct {
 	Sweep         func(context.Context, float64) (*hitron.SpectrumSweep, error)
 	RealTime      func(context.Context) ([]hitron.RealTimeFrame, error)
 	Constellation func(context.Context, int) (*hitron.Constellation, error)
+	// ResetFEC is a write. The TUI only calls it when the user presses x, and
+	// only on families that expose the counters.
+	ResetFEC func(context.Context) (hitron.FECReset, error)
 }
 
 type viewMode int
@@ -197,6 +200,14 @@ func RunTUI(ctx context.Context, src LiveSource, interval time.Duration, host st
 	refreshSnapshot()
 	auto := true
 	showHelp := false
+	fecStatus := ""
+	fecFailed := false
+	fecRunning := false
+	type fecOutcome struct {
+		result hitron.FECReset
+		err    error
+	}
+	fecDone := make(chan fecOutcome, 1)
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
@@ -241,6 +252,13 @@ func RunTUI(ctx context.Context, src LiveSource, interval time.Duration, host st
 				}
 			}
 		}
+		if !showHelp && fecStatus != "" {
+			text := "  " + Dim(fecStatus)
+			if fecFailed {
+				text = "  " + Red(fecStatus)
+			}
+			lines = withStatus(lines, text)
+		}
 		var builder strings.Builder
 		builder.WriteString("\x1b[H")
 		for _, line := range lines {
@@ -267,6 +285,27 @@ func RunTUI(ctx context.Context, src LiveSource, interval time.Duration, host st
 				refreshActive()
 			case 'a', 'A':
 				auto = !auto
+			case 'x', 'X':
+				if src.ResetFEC == nil {
+					fecStatus = "FEC reset is unavailable on this device"
+					fecFailed = true
+					break
+				}
+				if fecRunning {
+					break
+				}
+				// The OFDM stop is retried, so the whole flow can take a few
+				// seconds. Run it off the draw loop and keep the screen live.
+				fecRunning = true
+				fecFailed = false
+				fecStatus = "FEC reset: clearing 3.0 and OFDM counters…"
+				go func() {
+					result, err := src.ResetFEC(ctx)
+					select {
+					case fecDone <- fecOutcome{result: result, err: err}:
+					case <-ctx.Done():
+					}
+				}()
 			case 'h', 'H', '?':
 				showHelp = !showHelp
 			case '1':
@@ -293,8 +332,18 @@ func RunTUI(ctx context.Context, src LiveSource, interval time.Duration, host st
 				centerMHz = math.Max(49, math.Min(1788, centerMHz+delta))
 				refreshActive()
 			}
+		case outcome := <-fecDone:
+			fecRunning = false
+			if outcome.err != nil {
+				fecStatus = "FEC reset failed: " + outcome.err.Error()
+				fecFailed = true
+				break
+			}
+			fecStatus = outcome.result.String() + " · " + time.Now().Format("15:04:05")
+			fecFailed = false
+			refreshActive()
 		case <-ticker.C:
-			if auto {
+			if auto && !fecRunning {
 				refreshActive()
 			}
 		}
@@ -336,6 +385,20 @@ func nextChannel(channels []hitron.SpectrumChannel, centerMHz float64, delta int
 		}
 	}
 	return channels[index], true
+}
+
+// withStatus puts a one-line status where the frame already has its blank line
+// above the footer, so the status does not push the footer off the screen. If
+// that slot is taken it appends instead.
+func withStatus(lines []string, text string) []string {
+	if text == "" {
+		return lines
+	}
+	if n := len(lines); n >= 2 && strings.TrimSpace(lines[n-2]) == "" {
+		lines[n-2] = text
+		return lines
+	}
+	return append(lines, text)
 }
 
 func errorText(err error) string {

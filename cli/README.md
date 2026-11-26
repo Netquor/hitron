@@ -126,11 +126,17 @@ Three separate verbs, each requiring credentials:
 
 | Command | CODA6X body | HT-EM5 | CODA-57 |
 | --- | --- | --- | --- |
-| `reboot` | `{"reboot":1}` to `CM/Reboot` | `POST /ms/1/0xb00/PUT {"data":[1]}` | unsupported |
-| `factory-reset` | `{"factoryReset":1}` | unsupported | unsupported |
-| `hard-reset` | `{"restoreReset":1}` | unsupported | unsupported |
+| `reboot` | `{"reboot":1,"factoryReset":0,"restoreReset":0}` to `CM/Reboot` | `POST /ms/1/0xb00/PUT {"data":[1]}` | unsupported |
+| `factory-reset` | `{"reboot":0,"factoryReset":1,"restoreReset":0}` | unsupported | unsupported |
+| `hard-reset` | `{"reboot":0,"factoryReset":0,"restoreReset":1}` | unsupported | unsupported |
+| TUI `x` | `PUT CM/DsInfo` + `PUT CM/DsOfdm`, no body, no login | unsupported | unsupported |
 
-Every one asks:
+The handler reads all three reboot flags before choosing a branch, so the body is
+always the full triple; a partial body is a PHP 8 fatal (HTTP 500), not
+`errCode 001`. Only `hard-reset` has been measured working: the connection drops
+with no reply, the unit is unreachable ~5 s later and back ~122 s after that.
+
+Every one of the three verbs asks:
 
 ```text
 Reboot CODA-60 / CODA6X at 192.168.100.1? This acts on the real device. [y/N]
@@ -159,9 +165,17 @@ on `--interval`.
 | `3`, `c` | constellation (I/Q) |
 | `[`, `]` | previous / next analyser channel |
 | `,`, `.` | fine-tune the spectrum centre by 1 MHz |
+| `x` | reset the downstream FEC counters (3.0 + OFDM) |
 
-Destructive actions are deliberately not keys. They are separate commands with
-their own confirmation.
+Everything except `x` is read-only. `x` is the one write bound to a key: it
+issues a bare `PUT /1/Device/CM/DsInfo` and then repeats a bare
+`PUT /1/Device/CM/DsOfdm`, re-reading the counters and printing how many of the
+channels that were counting before now read zero. The 3.0 counters clear in one
+call; the OFDM clear is unreliable on this build, so the status line keeps the
+best of eight attempts and names any channel still counting. Channels that were
+already at zero are reported as already clean, not as cleared. Destructive
+actions (reboot, resets) are still separate commands with their own
+confirmation.
 
 ### Spectrum and constellation
 

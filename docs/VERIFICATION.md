@@ -149,10 +149,27 @@ Measured capture behaviour (`FreqPower`, repeated while the link was up):
 - **ok (non-json)** — `/1/Device/Manage` returns the literal text `cusadmin,false`:
   the admin username, unauthenticated.
 
-## Write path measured: `POST /1/Device/CM/Reboot` is inert
+## Write path measured: reboot flags and FEC counters
 
-The one write that was exercised on 8.7.1.0.1b4 is the reboot flag, because it is
-the least destructive of the three branches:
+Three writes were exercised on 8.7.1.0.1b4. All three are listed here with the
+payload that worked, because the controller's replies do not tell you what it did.
+
+### `POST /1/Device/CM/Reboot` — only `restoreReset` reboots
+
+`doRebootAction()` inspects the flags in the order `reboot` → `factoryReset` →
+`restoreReset`, and it reads **all three** before choosing a branch. Under PHP 8 a
+missing key is a fatal, so every request must carry the full set.
+
+| body | result |
+| --- | --- |
+| `{"reboot":1}` | HTTP 200 `{"errCode":"000"}` and **nothing happens** |
+| `{"reboot":0,"factoryReset":0,"restoreReset":0}` | HTTP 400 `errCode 001` (all keys present, no branch taken) |
+| `{"restoreReset":1}` | HTTP 500 `Undefined array key "reboot"` at `ModelInfo.php:297` |
+| `{"reboot":0}` | HTTP 500 `Undefined array key "factoryReset"` |
+| `{}` | HTTP 500 `Undefined array key "reboot"` |
+| `{"reboot":0,"factoryReset":0,"restoreReset":1}` | **reboots the unit** |
+
+The inert `reboot` flag:
 
 ```bash
 curl -sS -X POST http://192.168.100.1/1/Device/CM/Reboot \
@@ -161,24 +178,70 @@ curl -sS -X POST http://192.168.100.1/1/Device/CM/Reboot \
 # {"errCode":"000","errMsg":""}   HTTP 200
 ```
 
-`errCode 000` is the controller's "handled" answer, but the unit does not reboot:
-
 - ICMP keeps answering at the same latency for 40 s after the 200.
 - The WAN DHCP lease is unchanged (`D: 05 H: 00 M: 00 S: 00`), so the link never
   dropped and re-acquired.
 - DOCSIS downstream octets keep incrementing across the call (about 3 MB in 30 s).
-- No `CM Reboot Reason` entry appears in `/1/Device/CM/Log`; the newest entry stays
-  at the pre-call timestamp.
+- No `CM Reboot Reason` entry appears in `/1/Device/CM/Log`.
 
 So `Device.DeviceInfo.X_HITRON_COM_MGMT.Reboot = true` is accepted by `setStr()`
-and then ignored by whatever is supposed to consume it. Treat `/1/Device/CM/Reboot`
-as a request that can silently do nothing, not as a working reboot. The
-`factoryReset` and `restoreReset` branches were **not** run.
+and then ignored by whatever is supposed to consume it. `factoryReset` sets a
+matching flag and was not run.
 
-The controller's own error handling is also broken: a body of `{"reboot":0}` or `{}`
-produces a PHP 8 fatal (`Undefined array key "factoryReset"` / `"reboot"`) instead of
-`errCode 001`, because `doRebootAction()` reads every flag before checking which one
-is set.
+The working payload, measured 2026-11-26 at 13:16:56:
+
+```bash
+curl -sS -X POST http://192.168.100.1/1/Device/CM/Reboot \
+  -H 'Content-Type: application/x-www-form-urlencoded' \
+  --data-urlencode 'model={"reboot":0,"factoryReset":0,"restoreReset":1}'
+# curl: (52) Empty reply from server
+```
+
+- The connection drops instead of returning a body, so a client must treat
+  "empty reply" and reset/EOF as success, not as a failure.
+- ICMP is **down 5 s** after the POST and back **127 s** later (~122 s outage).
+- The first downstream channel's octet counter resets (2,827,080,918 → 2,969,663).
+- `/1/Device/CM/Log` gains `CM Reboot Reason : POWER_ON` and entries at
+  13:18:08, 13:18:10 and 13:18:51.
+- Hardware model, firmware, serial, WAN IP (`10.33.138.182`) and the config file
+  (`CBR8_Bundle2_Default-1.cfg`) are unchanged, and `/1/Device/Manage` still returns
+  `cusadmin,false`.
+
+The PHP branch itself is `returnBeforeCommit`, `sleep(2)`, then
+`exec('sync; ncpu_exec -e ht_reset_cmd.sh reboot'); exec('reboot')`.
+
+### `PUT /1/Device/CM/DsInfo` and `PUT /1/Device/CM/DsOfdm` — FEC counters
+
+`ModelInfo.php::doClearDsFec()` runs on `PUT /1/Device/CM/DsInfo` and sets
+`Docsis.ClearAllDownstreamFECCounter = true`. The OFDM counters live behind a
+separate route, `PUT /1/Device/CM/DsOfdm`. Both ignore the body and the query
+string, both answer `{"errCode":"000","errMsg":""}` with HTTP 200, and neither
+needs a session. The vendor's own "Reset FEC Counters" button only calls the 3.0
+endpoint.
+
+- **3.0 is deterministic.** One bare `PUT CM/DsInfo` zeroes all eight channels
+  (corrected and uncorrected) immediately; a `Bogus` route on the same controller
+  answers 400 and leaves the counters alone, so the zeroing is that handler.
+- **OFDM is not.** One bare `PUT CM/DsOfdm` example, 300 ms apart:
+
+  ```
+  before     {1: 274, 2: 3, 3: 234, 4: 234}
+  put 1      {1: 0,   2: 3,  3: 0,   4: 456}
+  put 2      {1: 0,   2: 3,  3: 1,   4: 456}
+  put 3      {1: 0,   2: 3,  3: 2,   4: 457}
+  put 4      {1: 0,   2: 3,  3: 2,   4: 457}
+  ```
+
+  Each call zeroes zero to two channels, which ones vary, and one channel can sit
+  out several calls in a row before clearing. Sending `{"index":N}` serially for
+  N = 1..4 also only cleared some of them, so there is no per-channel targeting to
+  rely on. The handler reads nothing from the request.
+- The `NA` row (index 5) is an inactive OFDM receiver, not an error.
+
+`hitron-cli monitor` binds this to `x`: one `PUT CM/DsInfo`, then up to eight
+`PUT CM/DsOfdm` calls, keeping the best observation and reporting how many of the
+channels that were counting before now read zero. The same flow is
+`Client.ResetFEC` in Go and `CODA60Client.reset_fec()` in Python.
 
 ## Reproduce
 

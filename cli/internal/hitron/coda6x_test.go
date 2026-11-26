@@ -183,6 +183,41 @@ func TestLoginAndReboot(t *testing.T) {
 	if fmt.Sprint(echo["reboot"]) != "1" {
 		t.Fatalf("reboot body = %v", result["echo"])
 	}
+	// doRebootAction() reads all three flags before it picks one, and a missing
+	// key is a PHP fatal on this build, so every body must carry all three.
+	for _, key := range []string{"factoryReset", "restoreReset"} {
+		if _, ok := echo[key]; !ok {
+			t.Fatalf("body for reboot is missing %q: %v", key, result["echo"])
+		}
+	}
+}
+
+func TestHardResetTreatsADroppedConnectionAsSuccess(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/CM/Reboot") {
+			conn, _, err := w.(http.Hijacker).Hijack()
+			if err != nil {
+				t.Fatalf("hijack: %v", err)
+			}
+			conn.Close() // the firmware reboots before it finishes answering
+			return
+		}
+		fakeCoda6X()(w, r)
+	}))
+	defer server.Close()
+
+	client, _ := NewClient(server.URL, Credentials{Username: "mso", Password: "msopassword"}, 3*time.Second)
+	client.Kind = KindCoda6X
+	if err := client.Login(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	result, err := client.HardReset(context.Background())
+	if err != nil {
+		t.Fatalf("HardReset reported %v; a dropped connection is the success signal", err)
+	}
+	if got := fmt.Sprint(result["result"]); !strings.Contains(got, "closed the connection") {
+		t.Fatalf("result = %v", result)
+	}
 }
 
 func TestLoginRejectsWrongUser(t *testing.T) {

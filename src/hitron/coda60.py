@@ -8,11 +8,12 @@ module. See ../../specs/openapi-coda60.yaml and ../../docs/KB.md for the full
 reverse-engineering writeup: route table, auth model (session cookie or
 RS256-JWT vendor-app token), the spectrum analyzer, and known firmware quirks.
 
-This module is READ-ONLY by design: it only calls GET endpoints. Anything that
-writes to a real, in-service gateway (admin password, reboot, factory reset,
-firewall/WiFi config) is deliberately not implemented here - those are
-destructive-by-nature on a production device and belong in a tool a human
-runs deliberately, not a metrics poller.
+This module is read-only by default: `get_all()` and the exporters only call
+GET endpoints. A few write methods exist (`reboot`, `factory_reset`,
+`hard_reset_and_reboot`, `set_admin_password`, `set_admin_username`,
+`reset_fec`) because they were needed to measure what the firmware actually
+does; they are never called by the pollers, and the reboot family needs an
+explicit `login()` first. See `docs/KB.md` for what each one does to the unit.
 """
 
 from __future__ import annotations
@@ -26,6 +27,7 @@ from typing import Any
 import aiohttp
 
 from .adapters import get_endpoint
+from .metrics import parse_counter
 from .models import (
     CapabilityProbes,
     ModelProfile,
@@ -530,32 +532,146 @@ class Coda60Client:
     # ---- write/action methods ---------------------------------------------
     #
     # All three reboot-family actions below hit the SAME endpoint,
-    # POST /1/Device/CM/Reboot, distinguished only by which flag is set in
-    # the body - this mirrors ModelInfo.php::doRebootAction() exactly:
+    # POST /1/Device/CM/Reboot. ModelInfo.php::doRebootAction() reads each flag
+    # in turn before it checks which one is set, and on this build a missing
+    # key is a PHP fatal (`Undefined array key "reboot"`): a body carrying only
+    # the flag you want never reaches its branch. `_reboot_body` always fills
+    # in all three.
     #
-    #   {"reboot": 1}        -> sets Device.DeviceInfo.X_HITRON_COM_MGMT.Reboot=true
-    #                           (a TR-181 flag; a separate backend process is
-    #                           expected to act on it - the softest of the three)
-    #   {"factoryReset": 1}  -> sets Device.DeviceInfo.X_HITRON_COM_MGMT.FactoryResult
-    #                           =true the same way - also flag-based, not immediate
-    #   {"restoreReset": 1}  -> immediate: the PHP code itself runs
-    #                           `exec('sync; ncpu_exec -e ht_reset_cmd.sh reboot');
-    #                            exec('reboot')` - this is the one with no
-    #                           indirection at all. Treat it as the point of
-    #                           no return.
+    #   "reboot"        -> sets Device.DeviceInfo.X_HITRON_COM_MGMT.Reboot=true.
+    #                      Measured inert on 8.7.1.0.1b4: errCode 000, and the
+    #                      unit keeps running. Nothing consumes the flag.
+    #   "factoryReset"  -> sets the matching FactoryReset flag the same way.
+    #                      Same mechanism, so expect the same inert result;
+    #                      not measured.
+    #   "restoreReset"  -> immediate: the handler returns, sleeps 2 s, then runs
+    #                      `exec('sync; ncpu_exec -e ht_reset_cmd.sh reboot')`
+    #                      and `exec('reboot')`. Measured working: the socket
+    #                      closes with no reply and the unit is back ~2 min
+    #                      later with fresh counters. Treat it as the point of
+    #                      no return - it clears the local configuration first.
+
+    @staticmethod
+    def _reboot_body(set_flag: str) -> dict[str, int]:
+        body = {"reboot": 0, "factoryReset": 0, "restoreReset": 0}
+        body[set_flag] = 1
+        return body
 
     async def reboot(self) -> dict[str, Any]:
-        """Flag-based reboot request (ModelInfo.php: {"reboot": 1}). Real device action."""
-        return await self._write("CM/Reboot", {"reboot": 1})
+        """Flag-based reboot request. Accepted with errCode 000 but inert on 8.7.1.0.1b4."""
+        return await self._write("CM/Reboot", self._reboot_body("reboot"))
 
     async def factory_reset(self) -> dict[str, Any]:
-        """Flag-based factory-reset request (ModelInfo.php: {"factoryReset": 1}). Real device action, destroys all configuration."""
-        return await self._write("CM/Reboot", {"factoryReset": 1})
+        """Flag-based factory-reset request. Same inert flag mechanism as `reboot`; not measured."""
+        return await self._write("CM/Reboot", self._reboot_body("factoryReset"))
 
     async def hard_reset_and_reboot(self) -> dict[str, Any]:
-        """{"restoreReset": 1} - the PHP handler execs `reboot` directly, with no TR-181 indirection.
-        The most immediate of the three; treat as irreversible the moment you call it."""
-        return await self._write("CM/Reboot", {"restoreReset": 1})
+        """{"restoreReset": 1} - the PHP handler execs `reboot` directly, with no TR-181
+        indirection. The only reboot measured working on 8.7.1.0.1b4, and it clears the
+        local configuration first. A dropped connection is the success signal."""
+        try:
+            return await self._write("CM/Reboot", self._reboot_body("restoreReset"))
+        except (aiohttp.ClientConnectionError, ConnectionResetError):
+            return {"result": "reboot requested; the device closed the connection"}
+
+    # ---- counter maintenance ---------------------------------------------
+
+    async def reset_fec(self) -> dict[str, Any]:
+        """Clear the DOCSIS 3.0 and OFDM downstream FEC counters together.
+
+        Both stops are bare PUTs with no body, and measured unauthenticated on
+        8.7.1.0.1b4. PUT CM/DsInfo zeroes all eight 3.0 channels in one call;
+        PUT CM/DsOfdm is unreliable - one call zeroes zero to two of the four
+        live channels, which ones vary, and the handler ignores the body and
+        query string, so there is no per-channel targeting. The OFDM stop is
+        repeated (bounded) and the counters re-read, so the result reports how
+        many of the channels that were counting before now read zero instead of
+        claiming a clean sweep.
+        """
+        timeout = aiohttp.ClientTimeout(total=self.timeout)
+        session = self._session or aiohttp.ClientSession(timeout=timeout)
+        owns_session = self._session is None
+        try:
+            before_ds = self._busy_channels(await self._get_json(session, "CM/DsInfo"), "channelId")
+            before_ofdm = self._busy_channels(await self._get_json(session, "CM/DsOfdm"), "index")
+
+            await self._put_clear(session, "CM/DsInfo")
+            after_ds = self._busy_channels(await self._get_json(session, "CM/DsInfo"), "channelId")
+            docsis_cleared = len(before_ds - after_ds)
+
+            best_cleared = -1
+            ofdm_cleared = 0
+            ofdm_not_zero: list[str] = []
+            for _ in range(8):
+                await self._put_clear(session, "CM/DsOfdm")
+                after_ofdm = self._busy_channels(await self._get_json(session, "CM/DsOfdm"), "index")
+                still = sorted(before_ofdm & after_ofdm)
+                cleared = len(before_ofdm) - len(still)
+                if cleared > best_cleared:
+                    best_cleared = cleared
+                    ofdm_cleared, ofdm_not_zero = cleared, still
+                if not still:
+                    break
+        finally:
+            if owns_session:
+                await session.close()
+        return {
+            "docsis_busy": len(before_ds),
+            "docsis_cleared": docsis_cleared,
+            "ofdm_busy": len(before_ofdm),
+            "ofdm_cleared": ofdm_cleared,
+            "ofdm_not_zero": ofdm_not_zero,
+        }
+
+    async def _get_json(self, session: aiohttp.ClientSession, path: str) -> dict[str, Any]:
+        """Read a counter route. Unlike _probe_json, a failure is an error here:
+        treating a failed read as an empty payload would make a failed clear look
+        like a complete one. Retries cover the firmware's occasional 500
+        while it applies a clear."""
+        last: Exception | None = None
+        for attempt in range(3):
+            if attempt:
+                await asyncio.sleep(0.15)
+            try:
+                async with session.get(
+                    f"{self.base_url}/{path}", timeout=aiohttp.ClientTimeout(total=self.timeout)
+                ) as resp:
+                    if resp.status != 200:
+                        raise RuntimeError(f"GET {path}: HTTP {resp.status}")
+                    body = await resp.json(content_type=None)
+                if isinstance(body, dict) and body.get("errCode") not in (None, "", "000"):
+                    raise RuntimeError(f"GET {path}: device error {body.get('errCode')} {body.get('errMsg')}")
+                return body if isinstance(body, dict) else {}
+            except (aiohttp.ClientError, asyncio.TimeoutError, RuntimeError) as exc:
+                last = exc
+        raise RuntimeError(f"GET {path} failed: {last}")
+
+    @staticmethod
+    def _busy_channels(body: Any, id_key: str) -> set[str]:
+        """Channels with a non-zero counter. "NA" rows are inactive receivers,
+        not clean ones, so they are skipped instead of counted either way."""
+        busy: set[str] = set()
+        for channel in (body or {}).get("Freq_List") or []:
+            corrected = parse_counter(channel.get("correcteds"))
+            uncorrect = parse_counter(channel.get("uncorrect"))
+            if corrected is None and uncorrect is None:
+                continue
+            if corrected or uncorrect:
+                busy.add(str(channel.get(id_key)))
+        return busy
+
+    async def _put_clear(self, session: aiohttp.ClientSession, path: str) -> None:
+        async with session.put(
+            f"{self.base_url}/{path}", timeout=aiohttp.ClientTimeout(total=self.timeout)
+        ) as resp:
+            if resp.status != 200:
+                raise RuntimeError(f"PUT {path}: HTTP {resp.status}")
+            try:
+                body = await resp.json(content_type=None)
+            except Exception:  # noqa: BLE001 - an empty body is still a success answer
+                return
+            if isinstance(body, dict) and body.get("errCode") not in (None, "", "000"):
+                raise RuntimeError(f"PUT {path}: device error {body.get('errCode')} {body.get('errMsg')}")
 
     async def set_admin_password(self, old_password: str, new_password: str, new_password_confirm: str | None = None, new_username: str | None = None) -> dict[str, Any]:
         """POST /1/Device/Manage/Password (AdminPassword.php::handlePasswordChange).

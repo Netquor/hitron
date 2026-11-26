@@ -232,6 +232,11 @@ func runMonitor(ctx context.Context, client *hitron.Client, opts options) int {
 			defer cancel()
 			return client.Constellation(callCtx, portID)
 		},
+		ResetFEC: func(runCtx context.Context) (hitron.FECReset, error) {
+			callCtx, cancel := withTimeout(runCtx)
+			defer cancel()
+			return client.ResetFEC(callCtx)
+		},
 	}
 	if err := ui.RunTUI(ctx, live, opts.interval, client.Addr()); err != nil {
 		return fail(err)
@@ -570,14 +575,22 @@ Keys:
   3 / c    constellation (I/Q)
   [ ]      previous / next analyser channel
   , .      fine-tune the spectrum centre by 1 MHz
+  x        reset the downstream FEC counters (3.0 + OFDM)
 
 The TUI needs a real terminal. Use --once to get the same report as text, or
---json for a snapshot. Destructive actions are deliberately not keys in the
-TUI; they are separate commands with their own confirmation.
+--json for a snapshot. The only write exposed as a key is x (FEC counters);
+destructive actions stay separate commands with their own confirmation.
 
 The spectrum and constellation views exist only on the CODA6X family. Both read
 the same single hardware tuner, so captures are sequential: one 6 MHz window
 per refresh. Inactive constellation ports answer 200 with an empty cloud.
+
+x issues PUT /1/Device/CM/DsInfo and PUT /1/Device/CM/DsOfdm, then re-reads the
+counters. The status line reports how many of the channels that were counting
+before now read zero, so it never claims more than the device did. The 3.0 stop
+clears every channel in one call; the OFDM stop is unreliable (one PUT often
+zeroes a single channel), so it is retried eight times and the best result is
+reported.
 
 Examples:
   hitron-cli monitor --host 192.168.100.1 --interval 3s

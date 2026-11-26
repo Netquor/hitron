@@ -203,23 +203,37 @@ readable report is `../specs/verification-coda60.json`. Headline:
   (`access-mgmt.userrole.*`) with a `crypt()`-hashed password — the same login call
   can behave differently depending on which interface the request arrives on.
 - **Reboot family — all three hit the same endpoint**, `POST /1/Device/CM/Reboot`,
-  distinguished only by the body flag (`ModelInfo.php::doRebootAction`):
+  distinguished only by the body flag (`ModelInfo.php::doRebootAction`). The handler
+  reads **all three** keys before choosing a branch, and PHP 8 makes a missing key a
+  fatal, so a partial body is an HTTP 500, not `errCode 001`:
   - `{"reboot": 1}` → sets `Device.DeviceInfo.X_HITRON_COM_MGMT.Reboot = true` (a
     TR-181 flag; some other backend process is expected to act on it). **Measured
-    inert on 8.7.1.0.1b4** — the call answers `errCode 000` and nothing happens
-    (see `docs/VERIFICATION.md`).
-  - `{"factoryReset": 1}` → sets the matching FactoryReset flag the same way.
+    inert on 8.7.1.0.1b4** — the call answers `errCode 000` and nothing happens.
+  - `{"factoryReset": 1}` → sets the matching FactoryReset flag the same way. Not run.
   - `{"restoreReset": 1}` → **no flag indirection at all** — the PHP code itself runs
     `exec('sync; ncpu_exec -e ht_reset_cmd.sh reboot'); exec('reboot')`. This is the
-    most immediate of the three.
+    branch that works; measured with the full body
+    `{"reboot":0,"factoryReset":0,"restoreReset":1}`, which drops the TCP connection
+    (curl exit 52), takes the unit down ~5 s later and back ~122 s after that, with
+    `CM Reboot Reason : POWER_ON` in the log (see `docs/VERIFICATION.md`).
+  - Any body that reaches the end still answers `errCode 001` (HTTP 400), including
+    `{"reboot":0,"factoryReset":0,"restoreReset":0}`.
+- **FEC counters:** `PUT /1/Device/CM/DsInfo` clears the DOCSIS 3.0 downstream FEC
+  counters (`ModelInfo.php::doClearDsFec` → `Docsis.ClearAllDownstreamFECCounter`)
+  and `PUT /1/Device/CM/DsOfdm` clears the OFDM ones. Both take a bare PUT with no
+  body or session. The 3.0 clear is complete in one call; the OFDM clear zeroes only
+  some channels per call and needs repeating. The vendor's own "Reset FEC Counters"
+  button only hits the 3.0 endpoint.
 - **Admin password/username:** `AdminPassword.php` exposes `POST /1/Device/Manage/Password`
   (body `{oldPassword, newPassword, newPasswordConfirm}`) and
   `POST /1/Device/Manage/Username` (body `{newUsername}`).
 - **WiFi radio:** already documented above — `PUT /1/Device/WiFi/Radios/{index}`.
 
-Only `{"reboot": 1}` has been executed against the real device; it was inert. Nothing
-else here has — see the README's "Writes" section for the handling policy (explicit
-login, no auto-write, CLI requires `--yes-really-do-this` for the destructive ones).
+Executed against the real device so far: `{"reboot": 1}` (inert), the full
+`{"reboot":0,"factoryReset":0,"restoreReset":1}` body (reboots, verified), and both
+FEC clears. Nothing else here has — see the README's "Writes" section for the
+handling policy (explicit login, no auto-write, CLI requires
+`--yes-really-do-this` for the destructive ones).
 
 ### Quirks found in the firmware source (informational, none exploited)
 - Shipped with `DEBUG=5` (Fat-Free verbose-error mode) in `app/config.ini`.
