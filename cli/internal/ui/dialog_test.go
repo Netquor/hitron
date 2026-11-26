@@ -102,3 +102,20 @@ func TestNoLoginRebootSkipsCredentials(t *testing.T) {
 		t.Fatal("must still require the typed word")
 	}
 }
+
+func TestFriendlyLease(t *testing.T) {
+	cases := map[string]string{
+		"D: 05 H: 00 M: 00 S: 00": "5 days",
+		"D: 01 H: 12 M: 00 S: 00": "1 day 12 h",
+		"D: 00 H: 06 M: 30 S: 00": "6 h 30 m",
+		"D: 00 H: 00 M: 45 S: 00": "45 m",
+		"241823":                  "2 days 19 h",
+		"weird":                   "weird",
+		"":                        "",
+	}
+	for in, want := range cases {
+		if got := friendlyLease(in); got != want {
+			t.Errorf("friendlyLease(%q) = %q, want %q", in, got, want)
+		}
+	}
+}

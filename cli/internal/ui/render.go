@@ -74,7 +74,7 @@ func identityPairs(s *hitron.Snapshot) [][2]string {
 		{"WAN IP", s.WANIP},
 		{"Gateway", s.Gateway},
 		{"Netmask", s.Netmask},
-		{"Lease", s.Lease},
+		{"Lease", friendlyLease(s.Lease)},
 		{"Config file", s.ConfigName},
 		{"Access", s.AccessType},
 	}
