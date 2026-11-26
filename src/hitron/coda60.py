@@ -18,11 +18,21 @@ runs deliberately, not a metrics poller.
 from __future__ import annotations
 
 import asyncio
+import json
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
 
 import aiohttp
+
+__all__ = ["Coda60Client", "WriteNotAuthenticated"]
+
+
+class WriteNotAuthenticated(RuntimeError):
+    """Raised by any write/action method when called before login(). There is
+    deliberately no auto-login on these - a write against a real, in-service
+    modem should always be a traceable, explicit act: call login() yourself
+    first, with credentials you provide, right before you mean to write."""
 
 # Each entry: the route under /1/Device/, and the fields to keep from its
 # response (a dict for scalar responses, or {"ListKey": {field: label}} for
@@ -189,15 +199,141 @@ def clean_value(val: Any) -> Any:
 
 @dataclass
 class Coda60Client:
+    """
+    Read methods (get_all, etc.) are stateless: each opens its own short-lived
+    session, no login needed, since the firmware exempts those routes from
+    auth. Write/action methods (reboot, factory_reset, set_admin_password,
+    ...) need a logged-in session cookie - call `await client.login(user,
+    password)` first, which this client then reuses for every write call
+    until you call `await client.close()` or the client is garbage collected.
+
+    WRITE METHODS ARE REAL. This client, by design, does not gate them behind
+    anything beyond "you called the method" - that decision belongs to
+    whoever is calling this code, every time, not to a flag baked into the
+    library. `reboot()`, `factory_reset()`, and `hard_reset_and_reboot()`
+    act on a real device the instant they're awaited. See docs/KB.md §2 for
+    exactly what each one does on the device (confirmed from the firmware's
+    own PHP source, ModelInfo.php::doRebootAction and AdminPassword.php).
+    """
+
     host: str = "192.168.100.1"
     timeout: float = 10.0
     # The firmware's PHP-FPM worker pool is small; CODA_60.py's own comment
     # notes going above 2 concurrent requests risks overwhelming the CM's CPU.
     max_concurrency: int = 2
 
+    _session: aiohttp.ClientSession | None = field(default=None, init=False, repr=False)
+
     @property
     def base_url(self) -> str:
         return f"http://{self.host}/1/Device"
+
+    # ---- write/action session lifecycle ---------------------------------
+
+    async def login(self, username: str, password: str) -> bool:
+        """POST /1/Device/Users/Login - the same call the browser's own login form makes.
+        On success, keeps the resulting SESSION.uid cookie for every write call this client makes afterwards.
+        Returns True on success. The device's own login is LAN-aware: it checks a different
+        (UCI-configured) credential pair depending on whether the request's source IP is the
+        gateway's own LAN address, so a login that works from one network path may not from another."""
+        if self._session is None:
+            self._session = aiohttp.ClientSession()
+        payload = {"model": json.dumps({"username": username, "password": password})}
+        async with self._session.post(
+            f"{self.base_url}/Users/Login", data=payload, timeout=aiohttp.ClientTimeout(total=self.timeout)
+        ) as resp:
+            if resp.status != 200:
+                return False
+            body = await resp.json(content_type=None)
+            return not (isinstance(body, dict) and body.get("errCode"))
+
+    async def close(self) -> None:
+        if self._session is not None:
+            await self._session.close()
+            self._session = None
+
+    async def __aenter__(self) -> "Coda60Client":
+        return self
+
+    async def __aexit__(self, *exc) -> None:
+        await self.close()
+
+    async def _write(self, path: str, model: dict[str, Any]) -> dict[str, Any]:
+        if self._session is None:
+            raise WriteNotAuthenticated("call `await client.login(username, password)` before any write/action method")
+        async with self._session.post(
+            f"{self.base_url}/{path}", data={"model": json.dumps(model)}, timeout=aiohttp.ClientTimeout(total=self.timeout)
+        ) as resp:
+            try:
+                return await resp.json(content_type=None) or {}
+            except Exception:  # noqa: BLE001 - some of these actions return no body / a bare success marker
+                return {"http_status": resp.status}
+
+    # ---- write/action methods ---------------------------------------------
+    #
+    # All three reboot-family actions below hit the SAME endpoint,
+    # POST /1/Device/CM/Reboot, distinguished only by which flag is set in
+    # the body - this mirrors ModelInfo.php::doRebootAction() exactly:
+    #
+    #   {"reboot": 1}        -> sets Device.DeviceInfo.X_HITRON_COM_MGMT.Reboot=true
+    #                           (a TR-181 flag; a separate backend process is
+    #                           expected to act on it - the softest of the three)
+    #   {"factoryReset": 1}  -> sets Device.DeviceInfo.X_HITRON_COM_MGMT.FactoryResult
+    #                           =true the same way - also flag-based, not immediate
+    #   {"restoreReset": 1}  -> immediate: the PHP code itself runs
+    #                           `exec('sync; ncpu_exec -e ht_reset_cmd.sh reboot');
+    #                            exec('reboot')` - this is the one with no
+    #                           indirection at all. Treat it as the point of
+    #                           no return.
+
+    async def reboot(self) -> dict[str, Any]:
+        """Flag-based reboot request (ModelInfo.php: {"reboot": 1}). Real device action."""
+        return await self._write("CM/Reboot", {"reboot": 1})
+
+    async def factory_reset(self) -> dict[str, Any]:
+        """Flag-based factory-reset request (ModelInfo.php: {"factoryReset": 1}). Real device action, destroys all configuration."""
+        return await self._write("CM/Reboot", {"factoryReset": 1})
+
+    async def hard_reset_and_reboot(self) -> dict[str, Any]:
+        """{"restoreReset": 1} - the PHP handler execs `reboot` directly, with no TR-181 indirection.
+        The most immediate of the three; treat as irreversible the moment you call it."""
+        return await self._write("CM/Reboot", {"restoreReset": 1})
+
+    async def set_admin_password(self, old_password: str, new_password: str, new_password_confirm: str | None = None, new_username: str | None = None) -> dict[str, Any]:
+        """POST /1/Device/Manage/Password (AdminPassword.php::handlePasswordChange).
+        new_password_confirm defaults to new_password if omitted. A wrong old_password
+        is the device's own job to reject - this client does not pre-validate it."""
+        return await self._write(
+            "Manage/Password",
+            {
+                "oldPassword": old_password,
+                "newPassword": new_password,
+                "newPasswordConfirm": new_password_confirm or new_password,
+                "newUsername": new_username or "",
+            },
+        )
+
+    async def set_admin_username(self, new_username: str) -> dict[str, Any]:
+        """POST /1/Device/Manage/Username (AdminPassword.php::handleUsernameChange)."""
+        return await self._write("Manage/Username", {"newUsername": new_username})
+
+    async def set_wifi_radio(self, radio_index: int, settings: dict[str, Any]) -> dict[str, Any]:
+        """PUT /1/Device/WiFi/Radios/{index} (RadioInfo.php::put, server-validated via
+        Utils::checkRadioValidate). `radio_index` is the 1-based index from get_all()'s
+        WiFi radio list, not an interface name. `settings` is whatever subset of fields
+        that endpoint accepts - not independently enumerated here; read a radio's current
+        shape with get_all() first and send back a modified copy of it."""
+        if self._session is None:
+            raise WriteNotAuthenticated("call `await client.login(username, password)` before any write/action method")
+        async with self._session.put(
+            f"{self.base_url}/WiFi/Radios/{radio_index}",
+            data={"model": json.dumps(settings)},
+            timeout=aiohttp.ClientTimeout(total=self.timeout),
+        ) as resp:
+            try:
+                return await resp.json(content_type=None) or {}
+            except Exception:  # noqa: BLE001
+                return {"http_status": resp.status}
 
     async def _fetch_one(self, session: aiohttp.ClientSession, endpoint_def: dict, sem: asyncio.Semaphore) -> tuple[str, dict]:
         url = f"{self.base_url}/{endpoint_def['endpoint']}"

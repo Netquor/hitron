@@ -19,6 +19,15 @@ against a real unit before relying on anything not already covered by
 `main.py`'s own rendering code (dsinfo/usinfo/dsofdminfo/usofdminfo are
 rendered and therefore field-confirmed; getCMInit/getLinkStatus/getCmDocsisWan
 are fetched but not decoded anywhere, so their shape is unconfirmed).
+
+DELIBERATELY NO WRITE METHODS HERE. `coda60.py` has confirmed, firmware-source
+-verified reboot/factory-reset/password-change methods for the SAME `/1/Device`
+REST API. This `.asp` family has no known write endpoint anywhere in the one
+script (`main.py`) that uses it - it only ever GETs. Rather than guess a write
+URL against a real, in-service modem, use `Coda60Client` for any action; if
+the device really is CODA-57-specific hardware with no REST layer, that gap
+stays open until someone captures a real write request from its own browser
+UI (e.g. its actual reboot button) and confirms the URL/body shape.
 """
 
 from __future__ import annotations

@@ -132,6 +132,30 @@ Full spec: `../specs/openapi-coda60.yaml`. Client: `../src/hitron/coda60.py`.
   object the HT-EM5's own register map conceptually mirrors — two different
   front-ends over the same kind of MoCA stack.
 
+### Write/action endpoints (confirmed from the firmware's own PHP source, implemented in `coda60.py`)
+
+- **Login:** `POST /1/Device/Users/Login`, body `model={"username":...,"password":...}`.
+  `UserAction.php::checkLogin()` is LAN-aware: on the LAN-side IP it checks one UCI
+  credential pair (`access-mgmt.cusadmin.*`), off-LAN it checks a different one
+  (`access-mgmt.userrole.*`) with a `crypt()`-hashed password — the same login call
+  can behave differently depending on which interface the request arrives on.
+- **Reboot family — all three hit the same endpoint**, `POST /1/Device/CM/Reboot`,
+  distinguished only by the body flag (`ModelInfo.php::doRebootAction`):
+  - `{"reboot": 1}` → sets `Device.DeviceInfo.X_HITRON_COM_MGMT.Reboot = true` (a
+    TR-181 flag; some other backend process is expected to act on it).
+  - `{"factoryReset": 1}` → sets the matching FactoryReset flag the same way.
+  - `{"restoreReset": 1}` → **no flag indirection at all** — the PHP code itself runs
+    `exec('sync; ncpu_exec -e ht_reset_cmd.sh reboot'); exec('reboot')`. This is the
+    most immediate of the three.
+- **Admin password/username:** `AdminPassword.php` exposes `POST /1/Device/Manage/Password`
+  (body `{oldPassword, newPassword, newPasswordConfirm}`) and
+  `POST /1/Device/Manage/Username` (body `{newUsername}`).
+- **WiFi radio:** already documented above — `PUT /1/Device/WiFi/Radios/{index}`.
+
+None of these were executed against the real device in this session — see the
+README's "Writes" section for the handling policy (explicit login, no auto-write, CLI
+requires `--yes-really-do-this` for the destructive ones).
+
 ### Quirks found in the firmware source (informational, none exploited)
 - Shipped with `DEBUG=5` (Fat-Free verbose-error mode) in `app/config.ini`.
 - A debug line (`shell_exec("echo check_token > /tmp/app-debug.log")`) fires on every

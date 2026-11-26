@@ -26,13 +26,26 @@ pip install -e ".[dev]"
 
 ## CLI
 
+Read (prints a JSON snapshot to stdout):
+
 ```bash
 hitron ht-em5 192.168.0.212 --phy-rates
 hitron coda60 192.168.100.1
 hitron coda57 192.168.100.1 --spec-check
 ```
 
-Each prints a JSON snapshot to stdout.
+Write/action — each is its own named subcommand (never a flag on the read
+command), needs a login, and the destructive ones need `--yes-really-do-this`:
+
+```bash
+hitron coda60-reboot        192.168.100.1 --username admin --password admin --yes-really-do-this
+hitron coda60-factory-reset 192.168.100.1 --username admin --password admin --yes-really-do-this
+hitron coda60-hard-reset    192.168.100.1 --username admin --password admin --yes-really-do-this
+hitron coda60-set-password  192.168.100.1 --username admin --password admin --old-password admin --new-password '...' --yes-really-do-this
+hitron coda60-set-username  192.168.100.1 --username admin --password admin --new-username newadmin --yes-really-do-this
+```
+
+These act on a real device the instant they run — see "Writes" below.
 
 ## Metrics exporter
 
@@ -90,13 +103,43 @@ pytest
 Only pure decode-function unit tests exist today (no device required). There
 is no integration-test suite against real hardware yet — see `docs/KB.md` §4.
 
+## Writes
+
+`Coda60Client` has confirmed (not guessed) write/action methods, pulled
+directly from the CODA6X firmware's own PHP source — not reverse engineered
+from guesswork, and verified against `ModelInfo.php`/`AdminPassword.php`:
+
+| Method | Device endpoint | What it does |
+| --- | --- | --- |
+| `login(user, password)` | `POST /1/Device/Users/Login` | Required before any other write; keeps the session cookie for the rest of this client's life. |
+| `reboot()` | `POST /1/Device/CM/Reboot`, `{"reboot": 1}` | Sets a TR-181 reboot flag for a backend process to act on. |
+| `factory_reset()` | same endpoint, `{"factoryReset": 1}` | Sets the factory-reset flag the same way. Destroys all configuration. |
+| `hard_reset_and_reboot()` | same endpoint, `{"restoreReset": 1}` | The PHP handler `exec()`s `reboot` directly — immediate, no flag indirection. The point of no return. |
+| `set_admin_password(...)` | `POST /1/Device/Manage/Password` | Changes the admin password. |
+| `set_admin_username(...)` | `POST /1/Device/Manage/Username` | Changes the admin username. |
+| `set_wifi_radio(index, settings)` | `PUT /1/Device/WiFi/Radios/{index}` | Server-validated radio config write. |
+
+`Coda57Client` has **no write methods** — the one script this project was
+built from (`hitron-client/main.py`) never implemented one, and no write
+endpoint for the legacy `.asp` API has ever been observed. Use
+`Coda60Client` for any action; both are believed to be the same underlying
+hardware/software generation (see `docs/KB.md` §3).
+
+None of these are gated by a config flag or an environment variable — the
+library does exactly what you call. That's deliberate: a write against a
+real, in-service modem should be a traceable act with your name on it, not
+something that happens because a flag was left on. The CLI adds its own
+layer on top (separate subcommands, `--yes-really-do-this` for the
+destructive ones) so a write is never one typo away from a read — but the
+library itself trusts the caller. **The metrics exporter never calls any of
+these.**
+
 ## A note on the devices this was built against
 
 The HT-EM5 units used to write this were lab/test bridges with default
 credentials, not production equipment. The CODA6X/CODA-57 covered here is a
-real, in-service cable modem on a real ISP account — this package is
-deliberately **read-only for the CODA6X/CODA-57** (no reboot, no password
-change, no firewall/WiFi writes implemented) even though the register-level
-HT-EM5 client supports writes, since those are lab devices. If you extend
-this to write to a CODA6X/CODA-57, treat that as a separate, deliberate
-decision each time, not something a metrics poller should ever do.
+real, in-service cable modem on a real ISP account. Every write/action
+method above was added, confirmed, and committed without ever being run
+against that live device in this session — treat running one for the first
+time as its own deliberate decision, the same way you'd treat it if you were
+clicking the button on the device's own web UI.
