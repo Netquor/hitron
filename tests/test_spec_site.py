@@ -223,3 +223,28 @@ def test_cli_site_forwards_read_only():
     assert "--read-only" in result.stdout
     wrapper = (ROOT / "src" / "hitron" / "cli.py").read_text()
     assert 'argv += ["--read-only"]' in wrapper
+
+
+def test_wheel_ships_the_site():
+    """`hitron site` runs outside a checkout, so the site must be package data."""
+    pyproject = (ROOT / "pyproject.toml").read_text()
+    assert '[tool.hatch.build.targets.wheel.force-include]' in pyproject
+    assert '"site" = "hitron/_site"' in pyproject
+    assert (ROOT / "site" / "index.html").is_file()
+
+
+def test_find_site_dir_falls_back_to_package_data(tmp_path, monkeypatch):
+    from hitron import site as site_module
+
+    package = tmp_path / "pkg"
+    packaged = package / "_site"
+    packaged.mkdir(parents=True)
+    (packaged / "index.html").write_text("<!doctype html>")
+    (tmp_path / "elsewhere").mkdir()
+
+    monkeypatch.chdir(tmp_path / "elsewhere")
+    monkeypatch.delenv("HITRON_SITE_DIR", raising=False)
+    monkeypatch.setattr(site_module, "__file__", str(package / "site.py"))
+
+    # <repo>/site would resolve to tmp_path/pkg/../../site, which does not exist.
+    assert site_module.find_site_dir() == packaged.resolve()

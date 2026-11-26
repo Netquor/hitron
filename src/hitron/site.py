@@ -52,12 +52,14 @@ def find_site_dir(explicit: str | None = None) -> Path:
     candidates.append(Path.cwd() / "site")
     # Editable install: <repo>/src/hitron/site.py -> <repo>/site
     candidates.append(Path(__file__).resolve().parents[2] / "site")
+    # Wheel install: site/ is force-included as hitron/_site by pyproject.toml.
+    candidates.append(Path(__file__).resolve().parent / "_site")
     for candidate in candidates:
         if (candidate / "index.html").is_file():
             return candidate.resolve()
     raise SystemExit(
         "could not find the site directory; pass --dir, set HITRON_SITE_DIR, "
-        "or run from the repository root"
+        "or reinstall hitron (the published package bundles the site)"
     )
 
 
