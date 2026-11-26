@@ -120,3 +120,34 @@ func TestUpdateKeysAndRefreshGuard(t *testing.T) {
 		t.Fatalf("failed poll should keep data, set err, not record: %+v", got)
 	}
 }
+
+func TestChannelsTypedAndHidesDisabledOFDMA(t *testing.T) {
+	prev := Color
+	Color = false
+	defer func() { Color = prev }()
+
+	s := &hitron.Snapshot{
+		DS:   []hitron.Channel{{ID: "2", Frequency: 567e6, Power: 3, HasPower: true}, {ID: "1", Frequency: 561e6, Power: 3, HasPower: true}},
+		OFDM: []hitron.OFDMChannel{{Index: "4", Frequency: 750e6, FFTType: "4K"}},
+		US:   []hitron.Channel{{ID: "1", Frequency: 20.4e6, Power: 32, HasPower: true, Mode: "ATDMA"}},
+		OFDMA: []hitron.OFDMAChannel{
+			{Index: "0", State: "OPERATE", Frequency: 22e6, Power16: 34, HasPower16: true},
+			{Index: "2", State: "DISABLED", Disabled: true},
+			{Index: "3", State: "DISABLED", Disabled: true},
+		},
+	}
+	var b strings.Builder
+	Channels(&b, s)
+	out := b.String()
+	for _, want := range []string{"3 channels · 2 classic · 1 OFDM", "2 channels · 1 classic · 1 OFDMA · 2 disabled hidden", "OFDMA", "+40.0"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("missing %q in:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "DISABLED") {
+		t.Fatalf("disabled OFDMA rows should not be shown:\n%s", out)
+	}
+	if strings.Index(out, "561.0 MHz") > strings.Index(out, "567.0 MHz") {
+		t.Fatalf("classic channels should be sorted by channel ID:\n%s", out)
+	}
+}

@@ -3,6 +3,8 @@ package ui
 import (
 	"fmt"
 	"io"
+	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/Netquor/hitron/cli/internal/hitron"
@@ -136,101 +138,127 @@ func Provision(w io.Writer, s *hitron.Snapshot) {
 	writeLines(w, []string{"  " + strings.Join(parts, Dim("  ·  "))})
 }
 
-// Channels prints every downstream and upstream channel.
+// chanOrder sorts channel IDs numerically; IDs that are not numbers go last.
+func chanOrder(id string) int {
+	n, err := strconv.Atoi(strings.TrimSpace(id))
+	if err != nil {
+		return 1 << 30
+	}
+	return n
+}
+
+func codewordCells(has bool, corrected, uncorrect uint64) (string, string) {
+	if !has && corrected == 0 && uncorrect == 0 {
+		return Dim("—"), Dim("—")
+	}
+	return formatCount(corrected), formatCount(uncorrect)
+}
+
+func typeCell(label string) string {
+	if label == "Classic" {
+		return label
+	}
+	return Cyan(label)
+}
+
+func countSummary(parts ...string) string {
+	return Dim(strings.Join(parts, " · "))
+}
+
+// Channels prints one downstream and one upstream table. Each row is typed:
+// Classic (SC-QAM / ATDMA), OFDM (downstream) or OFDMA (upstream). Disabled
+// OFDMA channels carry no signal and are left out, with a count in the
+// heading.
 func Channels(w io.Writer, s *hitron.Snapshot) {
-	fmt.Fprintln(w, "  "+Bold("Downstream")+"  "+Dim(fmt.Sprintf("%d SC-QAM", len(s.DS))))
-	if len(s.DS) == 0 {
-		fmt.Fprintln(w, "  "+Dim("No SC-QAM channels reported."))
+	ds := append([]hitron.Channel(nil), s.DS...)
+	sort.SliceStable(ds, func(i, j int) bool { return chanOrder(ds[i].ID) < chanOrder(ds[j].ID) })
+	ofdm := append([]hitron.OFDMChannel(nil), s.OFDM...)
+	sort.SliceStable(ofdm, func(i, j int) bool { return chanOrder(ofdm[i].Index) < chanOrder(ofdm[j].Index) })
+
+	total := len(ds) + len(ofdm)
+	if total == 0 {
+		fmt.Fprintln(w, "  "+Bold("Downstream"))
+		fmt.Fprintln(w, "  "+Dim("No downstream channels reported."))
 	} else {
-		rows := make([][]string, 0, len(s.DS))
-		for _, ch := range s.DS {
-			corrected := "—"
-			if ch.Corrected != 0 || ch.Uncorrect != 0 {
-				corrected = formatCount(ch.Corrected)
-			}
+		fmt.Fprintln(w, "  "+Bold("Downstream")+"  "+countSummary(
+			fmt.Sprintf("%d channels", total),
+			fmt.Sprintf("%d classic", len(ds)),
+			fmt.Sprintf("%d OFDM", len(ofdm))))
+		rows := make([][]string, 0, total)
+		for _, ch := range ds {
+			corrected, uncorrect := codewordCells(ch.HasCodewords, ch.Corrected, ch.Uncorrect)
 			rows = append(rows, []string{
-				emptyDash(ch.ID),
-				freq(ch.Frequency),
-				powerCell(ch.Power, ch.HasPower, -6, 15),
-				snrCell(ch.SNR, ch.HasSNR),
-				emptyDash(ch.Modulation),
-				corrected,
-				formatCount(ch.Uncorrect),
+				typeCell("Classic"), emptyDash(ch.ID), freq(ch.Frequency),
+				powerCell(ch.Power, ch.HasPower, -6, 15), snrCell(ch.SNR, ch.HasSNR),
+				emptyDash(ch.Modulation), Dim("—"), corrected, uncorrect,
+			})
+		}
+		for _, ch := range ofdm {
+			corrected, uncorrect := codewordCells(ch.HasCounters, ch.Corrected, ch.Uncorrect)
+			rows = append(rows, []string{
+				typeCell("OFDM"), emptyDash(ch.Index), freq(ch.Frequency),
+				plcPowerCell(ch.PLCPower, ch.HasPLCPower), snrCell(ch.SNR, ch.HasSNR),
+				emptyDash(ch.FFTType), lockText(ch.PLCLock, ch.NCPLock, ch.MDC1Lock), corrected, uncorrect,
 			})
 		}
 		writeLines(w, columns(
-			[]string{"Ch", "Frequency", "Power", "SNR", "Modulation", "Corrected", "Uncorrect"},
+			[]string{"Type", "Ch", "Frequency", "Power", "SNR", "Mod/FFT", "Locks", "Corrected", "Uncorrect"},
 			rows,
-			[]int{4, 11, 8, 7, 10, 10, 10},
+			[]int{7, 4, 11, 7, 6, 8, 12, 10, 10},
 		))
 	}
 
-	if len(s.OFDM) > 0 {
-		fmt.Fprintln(w, "\n  "+Bold("Downstream OFDM")+"  "+Dim(fmt.Sprintf("%d", len(s.OFDM))))
-		rows := make([][]string, 0, len(s.OFDM))
-		for _, ch := range s.OFDM {
-			locks := lockText(ch.PLCLock, ch.NCPLock, ch.MDC1Lock)
-			rows = append(rows, []string{
-				emptyDash(ch.Index),
-				freq(ch.Frequency),
-				plcPowerCell(ch.PLCPower, ch.HasPLCPower),
-				snrCell(ch.SNR, ch.HasSNR),
-				emptyDash(ch.FFTType),
-				locks,
-				formatCount(ch.Corrected),
-			})
+	us := append([]hitron.Channel(nil), s.US...)
+	sort.SliceStable(us, func(i, j int) bool { return chanOrder(us[i].ID) < chanOrder(us[j].ID) })
+	var ofdma []hitron.OFDMAChannel
+	disabled := 0
+	for _, ch := range s.OFDMA {
+		if ch.Disabled {
+			disabled++
+			continue
 		}
-		writeLines(w, columns(
-			[]string{"Idx", "Frequency", "PLC pwr", "SNR", "FFT", "Locks", "Corrected"},
-			rows,
-			[]int{4, 11, 8, 7, 6, 12, 10},
-		))
+		ofdma = append(ofdma, ch)
 	}
+	sort.SliceStable(ofdma, func(i, j int) bool { return chanOrder(ofdma[i].Index) < chanOrder(ofdma[j].Index) })
 
-	fmt.Fprintln(w, "\n  "+Bold("Upstream")+"  "+Dim(fmt.Sprintf("%d SC-QAM", len(s.US))))
-	if len(s.US) == 0 {
+	fmt.Fprintln(w)
+	total = len(us) + len(ofdma)
+	if total == 0 {
+		fmt.Fprintln(w, "  "+Bold("Upstream"))
 		fmt.Fprintln(w, "  "+Dim("No upstream channels reported."))
-	} else {
-		rows := make([][]string, 0, len(s.US))
-		for _, ch := range s.US {
-			mode := ch.Mode
-			if mode == "" {
-				mode = ch.Modulation
-			}
-			rows = append(rows, []string{
-				emptyDash(ch.ID),
-				freq(ch.Frequency),
-				emptyDash(mode),
-				bandwidth(ch.Bandwidth),
-				powerCell(ch.Power, ch.HasPower, 35, 48),
-			})
-		}
-		writeLines(w, columns(
-			[]string{"Ch", "Frequency", "Mode", "Bandwidth", "Power"},
-			rows,
-			[]int{4, 11, 9, 11, 8},
-		))
+		return
 	}
-
-	if len(s.OFDMA) > 0 {
-		fmt.Fprintln(w, "\n  "+Bold("Upstream OFDMA")+"  "+Dim(fmt.Sprintf("%d", len(s.OFDMA))))
-		rows := make([][]string, 0, len(s.OFDMA))
-		for _, ch := range s.OFDMA {
-			rows = append(rows, []string{
-				emptyDash(ch.Index),
-				emptyDash(ch.State),
-				freq(ch.Frequency),
-				bandwidthMHz(ch.Bandwidth),
-				ofdmaPowerCell(ch.Power16, ch.HasPower16, !ch.Disabled),
-				fmt.Sprintf("%.1f", ch.DigAtten),
-			})
-		}
-		writeLines(w, columns(
-			[]string{"Idx", "State", "Frequency", "BW MHz", "Power (+6)", "Atten"},
-			rows,
-			[]int{4, 11, 11, 8, 11, 6},
-		))
+	summary := []string{
+		fmt.Sprintf("%d channels", total),
+		fmt.Sprintf("%d classic", len(us)),
+		fmt.Sprintf("%d OFDMA", len(ofdma)),
 	}
+	if disabled > 0 {
+		summary = append(summary, fmt.Sprintf("%d disabled hidden", disabled))
+	}
+	fmt.Fprintln(w, "  "+Bold("Upstream")+"  "+countSummary(summary...))
+	rows := make([][]string, 0, total)
+	for _, ch := range us {
+		mode := ch.Mode
+		if mode == "" {
+			mode = ch.Modulation
+		}
+		rows = append(rows, []string{
+			typeCell("Classic"), emptyDash(ch.ID), freq(ch.Frequency), bandwidth(ch.Bandwidth),
+			powerCell(ch.Power, ch.HasPower, 35, 48), emptyDash(mode), Dim("—"),
+		})
+	}
+	for _, ch := range ofdma {
+		rows = append(rows, []string{
+			typeCell("OFDMA"), emptyDash(ch.Index), freq(ch.Frequency), bandwidthMHzCell(ch.Bandwidth),
+			ofdmaPowerCell(ch.Power16, ch.HasPower16, true), emptyDash(ch.State), fmt.Sprintf("%.1f", ch.DigAtten),
+		})
+	}
+	writeLines(w, columns(
+		[]string{"Type", "Ch", "Frequency", "Bandwidth", "Power", "Mode", "Atten"},
+		rows,
+		[]int{7, 4, 11, 10, 7, 9, 6},
+	))
 }
 
 // System prints identity, provisioning, and switch ports.
@@ -447,11 +475,11 @@ func bandwidth(hz float64) string {
 	return fmt.Sprintf("%.1f MHz", hz/1e6)
 }
 
-func bandwidthMHz(mhz float64) string {
+func bandwidthMHzCell(mhz float64) string {
 	if mhz == 0 {
 		return Dim("—")
 	}
-	return fmt.Sprintf("%.1f", mhz)
+	return fmt.Sprintf("%.1f MHz", mhz)
 }
 
 func formatUptime(seconds int64) string {
