@@ -1,0 +1,136 @@
+openapi: 3.0.3
+info:
+  title: Hitron CODA — legacy ".asp" status API (possibly CODA-57; coexists with the CODA6X REST API)
+  version: unknown
+  description: |
+    Reverse engineered from `~/Documents/hitron-client/main.py` and `test.py` — a
+    separate, working script in the same `hitron-client` project as `CODA_60.py`
+    (which targets the documented `/1/Device/...` REST API). This one hits a
+    completely different URL family:
+
+        GET /data/{endpoint}.asp
+
+    against the SAME device class (hardcoded IP 192.168.100.1, same field names —
+    `signalStrength`, `channelId`, `plcpower`, `Subcarr0freqFreq`, `repPower1_6`,
+    `uschindex` — as the `cm_dsinfo`/`cm_usinfo`/`cm_dsofdm`/`cm_usofdm` shapes in
+    `openapi-coda60.yaml`). The field-name overlap is strong evidence this is the same
+    underlying DOCSIS/RDK-B data model, just exposed through an older/parallel
+    endpoint naming convention — these `getSysInfo.asp` / `dsinfo.asp` /
+    `getCmDocsisWan.asp` names are the classic, long-documented-in-the-wild Hitron
+    CODA-series status-page AJAX API that predates (or runs alongside) the newer
+    `app/`-based PHP REST layer in `openapi-coda60.yaml`.
+
+    The user recalls a CODA-57 firmware/script; no CODA-57-specific file was ever
+    found by name, but this `.asp` API is the leading candidate for "the CODA-57
+    thing" — either because this script was originally written against a real CODA-57
+    unit (an older/cheaper model in the same CODA line, DOCSIS-only, no EMTA voice),
+    or because it targets the SAME physical CODA-60 the user owns while that unit
+    still serves these legacy endpoints for backward compatibility. Unconfirmed; flag
+    any future finding of an actual CODA-57 firmware image back into this spec.
+
+    Auth: `test.py` shows session priming via `GET /login.html` (a classic HTML login
+    page, consistent with `www/hitron/webpages/login.html` in the CODA6X firmware
+    extraction) rather than the `/1/Device/Users/Login` JSON endpoint — this implies a
+    PHPSESSID-style cookie session, NOT HTTP Basic (unlike the HT-EM5) and NOT the
+    app-token/JWT flow (unlike the CODA6X REST layer). `main.py` itself doesn't
+    actually authenticate at all in its current form — it calls `.asp` endpoints
+    directly and silently returns `[]` on any non-200, so whether these endpoints are
+    gated by the same session cookie or open-read has not been confirmed live.
+  contact:
+    name: Netquor SDN — internal reverse-engineering notes
+externalDocs:
+  description: Unified Hitron KB
+  url: ./KB.md
+
+servers:
+  - url: http://{host}
+    variables:
+      host: { default: 192.168.100.1, description: The gateway's LAN IP. }
+
+components:
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: PHPSESSID
+      description: Unconfirmed whether these endpoints actually require it — main.py never sets one and still (per the user) gets data back from a real unit.
+  schemas:
+    LegacyDsChannel:
+      type: object
+      description: Field names identical to openapi-coda60.yaml's DocsisDs — same model, different URL.
+      properties:
+        channelId: { type: string }
+        frequency: { type: string, description: Hz }
+        signalStrength: { type: string, description: dBmV }
+        snr: { type: string, description: dB }
+    LegacyDsOfdmChannel:
+      type: object
+      properties:
+        plcpower: { type: string, description: "dBmV - used by main.py's Midco spec check" }
+        Subcarr0freqFreq: { type: string }
+        SNR: { type: string }
+    LegacyUsChannel:
+      type: object
+      properties:
+        channelId: { type: string }
+        frequency: { type: string }
+        signalStrength: { type: string, description: dBmV }
+    LegacyUsOfdmChannel:
+      type: object
+      properties:
+        uschindex: { type: string }
+        frequency: { type: string }
+        repPower1_6: { type: string, description: "dBmV, +6 adjustment applied client-side by main.py for a DOCSIS-3.0-equivalent comparison" }
+
+security:
+  - sessionCookie: []
+
+paths:
+  /login.html:
+    get:
+      summary: Session-priming page (per test.py) — classic HTML login, not the CODA6X JSON login
+      responses: { '200': { description: HTML; a session cookie may be set here. } }
+
+  /data/dsinfo.asp:
+    get:
+      summary: Downstream SC-QAM channels (legacy path)
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/LegacyDsChannel' } } } } }
+
+  /data/dsofdminfo.asp:
+    get:
+      summary: Downstream OFDM channel(s) (legacy path)
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/LegacyDsOfdmChannel' } } } } }
+
+  /data/usinfo.asp:
+    get:
+      summary: Upstream SC-QAM/ATDMA channels (legacy path)
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/LegacyUsChannel' } } } } }
+
+  /data/usofdminfo.asp:
+    get:
+      summary: Upstream OFDMA channel(s) (legacy path)
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/LegacyUsOfdmChannel' } } } } }
+
+  /data/getCMInit.asp:
+    get:
+      summary: CM DOCSIS initialization/traffic status (main.py reads trafficStatus from this)
+      responses: { '200': { description: OK } }
+
+  /data/getLinkStatus.asp:
+    get:
+      summary: Link status (fetched by main.py's "all" command; shape not yet rendered/decoded)
+      responses: { '200': { description: OK } }
+
+  /data/getCmDocsisWan.asp:
+    get:
+      summary: DOCSIS WAN status (fetched by main.py's "all" command; shape not yet rendered/decoded)
+      responses: { '200': { description: OK } }
+
+  /data/getSysInfo.asp:
+    get:
+      summary: System info — rfMac, systemUptime (field names again match the CODA6X REST layer's SysInfo)
+      responses: { '200': { description: OK } }

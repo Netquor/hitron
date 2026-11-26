@@ -1,0 +1,381 @@
+openapi: 3.0.3
+info:
+  title: Hitron CODA6X (e.g. CODA-60) — console REST API (reverse engineered)
+  version: "8.5.0.0.110"
+  description: |
+    Not an official Hitron spec. Reverse engineered from a static read of a real
+    CODA6X-863 firmware image (`CODA6X-8.5.0.0.4b1-...-D3.1.sbn`, CableLabs CVC-signed,
+    Puma8/MaxLinear, Yocto `poky-lgm`, `DISTRO_NAME="PacketCable 1.5 EMTA"`, built
+    2026-02-24). Nothing was executed from the image; it was unwrapped (detached
+    PKCS#7 signature) and its embedded SquashFS rootfs was mounted read-only.
+
+    Architecture: `lighttpd` + `php-fpm` serve a small Fat-Free-Framework PHP app at
+    `www/hitron/`. Its `app/routes.ini` maps URL patterns to controller classes in
+    `app/controllers/*.php`. Those controllers call bare global functions `getStr()` /
+    `setStr()` / `getInstanceIds()` / `addTblObj()` / `delTblObj()`, which are NOT PHP —
+    they are native functions from `extension=cosa.so` (`/fss/gw/usr/ccsp/cosa.so`),
+    RDK-B's standard "COSA" bridge into the TR-181 `Device.*` object tree. So every
+    endpoint below is really a thin JSON view over a few TR-181 (and Hitron
+    `Device.X_HITRON_COM_*` extension) parameters — the same data model CableLabs/RDK-B
+    document publicly, just fronted by this PHP layer instead of TR-069/CWMP.
+
+    This matches the field names already used by the existing standalone scripts in
+    `~/Documents/hitron-client/CODA_60.py` (independently written against a live unit),
+    which this spec treats as a second, corroborating source for field shapes. It is
+    ALSO the API this repo's `server/src/features/modem/service.ts` consumes (today via
+    a sidecar aggregator writing `modem_metrics.json`, not by calling this API directly).
+
+    Base path: all app routes are under `/1/Device/...`. `@info`-style route params in
+    routes.ini become query-string-free path segments that this spec models explicitly
+    (e.g. `/1/Device/CM/SysInfo`, not `/1/Device/CM/@info?info=SysInfo`) — confirm the
+    exact querystring vs. path-segment convention against a live unit's traffic before
+    wiring a client; both are plausible given the router pattern seen (`@name`).
+
+    Auth: two independent schemes observed in the source.
+      1. Browser session cookie, `SESSION.uid`, set by `POST /1/Device/Users/Login`.
+         Unauthenticated-exempt routes (hardcoded in Controller::check_session): `/`,
+         `/1/Device/CM/Version`, `/1/Device/Users/Login`, `/1/Device/Users/Logout`,
+         `/1/Device/API/Register`.
+      2. Vendor-app bearer auth: `POST /1/Device/API/Register` with an RS256 JWT (issuer
+         must be the literal string "Hitron", vendor checked against
+         `Device.X_HITRON_COM_App.VendorList`) returns a token; later requests send it as
+         a custom `ht-app-header` header.
+
+    Known build quirks (informational, not exploited): shipped with `DEBUG=5` in
+    `app/config.ini` (Fat-Free verbose-error mode); `UserAction.php`'s token check writes
+    a debug line to world-readable `/tmp/app-debug.log` on every call; a user
+    creation/reset path sets a fallback `HashPassword` of `md5("password")` — worth
+    confirming whether that path is reachable without a prior factory reset before
+    relying on it as "safe by default".
+  contact:
+    name: Netquor SDN — internal reverse-engineering notes
+externalDocs:
+  description: Unified Hitron KB (HT-EM5 + CODA6X, existing assets, recommendations)
+  url: ./KB.md
+
+servers:
+  - url: http://{host}
+    variables:
+      host: { default: 192.168.100.1, description: The gateway's LAN IP. }
+
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: SESSION.uid
+    appTokenAuth:
+      type: apiKey
+      in: header
+      name: ht-app-header
+  schemas:
+    DocsisDs:
+      type: object
+      description: One locked downstream SC-QAM channel. Built in ModelInfo::getDocsisDs() from Device.Docsis's `DownstreamChannel_Overview` per-port parameter; only Locked ports are returned.
+      properties:
+        portId: { type: integer }
+        frequency: { type: string, description: "Hz" }
+        modulation: { type: string }
+        signalStrength: { type: string, description: dBmV }
+        snr: { type: string, description: dB }
+        channelId: { type: string }
+        dsoctets: { type: string }
+        correcteds: { type: string }
+        uncorrect: { type: string }
+    DocsisUs:
+      type: object
+      properties:
+        portId: { type: integer }
+        frequency: { type: string }
+        modtype: { type: string }
+        signalStrength: { type: string }
+        bandwidth: { type: string }
+        channelId: { type: string }
+        scdmaMode: { type: string }
+    DocsisDsOfdm:
+      type: object
+      properties:
+        receive: { type: string }
+        ffttype: { type: string }
+        Subcarr0freqFreq: { type: string }
+        plclock: { type: string }
+        ncplock: { type: string }
+        mdc1lock: { type: string }
+        plcpower: { type: string }
+        SNR: { type: string }
+        dsoctets: { type: string }
+        correcteds: { type: string }
+        uncorrect: { type: string }
+        index: { type: string }
+    DocsisUsOfdm:
+      type: object
+      properties:
+        uschindex: { type: string }
+        state: { type: string }
+        frequency: { type: string }
+        digAtten: { type: string }
+        channelBw: { type: string }
+        repPower: { type: string, description: dBmV }
+        repPower1_6: { type: string, description: "DOCSIS 3.0-equivalent reported power, dBmV" }
+        fftVal: { type: string }
+    DocsisLog:
+      type: object
+      properties:
+        index: { type: string }
+        time: { type: string }
+        type: { type: string }
+        priority: { type: string }
+        event: { type: string }
+    MoCA:
+      type: object
+      description: Full field set from the firmware's own models/MoCA.php — the authoritative shape for GET /1/Device/MoCA.
+      properties:
+        moca_status: { type: string, enum: [ON, OFF] }
+        fs_mode: { type: string, description: Device.MoCA.Interface.1.X_HITRON_COM_ChannelPlan }
+        fs_channel: { type: integer, description: "Device.MoCA.Interface.1.CurrentOperFreq, or 0 if channel scanning is on" }
+        fs_scan_start: { type: string }
+        fs_scan_end: { type: string }
+        txpower: { type: string, description: Device.MoCA.Interface.1.TxPowerLimit }
+        beaconpwr: { type: string, description: Device.MoCA.Interface.1.BeaconPowerLimit }
+        nctype: { type: string, enum: [Preferred, "Auto Negotiated"] }
+        mocaNTSecurity: { type: string, enum: [Enable, Disable] }
+        password: { type: string, description: "PLAINTEXT - Device.MoCA.Interface.1.KeyPassphrase. Treat as a secret." }
+        fwVersion: { type: string }
+        mocaMac: { type: string }
+        coaxTx: { type: string }
+        coaxRx: { type: string }
+        mocaLink: { type: string }
+    AdvancedSwitchPort:
+      type: object
+      description: Despite the route name "Advanced", this is the on-board Ethernet switch, 4 ports (DB index 1,2,5,6 per putSwitchCollection).
+      properties:
+        portId: { type: integer }
+        power: { type: string, enum: [ON, OFF] }
+        neg: { type: string }
+        speed: { type: string, example: "1Gbps" }
+        duplex: { type: string }
+        linked: { type: string }
+    SpectrumFreqPower:
+      type: array
+      description: "Output of `hitrondec -f centFreq fromFreq toFreq`, JSON-decoded server-side. Exact element shape not independently confirmed - treat as opaque until read back live."
+      items: {}
+    RegisterRequest:
+      type: object
+      required: [appid, seckey]
+      properties:
+        appid: { type: string }
+        seckey: { type: string, description: "RS256 JWT. Claims required: jti, iss=\"Hitron\", vendor (must be in Device.X_HITRON_COM_App.VendorList), model." }
+
+security:
+  - cookieAuth: []
+
+paths:
+  /1/Device/Users/Login:
+    post:
+      summary: Browser session login
+      responses: { '200': { description: Sets SESSION.uid cookie on success. } }
+  /1/Device/Users/Logout:
+    post: { summary: Logout, responses: { '200': { description: OK } } }
+  /1/Device/API/Register:
+    post:
+      summary: Vendor-app registration — exchange a signed JWT for an ht-app-header bearer token
+      requestBody: { content: { application/json: { schema: { $ref: '#/components/schemas/RegisterRequest' } } } }
+      responses: { '200': { description: Token issued, stored under Device.X_HITRON_COM_App.TokenList. } }
+
+  /1/Device/CM/Version:
+    get: { summary: "CM firmware/hardware version (unauthenticated route)", responses: { '200': { description: OK } } }
+  /1/Device/CM/SysInfo:
+    get:
+      summary: Router system info (hwVersion, swVersion, serialNumber, systemTime, rfMac, systemUptime)
+      description: "Field names match ~/Documents/hitron-client/CODA_60.py's router_sys_info exactly - confirms this is the live route shape, modulo the @info querystring-vs-path question noted in info.description."
+      responses: { '200': { description: OK } }
+  /1/Device/CM/DocsisProvision:
+    get:
+      summary: DOCSIS provisioning state machine (hwInit, findDownstream, ranging, dhcp, timeOfday, downloadCfg, registration, bpiStatus)
+      responses: { '200': { description: OK } }
+  /1/Device/CM/DsInfo:
+    get:
+      summary: Downstream SC-QAM channels — the primary signal-quality endpoint for alerting
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: object, properties: { Freq_List: { type: array, items: { $ref: '#/components/schemas/DocsisDs' } } } } } } }
+  /1/Device/CM/UsInfo:
+    get:
+      summary: Upstream SC-QAM channels
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: object, properties: { Freq_List: { type: array, items: { $ref: '#/components/schemas/DocsisUs' } } } } } } }
+  /1/Device/CM/DsOfdm:
+    get:
+      summary: Downstream OFDM channel(s) — DOCSIS 3.1
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: object, properties: { Freq_List: { type: array, items: { $ref: '#/components/schemas/DocsisDsOfdm' } } } } } } }
+  /1/Device/CM/UsOfdm:
+    get:
+      summary: Upstream OFDMA channel(s) — DOCSIS 3.1
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: object, properties: { Freq_List: { type: array, items: { $ref: '#/components/schemas/DocsisUsOfdm' } } } } } } }
+  /1/Device/CM/Log:
+    get:
+      summary: DOCSIS event log
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: object, properties: { Log_List: { type: array, items: { $ref: '#/components/schemas/DocsisLog' } } } } } } }
+  /1/Device/CM/LTEBackup:
+    get: { summary: LTE backup-WAN status (BBU/failover units), responses: { '200': { description: OK } } }
+  /1/Device/CM/Ready:
+    get: { summary: "App-only: CM readiness status (requires SESSION.app)", responses: { '200': { description: OK } } }
+
+  /1/Device/MoCA:
+    get:
+      summary: Full MoCA interface status/config (see MoCA schema)
+      responses: { '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/MoCA' } } } } }
+    put:
+      summary: Update MoCA settings (channel plan, tx/beacon power, preferred NC, privacy enable, password)
+      requestBody: { content: { application/json: { schema: { $ref: '#/components/schemas/MoCA' } } } }
+      responses: { '200': { description: OK } }
+
+  /1/Device/WiFi/Radios:
+    get:
+      summary: All WiFi radios (2.4/5GHz etc)
+      responses: { '200': { description: OK } }
+  /1/Device/WiFi/Radios/{index}:
+    get:
+      summary: One radio's config by its 1-based index (bounded by Utils::getRadioNum())
+      parameters: [ { name: index, in: path, required: true, schema: { type: integer, minimum: 1 } } ]
+      responses: { '200': { description: OK } }
+    put:
+      summary: Update one radio (channel, bandwidth, power, etc — validated server-side via Utils::checkRadioValidate before Utils::updateRadioInfo)
+      parameters: [ { name: index, in: path, required: true, schema: { type: integer, minimum: 1 } } ]
+      requestBody: { content: { application/json: { schema: { type: object } } } }
+      responses: { '200': { description: OK }, '400': { description: "Validation failed, or 'Nothing changed.' if the write was a no-op" } }
+    patch:
+      summary: Partial update (accepts `athX` interface names too, remapped to a 1-based index)
+      parameters: [ { name: index, in: path, required: true, schema: { type: string } } ]
+      requestBody: { content: { application/json: { schema: { type: object } } } }
+      responses: { '200': { description: OK } }
+  /1/Device/WiFi/Radios/Survey:
+    get: { summary: "WiFi channel survey (neighboring AP scan) - likely the DFS/ACS input", responses: { '200': { description: OK } } }
+  /1/Device/WiFi/Radios/ATF:
+    get:
+      summary: Airtime Fairness (ATF) config across radios
+      responses: { '200': { description: OK } }
+    put:
+      summary: Set ATF config
+      responses: { '200': { description: OK } }
+  /1/Device/WiFi/SSIDs:
+    get: { summary: "All SSIDs - app config.ini caps SSID2GNum=4, SSID5GNum=4, Guest2GSSID index 7, Guest5GSSID index 8", responses: { '200': { description: OK } } }
+  /1/Device/WiFi/Client:
+    get: { summary: Connected WiFi clients, responses: { '200': { description: OK } } }
+  /1/Device/WiFi/AccessControl:
+    get: { summary: MAC allow/deny list, responses: { '200': { description: OK } } }
+    put: { summary: Update allow/deny list, responses: { '200': { description: OK } } }
+
+  /1/Device/Advanced/AdvancedSwitch:
+    get:
+      summary: "On-board Ethernet switch ports (NOT WiFi 'Advanced' despite the route name)"
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: object, properties: { advSwitch_List: { type: array, items: { $ref: '#/components/schemas/AdvancedSwitchPort' } } } } } } }
+    put:
+      summary: Enable/disable a port's power (writes Device.Ethernet.Interface.{1,2,5,6}.Enable)
+      requestBody: { content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/AdvancedSwitchPort' } } } } }
+      responses: { '200': { description: OK } }
+
+  /1/Device/Spectrum:
+    get:
+      summary: Spectrum analyzer source address (the CM's own IP as seen for this diagnostic)
+      responses: { '200': { description: OK } }
+  /1/Device/Spectrum/FreqList:
+    get:
+      summary: "Available analyzer frequency list - shells out to `hitrondec -l`"
+      responses: { '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/SpectrumFreqPower' } } } } }
+  /1/Device/Spectrum/FreqPower:
+    get:
+      summary: "Power sweep over a frequency range - shells out to `hitrondec -f centFreq fromFreq toFreq` (MHz, 43-1794 range enforced server-side)"
+      parameters:
+        - { name: centFreq, in: query, required: true, schema: { type: number, minimum: 49, maximum: 1788, default: 645 } }
+        - { name: fromFreq, in: query, required: true, schema: { type: number, minimum: 43, maximum: 1794, default: 637.5 } }
+        - { name: toFreq, in: query, required: true, schema: { type: number, minimum: 43, maximum: 1794, default: 643.5 } }
+      responses: { '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/SpectrumFreqPower' } } } } }
+  /1/Device/Spectrum/RTData:
+    get:
+      summary: "Real-time spectrum data - shells out to `hitrondec -m`"
+      responses: { '200': { description: OK } }
+  /1/Device/Spectrum/Constellation:
+    get:
+      summary: "QAM constellation diagram points for one downstream port - shells out to `hitrondec -c portId` (0-31)"
+      parameters: [ { name: portId, in: query, required: true, schema: { type: integer, minimum: 0, maximum: 31, default: 24 } } ]
+      responses: { '200': { description: OK } }
+
+  /1/Device/Router/SysInfo:
+    get: { summary: Router-level system info (overlaps CM/SysInfo), responses: { '200': { description: OK } } }
+  /1/Device/Router/PortForward:
+    get: { summary: Port-forward rules, responses: { '200': { description: OK } } }
+    put: { summary: Update port-forward rules, responses: { '200': { description: OK } } }
+  /1/Device/Router/PortTrigger:
+    get: { summary: Port-trigger rules, responses: { '200': { description: OK } } }
+    put: { summary: Update port-trigger rules, responses: { '200': { description: OK } } }
+
+  /1/Device/DHCP:
+    get: { summary: DHCP server config/leases, responses: { '200': { description: OK } } }
+  /1/Device/DHCP/Reservation:
+    get: { summary: Static DHCP reservations, responses: { '200': { description: OK } } }
+    put: { summary: Update reservations, responses: { '200': { description: OK } } }
+  /1/Device/WAN:
+    get: { summary: WAN config/status, responses: { '200': { description: OK } } }
+  /1/Device/DNS:
+    get: { summary: DNS config, responses: { '200': { description: OK } } }
+  /1/Device/DDNS:
+    get: { summary: Dynamic DNS config, responses: { '200': { description: OK } } }
+    put: { summary: Update DDNS, responses: { '200': { description: OK } } }
+  /1/Device/Ether:
+    get: { summary: Ethernet interface status, responses: { '200': { description: OK } } }
+  /1/Device/RipInfo:
+    get: { summary: RIP routing config, responses: { '200': { description: OK } } }
+  /1/Device/StaticRouteInfo:
+    get: { summary: Static routes, responses: { '200': { description: OK } } }
+  /1/Device/IpMappingInfo:
+    get: { summary: 1:1 NAT / IP mapping rules, responses: { '200': { description: OK } } }
+    put: { summary: Update IP mapping, responses: { '200': { description: OK } } }
+  /1/Device/GRE:
+    get: { summary: GRE tunnel config, responses: { '200': { description: OK } } }
+  /1/Device/IpPass:
+    get: { summary: IP passthrough config, responses: { '200': { description: OK } } }
+    put: { summary: Update IP passthrough, responses: { '200': { description: OK } } }
+
+  /1/Device/Firewall:
+    get: { summary: Firewall global settings, responses: { '200': { description: OK } } }
+  /1/Device/Firewall/Inbound:
+    get: { summary: Inbound rules, responses: { '200': { description: OK } } }
+    put: { summary: Update inbound rules, responses: { '200': { description: OK } } }
+  /1/Device/Firewall/ServiceFilter:
+    get: { summary: Service filters, responses: { '200': { description: OK } } }
+  /1/Device/Firewall/DeviceFilter:
+    get: { summary: Device filters, responses: { '200': { description: OK } } }
+  /1/Device/Firewall/KeywordFilter:
+    get: { summary: Keyword/content filters, responses: { '200': { description: OK } } }
+  /1/Device/Firewall/TimeFilter:
+    get: { summary: Time-based access filters, responses: { '200': { description: OK } } }
+
+  /1/Device/MTA/StatusInfo:
+    get: { summary: PacketCable/EMTA (voice line) status, responses: { '200': { description: OK } } }
+
+  /1/Device/Diagnostics:
+    get: { summary: Diagnostics (ping/traceroute-style tooling, exact shape unconfirmed), responses: { '200': { description: OK } } }
+  /1/Device/Time:
+    get: { summary: NTP/time config, responses: { '200': { description: OK } } }
+    put: { summary: Update time config, responses: { '200': { description: OK } } }
+  /1/Device/USB:
+    get: { summary: USB status (storage/modem passthrough), responses: { '200': { description: OK } } }
+  /1/Device/BBU:
+    get: { summary: Battery backup unit status, responses: { '200': { description: OK } } }
+  /1/Device/AdminRemoteManagement:
+    get: { summary: Remote management (WAN-side admin access) config, responses: { '200': { description: OK } } }
+    put: { summary: Update remote management, responses: { '200': { description: OK } } }
+  /1/Device/Health:
+    get: { summary: App-defined device health summary, responses: { '200': { description: OK } } }
+  /1/Device/Manage:
+    get: { summary: Admin account/password management, responses: { '200': { description: OK } } }
+    put: { summary: Change admin password, responses: { '200': { description: OK } } }
+  /1/Device/Hosts:
+    get: { summary: Connected LAN hosts (DHCP + static), responses: { '200': { description: OK } } }
+  /1/Device/Users:
+    get: { summary: List of local accounts, responses: { '200': { description: OK } } }
+    post: { summary: "Create a user (writes Device.X_HITRON_COM_App.Users.User.{id}.HashPassword; see info.description re: the md5(\"password\") fallback)", responses: { '200': { description: OK } } }

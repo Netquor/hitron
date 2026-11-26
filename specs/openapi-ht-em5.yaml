@@ -1,0 +1,405 @@
+openapi: 3.0.3
+info:
+  title: Hitron HT-EM5 MoCA bridge — register API (reverse engineered)
+  version: "1.0.8"
+  description: |
+    Not an official Hitron spec. Reverse engineered from the HT-EM5's own web UI
+    (`main.js`, `moca.js`, `index.html`, `devSetup.html`, `moca.html`, `phyRates.html`,
+    `upgrade.html`), its firmware's string table (`HT-EM5-1.0.8-dhcp.bin`), and traffic
+    against three live units. Confirmed against the already-existing Python client at
+    `aggregator/moca_client.py` in this repo, which independently derived the same
+    register map from a HAR capture — the two sources agree.
+
+    There is no real REST resource model. Every page POSTs to one tiny RPC endpoint:
+
+        POST /ms/{type}/{reg}[/GET|/PUT]
+
+    `type` is a namespace (0 = classic MoCA/PHY MIB, 1 = system/network config).
+    `reg` is a register id, hex or decimal (0x1063 and 4195 are the same register).
+    A handful of the oldest MoCA MIB registers (0x14, 0x15, 0x16, 0x24, 0x7f, 0x1D) are
+    called with NO /GET suffix; everything else uses an explicit /GET or /PUT. Request
+    and response bodies are JSON (`{"data": [...]}`) sent with
+    `Content-Type: application/x-www-form-urlencoded` — the firmware does not care about
+    the declared content type, only about the body being valid JSON.
+
+    Every "value" is a 32-bit word, almost always returned as a lower-case 0x-prefixed
+    hex string inside the `data` array. Multi-word fields (MACs, ASCII strings, 64-bit
+    counters, the PHY-rate table) are flat arrays of such words that the page JS (and
+    `aggregator/moca_client.py`) decode with bit shifts and byte-unpacking — this spec
+    documents the wire shape, not the decoded meaning, for those; see moca_client.py's
+    docstring and decode helpers for the authoritative decode, which this spec mirrors.
+
+    Device quirks that affect how a client MUST behave:
+      - Single connection at a time. The web server ("InterNiche Technologies WebServer
+        2.0") drops or 400s concurrent in-flight requests. Serialize all calls; the
+        reference client uses a semaphore of 1. Send `Connection: close` or expect to
+        retry a dropped connection.
+      - No real session login. Auth is HTTP Basic on every request (default admin/admin).
+        A `csrf_token` cookie is set on normal page loads and echoed back as
+        `X-CSRF-TOKEN`; it is unclear whether the firmware actually enforces it, but all
+        reads/writes observed on real devices included both the cookie and the header.
+      - Per-band register families. MoCA password, scan mask, scan offset, and the two
+        primary-channel masks are each a FAMILY of 3 registers, one per channel plan
+        (D-Ext=0, D-Low=1, D-High=2), computed in the firmware's own JS as
+        `BASE + bandIdx`. This spec exposes bandIdx as a path parameter.
+      - Placeholder node slots in NET_INFO return the literal MAC 01:02:03:04:05:06 —
+        treat that exact value as "no node", not a real device.
+      - `0x20e` (admin password) and `0x1049`-family (MoCA password) return the secret in
+        plaintext/ASCII to anyone logged in. Treat GET responses for those as secrets.
+      - `0xb00` (reboot) and `0xb01` (factory reset, found in firmware strings but not yet
+        exercised against a live unit) have no device-side confirmation step beyond the
+        browser's own confirm() dialog.
+  contact:
+    name: Netquor SDN — internal reverse-engineering notes
+externalDocs:
+  description: Design notes and open questions
+  url: ../MOCA_ADAPTER.md
+
+servers:
+  - url: http://{host}
+    variables:
+      host:
+        default: 192.168.0.212
+        description: The bridge's LAN IP.
+
+components:
+  securitySchemes:
+    basicAuth:
+      type: http
+      scheme: basic
+      description: Default admin/admin. Sent on every request, including the initial GET /.
+  parameters:
+    bandIdx:
+      name: bandIdx
+      in: path
+      required: true
+      schema: { type: integer, enum: [0, 1, 2] }
+      description: Channel-plan band offset. 0 = D-Ext (Extended Band D), 1 = D-Low (Sub-Band D-low), 2 = D-High (Sub-Band D-high).
+    nodeId:
+      name: nodeId
+      in: query
+      required: true
+      schema: { type: integer, minimum: 0, maximum: 15 }
+      description: MoCA node id to query (this bridge is always one of 0-15 on the coax).
+  schemas:
+    WordArray:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items:
+            type: string
+            pattern: '^0x[0-9a-f]{1,8}$'
+          description: One or more 32-bit words, lower-case hex, 0x-prefixed.
+    WriteWordArray:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items:
+            oneOf:
+              - type: string
+              - type: integer
+          description: Value(s) to write. The firmware accepts hex-string or decimal; writes observed in the wild use decimal ints for booleans/small values and 0x-strings for IPs/masks.
+    EmptyRead:
+      type: object
+      properties:
+        data: { type: array, items: {}, maxItems: 0, default: [] }
+  responses:
+    BadRequest:
+      description: Malformed body, wrong param count/shape for this register, or the single-connection server was mid-request. Empty body, HTTP 400.
+
+security:
+  - basicAuth: []
+
+paths:
+  /:
+    get:
+      summary: Any page (e.g. index.html) — establishes the csrf_token cookie
+      description: Call once per session before any /ms/ call; harvest the Set-Cookie csrf_token and echo it as X-CSRF-TOKEN on subsequent calls.
+      responses:
+        '200': { description: HTML page. }
+
+  /ms/0/0x15:
+    post:
+      summary: LOCAL_INFO — this bridge's own node info (29 words)
+      description: |
+        No /GET suffix. Decoded fields (word index): [0] node id, [5] link status
+        (0=down), [11] network MoCA version (packed nibbles), [18]/[19] primary/secondary
+        LOF offset, [21..] SoC version as packed ASCII (NUL-terminated).
+      requestBody:
+        content: { application/x-www-form-urlencoded: { schema: { $ref: '#/components/schemas/EmptyRead' } } }
+      responses:
+        '200': { description: 29-word array., content: { application/json: { schema: { $ref: '#/components/schemas/WordArray' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+
+  /ms/0/0x16:
+    post:
+      summary: NET_INFO — per-node info, one call per node id (26 words)
+      description: |
+        word[0..1] = node MAC (hi 4 bytes + top 2 bytes of lo), word[4] low byte = node
+        MoCA version (packed nibbles). Empty/placeholder slots return MAC 01:02:03:04:05:06.
+      requestBody:
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required: [data]
+              properties: { data: { type: array, items: { type: integer }, example: [1] } }
+      responses:
+        '200': { description: 26-word array for that node., content: { application/json: { schema: { $ref: '#/components/schemas/WordArray' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+
+  /ms/0/0x14:
+    post:
+      summary: FRAME_INFO — Ethernet tx/rx frame counters, per node id
+      description: Good/bad/dropped counters for tx and rx as 64-bit (hi,lo word pairs). Page's own index map uses word offsets 6/15/24 (tx good/bad/dropped) and 33/42/51 (rx good/bad/dropped) off a per-node call; confirm against aggregator/moca_client.py before trusting exact offsets for a given firmware build.
+      requestBody:
+        content:
+          application/x-www-form-urlencoded:
+            schema: { type: object, properties: { data: { type: array, items: { type: integer }, example: [1] } } }
+      responses:
+        '200': { description: Frame counter word array., content: { application/json: { schema: { $ref: '#/components/schemas/WordArray' } } } }
+
+  /ms/0/0x24:
+    post:
+      summary: MISC_PHY_INFO — beacon channel / LOF temp
+      requestBody: { content: { application/x-www-form-urlencoded: { schema: { $ref: '#/components/schemas/EmptyRead' } } } }
+      responses: { '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/WordArray' } } } } }
+
+  /ms/0/0x7f:
+    post:
+      summary: MISC_M25_PHY_INFO — first channel / channel count (MXL371x chips only)
+      requestBody: { content: { application/x-www-form-urlencoded: { schema: { $ref: '#/components/schemas/EmptyRead' } } } }
+      responses: { '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/WordArray' } } } } }
+
+  /ms/0/0x1D:
+    post:
+      summary: FMR_INFO — PHY rate matrix (NPER/VLPER, gap, OFDMB), params [nodeMask, mocaVer]
+      description: |
+        All-0xff / 0xff00ff00 filler means "no rate measured for that pair yet" —
+        observed on a live bridge with little inter-node traffic at capture time.
+        Mbps formulas (from hagocoax prior art, re-derive against live traffic before
+        trusting): 100MHz channel ≈ 3900*ofdmb/((512+(gap+10)*2)*46); 50MHz channel ≈
+        1200*ofdmb/((256+(gap*2+10))*26).
+      requestBody:
+        content:
+          application/x-www-form-urlencoded:
+            schema: { type: object, properties: { data: { type: array, items: { type: integer }, example: [1, 0] } } }
+      responses: { '200': { description: PHY rate table words., content: { application/json: { schema: { $ref: '#/components/schemas/WordArray' } } } } }
+
+  /ms/0/0x1001/GET:
+    post:
+      summary: NW_SEARCH — network search enabled (bool)
+      requestBody: { content: { application/x-www-form-urlencoded: { schema: { $ref: '#/components/schemas/EmptyRead' } } } }
+      responses: { '200': { $ref: '#/components/responses/BadRequest' } }
+  /ms/0/0x1001/PUT:
+    post:
+      summary: NW_SEARCH — write (confirmed present in firmware string table; not exercised live)
+      requestBody: { content: { application/x-www-form-urlencoded: { schema: { $ref: '#/components/schemas/WriteWordArray' } } } }
+      responses: { '200': { description: OK } }
+
+  /ms/0/0x1002/GET:
+    post:
+      summary: PREFERRED_NC — preferred network coordinator (bool)
+      requestBody: { content: { application/x-www-form-urlencoded: { schema: { $ref: '#/components/schemas/EmptyRead' } } } }
+      responses: { '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/WordArray' } } } } }
+  /ms/0/0x1002/PUT:
+    post:
+      summary: PREFERRED_NC — write
+      requestBody: { content: { application/x-www-form-urlencoded: { schema: { $ref: '#/components/schemas/WriteWordArray' } } } }
+      responses: { '200': { description: OK } }
+
+  /ms/0/0x1003/GET:
+    post:
+      summary: LOF (also reachable as the unnamespaced /ms/lastOFrq/GET on some pages) — operating frequency (MHz)
+      requestBody: { content: { application/x-www-form-urlencoded: { schema: { $ref: '#/components/schemas/EmptyRead' } } } }
+      responses: { '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/WordArray' } } } } }
+  /ms/0/0x1003/PUT:
+    post:
+      summary: LOF — write (firmware string table confirms this exists; index.html's own form only reads it)
+      requestBody: { content: { application/x-www-form-urlencoded: { schema: { $ref: '#/components/schemas/WriteWordArray' } } } }
+      responses: { '200': { description: OK } }
+
+  /ms/lastOFrq/GET:
+    post:
+      summary: LOF, named-path alias used by moca.html's lofForm
+      requestBody: { content: { application/x-www-form-urlencoded: { schema: { $ref: '#/components/schemas/EmptyRead' } } } }
+      responses: { '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/WordArray' } } } } }
+
+  /ms/0/0x1009/GET:
+    post:
+      summary: BAND_MASK — enabled band scan mask
+      requestBody: { content: { application/x-www-form-urlencoded: { schema: { $ref: '#/components/schemas/EmptyRead' } } } }
+      responses: { '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/WordArray' } } } } }
+  /ms/0/0x1009/PUT:
+    post:
+      summary: BAND_MASK — write
+      requestBody: { content: { application/x-www-form-urlencoded: { schema: { $ref: '#/components/schemas/WriteWordArray' } } } }
+      responses: { '200': { description: OK } }
+
+  /ms/0/0x100e/GET:
+    post:
+      summary: BEACON_PWR_LEVEL — beacon power level index
+      requestBody: { content: { application/x-www-form-urlencoded: { schema: { $ref: '#/components/schemas/EmptyRead' } } } }
+      responses: { '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/WordArray' } } } } }
+  /ms/0/0x100e/PUT:
+    post:
+      summary: BEACON_PWR_LEVEL — write
+      requestBody: { content: { application/x-www-form-urlencoded: { schema: { $ref: '#/components/schemas/WriteWordArray' } } } }
+      responses: { '200': { description: OK } }
+
+  /ms/0/0x1049/GET:
+    post:
+      summary: "MOCA_PASSWORD_BASE+0 (D-Ext) — MoCA privacy password, PLAINTEXT. Treat as a secret."
+      requestBody: { content: { application/x-www-form-urlencoded: { schema: { $ref: '#/components/schemas/EmptyRead' } } } }
+      responses: { '200': { description: 'ASCII password packed in hex words.', content: { application/json: { schema: { $ref: '#/components/schemas/WordArray' } } } } }
+
+  /ms/0/{bandRegOffset}/{bandIdx}/GET:
+    parameters: [ { $ref: '#/components/parameters/bandIdx' } ]
+    get:
+      summary: Per-band register family — conceptual entry; real paths are BASE+bandIdx, see description
+      description: |
+        moca.js computes these at runtime as `"/ms/0/" + (BASE + bandIdx) + "/GET"` — there
+        is no literal path with a {bandIdx} placeholder on the wire. The real paths for
+        bandIdx 0/1/2 are:
+          MoCA password:            /ms/0/0x1049/GET, /ms/0/0x104a/GET, /ms/0/0x104b/GET
+          Scan mask (64-bit, 2 words): /ms/0/0x1063/GET .. /ms/0/0x1065/GET
+          Scan offset:               /ms/0/0x106b/GET .. /ms/0/0x106d/GET
+          Primary-channel-above mask: /ms/0/0x1073/GET .. /ms/0/0x1075/GET
+          Primary-channel-below mask: /ms/0/0x107b/GET .. /ms/0/0x107d/GET
+        Default scan masks per plan index (0-7, from the firmware's dfltScanMaskArray,
+        wider than the 3-entry UI dropdown — unexplained, flag for follow-up):
+        0x00000002aaaa8000, 0x0000000280000000, 0x0000000000aa8000, 0x0f80000000000000,
+        0x001fe00000000000, 0x001fe00000000000, 0x000001c000000000, 0x00000002aaaa8000.
+      responses: { '200': { description: See description. } }
+
+  /ms/0/0x1059/GET:
+    post:
+      summary: SECURITY_MODE_MASK — per-band "privacy enabled" bitmask
+      requestBody: { content: { application/x-www-form-urlencoded: { schema: { $ref: '#/components/schemas/EmptyRead' } } } }
+      responses: { '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/WordArray' } } } } }
+  /ms/0/0x1059/PUT:
+    post:
+      summary: SECURITY_MODE_MASK — write
+      requestBody: { content: { application/x-www-form-urlencoded: { schema: { $ref: '#/components/schemas/WriteWordArray' } } } }
+      responses: { '200': { description: OK } }
+
+  /ms/0/0x10a8/GET:
+    post:
+      summary: TX_POWER — tx power index
+      requestBody: { content: { application/x-www-form-urlencoded: { schema: { $ref: '#/components/schemas/EmptyRead' } } } }
+      responses: { '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/WordArray' } } } } }
+  /ms/0/0x10a8/PUT:
+    post:
+      summary: TX_POWER — write
+      requestBody: { content: { application/x-www-form-urlencoded: { schema: { $ref: '#/components/schemas/WriteWordArray' } } } }
+      responses: { '200': { description: OK } }
+
+  /ms/0/0x10f5/GET:
+    post:
+      summary: HW_CFG_WORD — hardware band capability bitmask
+      requestBody: { content: { application/x-www-form-urlencoded: { schema: { $ref: '#/components/schemas/EmptyRead' } } } }
+      responses: { '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/WordArray' } } } } }
+
+  /ms/1/0x102/GET:
+    post:
+      summary: HW_VERSION — hardware version, ASCII packed in hex words
+      requestBody: { content: { application/x-www-form-urlencoded: { schema: { $ref: '#/components/schemas/EmptyRead' } } } }
+      responses: { '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/WordArray' } } } } }
+
+  /ms/1/0x20b/GET:
+    post:
+      summary: IP_ADDR — device IP, as a single hex word (e.g. 0xc0a800d4 = 192.168.0.212)
+      requestBody: { content: { application/x-www-form-urlencoded: { schema: { $ref: '#/components/schemas/EmptyRead' } } } }
+      responses: { '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/WordArray' } } } } }
+  /ms/1/0x20b/PUT:
+    post:
+      summary: IP_ADDR — write
+      requestBody: { content: { application/x-www-form-urlencoded: { schema: { $ref: '#/components/schemas/WriteWordArray' } } } }
+      responses: { '200': { description: OK } }
+
+  /ms/1/0x20e/GET:
+    post:
+      summary: "ADMIN_PASSWORD — PLAINTEXT, write-only by convention in this client. Never log the response."
+      description: PUT body is 16 hex words (64 bytes, zero-padded ASCII of the new password). 4-63 alphanumeric chars enforced client-side; a reboot is required after writing.
+      requestBody: { content: { application/x-www-form-urlencoded: { schema: { $ref: '#/components/schemas/EmptyRead' } } } }
+      responses: { '200': { description: Secret - redact in logs. } }
+  /ms/1/0x20e/PUT:
+    post:
+      summary: ADMIN_PASSWORD — write, triggers an implied reboot via the page flow
+      requestBody: { content: { application/x-www-form-urlencoded: { schema: { $ref: '#/components/schemas/WriteWordArray' } } } }
+      responses: { '200': { description: OK } }
+
+  /ms/1/0x210/GET:
+    post: { summary: NET_MASK — read, requestBody: { content: { application/x-www-form-urlencoded: { schema: { $ref: '#/components/schemas/EmptyRead' } } } }, responses: { '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/WordArray' } } } } } }
+  /ms/1/0x210/PUT:
+    post: { summary: NET_MASK — write, requestBody: { content: { application/x-www-form-urlencoded: { schema: { $ref: '#/components/schemas/WriteWordArray' } } } }, responses: { '200': { description: OK } } }
+
+  /ms/1/0x211/GET:
+    post: { summary: GATEWAY — read, requestBody: { content: { application/x-www-form-urlencoded: { schema: { $ref: '#/components/schemas/EmptyRead' } } } }, responses: { '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/WordArray' } } } } } }
+  /ms/1/0x211/PUT:
+    post: { summary: GATEWAY — write, requestBody: { content: { application/x-www-form-urlencoded: { schema: { $ref: '#/components/schemas/WriteWordArray' } } } }, responses: { '200': { description: OK } } }
+
+  /ms/1/0x212/GET:
+    post: { summary: 'ADAPTER_NAME — index into the built-in "room name" list (myRoom[] in moca.js)', requestBody: { content: { application/x-www-form-urlencoded: { schema: { $ref: '#/components/schemas/EmptyRead' } } } }, responses: { '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/WordArray' } } } } } }
+  /ms/1/0x212/PUT:
+    post: { summary: ADAPTER_NAME — write, requestBody: { content: { application/x-www-form-urlencoded: { schema: { $ref: '#/components/schemas/WriteWordArray' } } } }, responses: { '200': { description: OK } } }
+
+  /ms/1/0x216/GET:
+    post: { summary: TELNET_ENABLE — read (observed bool 0/1), requestBody: { content: { application/x-www-form-urlencoded: { schema: { $ref: '#/components/schemas/EmptyRead' } } } }, responses: { '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/WordArray' } } } } } }
+  /ms/1/0x216/PUT:
+    post:
+      summary: TELNET_ENABLE — write
+      description: Setting to 1 and back to 0 was confirmed round-trippable; port 23 was never observed open before or after on the test unit (no reboot performed), so enabling may require a reboot or the service may not be present in this firmware build.
+      requestBody: { content: { application/x-www-form-urlencoded: { schema: { $ref: '#/components/schemas/WriteWordArray' } } } }
+      responses: { '200': { description: OK } }
+
+  /ms/1/0x217/GET:
+    post: { summary: DHCP_ENABLE — read, requestBody: { content: { application/x-www-form-urlencoded: { schema: { $ref: '#/components/schemas/EmptyRead' } } } }, responses: { '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/WordArray' } } } } } }
+  /ms/1/0x217/PUT:
+    post: { summary: DHCP_ENABLE — write, requestBody: { content: { application/x-www-form-urlencoded: { schema: { $ref: '#/components/schemas/WriteWordArray' } } } }, responses: { '200': { description: OK } } }
+
+  /ms/1/0x218/GET:
+    post: { summary: AUTOIP_ENABLE — read, requestBody: { content: { application/x-www-form-urlencoded: { schema: { $ref: '#/components/schemas/EmptyRead' } } } }, responses: { '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/WordArray' } } } } } }
+  /ms/1/0x218/PUT:
+    post: { summary: AUTOIP_ENABLE — write, requestBody: { content: { application/x-www-form-urlencoded: { schema: { $ref: '#/components/schemas/WriteWordArray' } } } }, responses: { '200': { description: OK } } }
+
+  /ms/1/0x302/GET:
+    post:
+      summary: SW_VERSION — active/backup firmware image versions (2 words)
+      requestBody: { content: { application/x-www-form-urlencoded: { schema: { $ref: '#/components/schemas/EmptyRead' } } } }
+      responses: { '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/WordArray' } } } } }
+
+  /ms/1/0x303/GET:
+    post:
+      summary: "CHIP_ID — value minus 0x15 indexes [MXL370x, MXL371x, UNKNOWN]"
+      requestBody: { content: { application/x-www-form-urlencoded: { schema: { $ref: '#/components/schemas/EmptyRead' } } } }
+      responses: { '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/WordArray' } } } } }
+
+  /ms/1/0xb00:
+    post:
+      summary: REBOOT — write-only trigger, empty data array, no confirmation beyond the browser's own confirm()
+      requestBody:
+        content:
+          application/x-www-form-urlencoded:
+            schema: { type: object, properties: { data: { type: array, items: {}, maxItems: 0, default: [] } } }
+      responses:
+        '200': { description: Device begins rebooting; the connection may drop before a response is seen. Confirmed against three live units — downtime observed at roughly 30s-plus. }
+
+  /ms/1/0xb01:
+    post:
+      summary: "FACTORY RESET — found in firmware string table and upgrade.html's doRestore(); NOT exercised against a live unit in this research"
+      requestBody:
+        content:
+          application/x-www-form-urlencoded:
+            schema: { type: object, properties: { data: { type: array, items: {}, maxItems: 0, default: [] } } }
+      responses:
+        '200': { description: Per upgrade.html, this is followed by a reboot. Treat as destructive and irreversible without a prior backup of every register in this spec. }
+
+  /moca.js:
+    get:
+      summary: moca.html's own script — defines band-offset arithmetic and default scan masks
+      responses: { '200': { description: application/x-javascript } }
