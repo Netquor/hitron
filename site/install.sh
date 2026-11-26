@@ -104,10 +104,17 @@ if [ ! -x "$PREFIX/venv/bin/python" ]; then
 fi
 
 # Install straight from the GitHub archive: no git, no PyPI release needed.
-# --upgrade makes re-running this script a working "update".
-URL="https://github.com/$REPO/archive/$REF.tar.gz"
-echo "hitron: downloading $URL"
-"$PREFIX/venv/bin/python" -m pip install --quiet --disable-pip-version-check --upgrade "$URL"
+# Resolve the ref to a commit first, so each rerun uses a new URL and pip
+# actually upgrades instead of answering "already satisfied" from its cache.
+RESOLVED="$REF"
+if command -v git >/dev/null 2>&1; then
+  SHA="$(git ls-remote "https://github.com/$REPO" "refs/heads/$REF" 2>/dev/null | awk 'NR==1 {print $1}')"
+  [ -n "$SHA" ] && RESOLVED="$SHA"
+fi
+URL="https://github.com/$REPO/archive/$RESOLVED.tar.gz"
+echo "hitron: installing $REF from $REPO"
+"$PREFIX/venv/bin/python" -m pip install --quiet --disable-pip-version-check \
+  --no-cache-dir --upgrade "$URL"
 
 ln -sf "$PREFIX/venv/bin/hitron" "$BINDIR/hitron"
 ln -sf "$PREFIX/venv/bin/hitron-exporter" "$BINDIR/hitron-exporter" 2>/dev/null || true

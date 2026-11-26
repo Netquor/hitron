@@ -18,4 +18,4 @@ __all__ = [
     "coda57_samples",
     "ht_em5_samples",
 ]
-__version__ = "0.2.0"
+__version__ = "0.2.1"

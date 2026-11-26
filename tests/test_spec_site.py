@@ -7,6 +7,7 @@ JSON.
 """
 
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -167,7 +168,8 @@ def test_installer_is_shipped_with_the_site():
     # The one-liner documented everywhere must be the one the script supports.
     assert "--run" in text
     assert "--read-only" in text
-    assert "https://github.com/$REPO/archive/$REF.tar.gz" in text
+    assert "https://github.com/$REPO/archive/$RESOLVED.tar.gz" in text
+    assert "git ls-remote" in text
 
 
 def test_local_proxy_guide_is_linked():
@@ -204,3 +206,20 @@ def test_read_only_proxy_refuses_writes():
     finally:
         server.shutdown()
         server.server_close()
+
+
+def test_cli_site_forwards_read_only():
+    """The `hitron site` wrapper must expose every flag site.py supports."""
+    import subprocess
+    import sys
+
+    result = subprocess.run(
+        [sys.executable, "-m", "hitron.cli", "site", "--help"],
+        capture_output=True,
+        text=True,
+        check=True,
+        env={**os.environ, "PYTHONPATH": str(ROOT / "src")},
+    )
+    assert "--read-only" in result.stdout
+    wrapper = (ROOT / "src" / "hitron" / "cli.py").read_text()
+    assert 'argv += ["--read-only"]' in wrapper

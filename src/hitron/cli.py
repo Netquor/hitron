@@ -28,6 +28,8 @@ def _run_site(args: argparse.Namespace) -> None:
         argv += ["--device", args.device]
     if args.dir:
         argv += ["--dir", args.dir]
+    if args.read_only:
+        argv += ["--read-only"]
     site_main(argv)
 
 
@@ -130,6 +132,11 @@ def main() -> None:
     p.add_argument("--listen", default="127.0.0.1")
     p.add_argument("--device", default=None, help="gateway used by the /proxy endpoint")
     p.add_argument("--dir", default=None, help="site directory (defaults to ./site)")
+    p.add_argument(
+        "--read-only",
+        action="store_true",
+        help="proxy GET/HEAD only; writes (reboot, reset) return 403",
+    )
     p.set_defaults(sync=_run_site)
 
     p = sub.add_parser("grafana", help="write the Grafana dashboards and provisioning bundle")
