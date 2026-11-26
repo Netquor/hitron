@@ -94,16 +94,18 @@ func specLine(s *hitron.Snapshot) []string {
 		if ok {
 			state = Green("in spec")
 		}
+		avg, _ := s.DSAverage()
 		lines = append(lines, "  "+Dim(pad("Downstream", 11))+"  "+
-			fmt.Sprintf("%+.1f to %+.1f dBmV", low, high)+"  "+Dim("(-6 to +15)")+"  "+state)
+			fmt.Sprintf("%+.1f to %+.1f dBmV", low, high)+"  "+fmt.Sprintf("avg %+.1f", avg)+"  "+Dim("(-6 to +15)")+"  "+state)
 	}
 	if ok, low, high := s.USInSpec(); s.USHasReadings() {
 		state := Red("out of spec")
 		if ok {
 			state = Green("in spec")
 		}
+		avg, _ := s.USAverage()
 		lines = append(lines, "  "+Dim(pad("Upstream", 11))+"  "+
-			fmt.Sprintf("%.1f to %.1f dBmV", low, high)+"  "+Dim("(35 to 48)")+"  "+state)
+			fmt.Sprintf("%.1f to %.1f dBmV", low, high)+"  "+fmt.Sprintf("avg %.1f", avg)+"  "+Dim("(35 to 48)")+"  "+state)
 	}
 	return lines
 }

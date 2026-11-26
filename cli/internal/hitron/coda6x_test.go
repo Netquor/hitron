@@ -251,3 +251,23 @@ func TestCoda6XLoginSendsModelForm(t *testing.T) {
 		t.Fatalf("login body = %v", model)
 	}
 }
+
+func TestAveragesUseSameChannelsAsRange(t *testing.T) {
+	s := &Snapshot{
+		DS:    []Channel{{Power: 2, HasPower: true}, {Power: 4, HasPower: true}, {HasPower: false}},
+		OFDM:  []OFDMChannel{{PLCPower: 6, HasPLCPower: true}},
+		US:    []Channel{{Power: 32, HasPower: true}, {Power: 31.75, HasPower: true}},
+		OFDMA: []OFDMAChannel{{Power16: 34, HasPower16: true}, {Power16: 99, HasPower16: true, Disabled: true}},
+	}
+	if avg, ok := s.DSAverage(); !ok || avg != 4 { // (2+4+6)/3
+		t.Fatalf("DSAverage = %v, %v; want 4", avg, ok)
+	}
+	// OFDMA gets +6: (32 + 31.75 + 40) / 3; the disabled channel is ignored.
+	want := (32 + 31.75 + 40) / 3.0
+	if avg, ok := s.USAverage(); !ok || avg != want {
+		t.Fatalf("USAverage = %v, %v; want %v", avg, ok, want)
+	}
+	if _, ok := (&Snapshot{}).DSAverage(); ok {
+		t.Fatalf("empty snapshot should report no average")
+	}
+}

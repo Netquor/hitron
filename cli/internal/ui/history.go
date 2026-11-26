@@ -32,9 +32,9 @@ func (s *series) last() (float64, bool) {
 // signal trends over time. It is presentation state owned by the TUI loop;
 // the one-shot report paths never touch it.
 type History struct {
-	DSPower series // mean downstream SC-QAM power, dBmV
+	DSPower series // mean downstream power, dBmV (matches the header average)
 	DSSNR   series // worst (minimum) downstream SNR, dB
-	USPower series // mean upstream SC-QAM power, dBmV
+	USPower series // mean upstream power, dBmV (matches the header average)
 	Samples int
 }
 
@@ -50,29 +50,15 @@ func (h *History) Push(s *hitron.Snapshot) {
 		return
 	}
 	h.Samples++
-	if v, ok := meanDSPower(s); ok {
+	if v, ok := s.DSAverage(); ok {
 		h.DSPower.push(v)
 	}
 	if v, ok := worstDSSNR(s); ok {
 		h.DSSNR.push(v)
 	}
-	if v, ok := meanUSPower(s); ok {
+	if v, ok := s.USAverage(); ok {
 		h.USPower.push(v)
 	}
-}
-
-func meanDSPower(s *hitron.Snapshot) (float64, bool) {
-	sum, n := 0.0, 0
-	for _, ch := range s.DS {
-		if ch.HasPower {
-			sum += ch.Power
-			n++
-		}
-	}
-	if n == 0 {
-		return 0, false
-	}
-	return sum / float64(n), true
 }
 
 // worstDSSNR tracks the lowest SNR across SC-QAM and OFDM downstream channels,
@@ -90,18 +76,4 @@ func worstDSSNR(s *hitron.Snapshot) (float64, bool) {
 		}
 	}
 	return min, ok
-}
-
-func meanUSPower(s *hitron.Snapshot) (float64, bool) {
-	sum, n := 0.0, 0
-	for _, ch := range s.US {
-		if ch.HasPower {
-			sum += ch.Power
-			n++
-		}
-	}
-	if n == 0 {
-		return 0, false
-	}
-	return sum / float64(n), true
 }
