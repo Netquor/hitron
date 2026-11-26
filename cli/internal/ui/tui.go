@@ -404,24 +404,54 @@ func (m model) statusText() string {
 	}
 }
 
+// current is the snapshot as displayed: the raw reading, or with the FEC
+// counters shown relative to the baseline when z is active.
+func (m model) current() *hitron.Snapshot {
+	if m.fecBase != nil {
+		return applyFECBaseline(m.snap, m.fecBase)
+	}
+	return m.snap
+}
+
+func rule(width int) string {
+	return fg(CurrentTheme().Border, strings.Repeat("─", width))
+}
+
 func (m model) headerLines() []string {
 	th := CurrentTheme()
-	left := Gradient("hitron-cli", th.Accent, th.Accent2) + "  " + Title(m.snap)
-	right := MutedText(time.Now().Format("15:04:05")) + "  " + m.statusText() + "  " + MutedText(th.Name)
+	model := m.snap.Model
+	if model == "" {
+		model = m.snap.Kind.Label()
+	}
+	left := " " + AccentBold("hitron") + MutedText("  ·  ") + Bold(model) +
+		MutedText("  "+m.snap.Host+"  ·  "+m.snap.Kind.Label())
+	right := MutedText(time.Now().Format("15:04:05")) + "  " + m.statusText() + "  " + MutedText(th.Name) + " "
 	gap := m.width - lipgloss.Width(left) - lipgloss.Width(right)
+	if gap < 2 {
+		// Narrow terminal: drop the host and family so the status stays visible.
+		left = " " + AccentBold("hitron") + MutedText("  ·  ") + Bold(model)
+		gap = m.width - lipgloss.Width(left) - lipgloss.Width(right)
+	}
 	line := truncate(left, m.width)
 	if gap >= 2 {
 		line = left + strings.Repeat(" ", gap) + right
 	}
-	lines := []string{line}
-	if m.err != nil {
+	lines := []string{line, rule(m.width)}
+	switch {
+	case m.err != nil:
 		age := ""
 		if !m.lastOK.IsZero() {
 			age = " (showing data from " + m.lastOK.Format("15:04:05") + ")"
 		}
-		lines = append(lines, truncate(Red("error: ")+m.err.Error()+MutedText(age), m.width))
-	} else {
-		lines = append(lines, specLine(m.snap)...)
+		lines = append(lines, truncate(" "+Red("error: ")+m.err.Error()+MutedText(age), m.width))
+	default:
+		if cards := Cards(m.current(), m.history, m.width); cards != nil {
+			lines = append(lines, "")
+			lines = append(lines, cards...)
+			lines = append(lines, "", rule(m.width))
+		} else {
+			lines = append(lines, specLine(m.snap)...)
+		}
 	}
 	return lines
 }
@@ -498,47 +528,57 @@ func (m model) deviceLines(inner int) []string {
 	return lines
 }
 
+// section is a titled block with a rule instead of a box: less chrome, more
+// room for the data.
+func section(width int, title, meta string, lines []string) []string {
+	head := fg(CurrentTheme().Border, "── ") + AccentBold(title)
+	if meta != "" {
+		head += "  " + MutedText(meta)
+	}
+	fill := width - lipgloss.Width(head) - 1
+	if fill > 0 {
+		head += " " + fg(CurrentTheme().Border, strings.Repeat("─", fill))
+	}
+	out := []string{head}
+	for _, l := range lines {
+		out = append(out, truncate(" "+l, width))
+	}
+	return append(out, "")
+}
+
 func (m model) bodyView() string {
-	inner := m.width - 4 // border (2) + padding (2)
-	if inner < 20 {
-		inner = 20
+	width := m.width
+	if width < 24 {
+		width = 24
 	}
-	panel := func(title string, lines []string) string {
-		clipped := make([]string, 0, len(lines)+1)
-		clipped = append(clipped, panelHeading(title))
-		for _, l := range lines {
-			clipped = append(clipped, truncate(l, inner))
-		}
-		return panelBox(m.width - 2).Render(strings.Join(clipped, "\n"))
-	}
+	view := m.current()
 	capture := func(fn func(*strings.Builder)) []string {
 		var b strings.Builder
 		fn(&b)
 		return strings.Split(strings.TrimRight(b.String(), "\n"), "\n")
 	}
 
-	var panels []string
+	var out []string
 	if m.showGraphs {
-		panels = append(panels, panel("Trends", Graphs(m.history, inner)[1:]))
+		out = append(out, section(width, "Trends", fmt.Sprintf("%d polls", m.history.Samples), Graphs(m.history, width)[1:])...)
 	}
-	panels = append(panels, panel("Device", m.deviceLines(inner)))
+	out = append(out, section(width, "Device", "", m.deviceLines(width-2))...)
 	if len(m.snap.Steps) > 0 {
-		panels = append(panels, panel(fmt.Sprintf("DOCSIS  %d/%d", m.snap.StepsOK(), len(m.snap.Steps)), provisionLines(m.snap, inner)))
+		meta := fmt.Sprintf("%d/%d steps", m.snap.StepsOK(), len(m.snap.Steps))
+		out = append(out, section(width, "DOCSIS", meta, provisionLines(m.snap, width-2))...)
 	}
-	chTitle := "Channels"
-	view := m.snap
+	meta := ""
 	if m.fecBase != nil {
-		view = applyFECBaseline(m.snap, m.fecBase)
-		chTitle += "  " + MutedText("codewords since "+m.fecSince.Format("15:04:05")+" (z to restore)")
+		meta = "codewords since " + m.fecSince.Format("15:04:05") + " (z to restore)"
 	}
-	panels = append(panels, panel(chTitle, capture(func(b *strings.Builder) { Channels(b, view) })))
+	out = append(out, section(width, "Channels", meta, capture(func(b *strings.Builder) { Channels(b, view) }))...)
 	if m.snap.MoCA != nil {
-		panels = append(panels, panel("MoCA", capture(func(b *strings.Builder) { Moca(b, m.snap) })))
+		out = append(out, section(width, "MoCA", "", capture(func(b *strings.Builder) { Moca(b, m.snap) }))...)
 	}
 	if len(m.snap.Logs) > 0 {
-		panels = append(panels, panel("Logs", capture(func(b *strings.Builder) { Logs(b, m.snap, 8) })))
+		out = append(out, section(width, "Logs", "newest first", capture(func(b *strings.Builder) { Logs(b, m.snap, 8) }))...)
 	}
-	return lipgloss.JoinVertical(lipgloss.Left, panels...)
+	return strings.Join(out, "\n")
 }
 
 func (m model) waitingView() string {
