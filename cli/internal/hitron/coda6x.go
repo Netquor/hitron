@@ -168,8 +168,10 @@ func parseCodaDS(snap *Snapshot, data map[string]any) {
 		channel.Frequency, _ = num(item["frequency"])
 		channel.Power, channel.HasPower = signal(item["signalStrength"])
 		channel.SNR, channel.HasSNR = signal(item["snr"])
-		channel.Corrected, _ = counter(item["correcteds"])
-		channel.Uncorrect, _ = counter(item["uncorrect"])
+		hasC, hasU := false, false
+		channel.Corrected, hasC = counter(item["correcteds"])
+		channel.Uncorrect, hasU = counter(item["uncorrect"])
+		channel.HasCodewords = hasC && hasU
 		if channel.ID == "" && channel.Frequency == 0 {
 			continue
 		}
@@ -211,8 +213,10 @@ func parseCodaOFDM(snap *Snapshot, data map[string]any) {
 		channel.PLCLock, _ = flag(item["plclock"])
 		channel.NCPLock, _ = flag(item["ncplock"])
 		channel.MDC1Lock, _ = flag(item["mdc1lock"])
-		channel.Corrected, _ = counter(item["correcteds"])
-		channel.Uncorrect, _ = counter(item["uncorrect"])
+		hasC, hasU := false, false
+		channel.Corrected, hasC = counter(item["correcteds"])
+		channel.Uncorrect, hasU = counter(item["uncorrect"])
+		channel.HasCounters = hasC && hasU
 		channel.Octets, _ = counter(item["dsoctets"])
 		if channel.Frequency == 0 && !hasPower && !hasSNR {
 			// Unused OFDM slots are returned with an index and nothing else.
