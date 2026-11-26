@@ -389,7 +389,7 @@ func All(w io.Writer, s *hitron.Snapshot, logLimit int) {
 }
 
 // Frame is one complete TUI screen, clipped to the terminal height.
-func Frame(s *hitron.Snapshot, width, height int, interval time.Duration, auto bool, errText string) []string {
+func Frame(s *hitron.Snapshot, h *History, width, height int, interval time.Duration, auto bool, errText string) []string {
 	lines := []string{}
 	now := time.Now().Format("15:04:05")
 	state := "paused"
@@ -403,6 +403,10 @@ func Frame(s *hitron.Snapshot, width, height int, interval time.Duration, auto b
 		lines = append(lines, specLine(s)...)
 	}
 	lines = append(lines, "")
+	if h != nil {
+		lines = append(lines, Graphs(h, width)...)
+		lines = append(lines, "")
+	}
 
 	lines = append(lines, "  "+Bold("Downstream"))
 	if len(s.DS) == 0 {
@@ -471,9 +475,9 @@ func Frame(s *hitron.Snapshot, width, height int, interval time.Duration, auto b
 		}
 	}
 
-	footer := "  " + Dim("q quit  r refresh  a auto  h help")
+	footer := "  " + Dim("q quit  r refresh  a auto  g graphs  h help")
 	if errText != "" {
-		footer = "  " + Dim("q quit  r retry  a auto  h help")
+		footer = "  " + Dim("q quit  r retry  a auto  g graphs  h help")
 	}
 	lines = append(lines, "", footer)
 
@@ -496,6 +500,7 @@ func HelpOverlay(width int) []string {
 		"  " + Dim("q") + "        quit",
 		"  " + Dim("r") + "        refresh now",
 		"  " + Dim("a") + "        toggle automatic refresh",
+		"  " + Dim("g") + "        toggle trend graphs",
 		"  " + Dim("space") + "    refresh now",
 		"  " + Dim("h") + "        close this help",
 		"",

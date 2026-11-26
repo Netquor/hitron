@@ -47,6 +47,7 @@ func RunTUI(ctx context.Context, fetch func(context.Context) (*hitron.Snapshot, 
 
 	var snapshot *hitron.Snapshot
 	var fetchErr error
+	history := NewHistory()
 	refresh := func() {
 		next, err := fetch(ctx)
 		if err != nil {
@@ -54,12 +55,14 @@ func RunTUI(ctx context.Context, fetch func(context.Context) (*hitron.Snapshot, 
 			return
 		}
 		snapshot = next
+		history.Push(next)
 		fetchErr = nil
 	}
 
 	refresh()
 	auto := true
 	showHelp := false
+	showGraphs := true
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
@@ -85,7 +88,11 @@ func RunTUI(ctx context.Context, fetch func(context.Context) (*hitron.Snapshot, 
 			if fetchErr != nil {
 				errorText = fetchErr.Error()
 			}
-			lines = Frame(snapshot, width, height, interval, auto, errorText)
+			graphs := history
+			if !showGraphs {
+				graphs = nil
+			}
+			lines = Frame(snapshot, graphs, width, height, interval, auto, errorText)
 		}
 		var builder strings.Builder
 		builder.WriteString("\x1b[H")
@@ -113,6 +120,8 @@ func RunTUI(ctx context.Context, fetch func(context.Context) (*hitron.Snapshot, 
 				refresh()
 			case 'a', 'A':
 				auto = !auto
+			case 'g', 'G':
+				showGraphs = !showGraphs
 			case 'h', 'H', '?':
 				showHelp = !showHelp
 			}
