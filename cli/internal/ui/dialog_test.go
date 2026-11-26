@@ -90,3 +90,15 @@ func TestCodewordCell(t *testing.T) {
 		t.Errorf("got %q", got)
 	}
 }
+
+func TestNoLoginRebootSkipsCredentials(t *testing.T) {
+	m := model{snap: &hitron.Snapshot{}, noLogin: true,
+		reboot: func(context.Context, string, string) (string, error) { return "", nil }}
+	m = m.openDialog()
+	if m.dlg != dlgConfirm {
+		t.Fatalf("stage = %v, want confirm straight away", m.dlg)
+	}
+	if _, cmd := enter(m); cmd != nil {
+		t.Fatal("must still require the typed word")
+	}
+}

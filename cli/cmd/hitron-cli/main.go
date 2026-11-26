@@ -241,28 +241,50 @@ func runMonitor(ctx context.Context, client *hitron.Client, opts options) int {
 	// Reboot is offered where the CLI's own reboot command works. The CODA-57
 	// has no confirmed write endpoint, so it gets no button at all.
 	if client.Kind != hitron.KindCoda57 {
+		// On the CODA6X the reboot call is accepted from the LAN with no
+		// login, and customers are usually never given one, so the dialog
+		// asks for none. A login supplied with --user/--password is only used
+		// if the device refuses the anonymous call.
+		tui.NoLogin = client.Kind == hitron.KindCoda6X
 		tui.Reboot = func(runCtx context.Context, user, pass string) (string, error) {
 			// Work on a copy so the polling client's credentials never change
 			// underneath an in-flight read.
 			act := *client
-			act.Creds = hitron.Credentials{Username: user, Password: pass}
 			act.DefaultCreds = false
-			if err := act.Login(runCtx); err != nil {
-				return "", err
-			}
 			callCtx, cancel := context.WithTimeout(runCtx, opts.timeout*2)
 			defer cancel()
-			result, err := act.Reboot(callCtx)
-			if err != nil {
-				return "", err
+			send := func() (map[string]any, error) { return act.Reboot(callCtx) }
+			var result map[string]any
+			var err error
+			if user == "" && pass == "" {
+				result, err = send()
+				if err != nil {
+					return "", fmt.Errorf("%w (the device wants a login; run with --user and --password)", err)
+				}
+			} else {
+				act.Creds = hitron.Credentials{Username: user, Password: pass}
+				if tui.NoLogin {
+					// Try anonymously first; log in only if refused.
+					if result, err = send(); err != nil {
+						result = nil
+					}
+				}
+				if result == nil {
+					if err := act.Login(runCtx); err != nil {
+						return "", err
+					}
+					if result, err = send(); err != nil {
+						return "", err
+					}
+				}
 			}
 			if code := fmt.Sprint(result["errCode"]); code != "" && code != "000" && code != "<nil>" {
 				return "", fmt.Errorf("device answered errCode %s %v", code, result["errMsg"])
 			}
 			return fmt.Sprintf("Reboot sent to %s (%s)", client.Addr(), client.Kind.Label()), nil
 		}
-		// A login given on the command line or in the environment is reused;
-		// the confirmation still has to be typed.
+		// A login given on the command line or in the environment is kept as
+		// a fallback; the confirmation still has to be typed.
 		if !client.DefaultCreds && opts.user != "" && opts.password != "" {
 			tui.Username, tui.Password = opts.user, opts.password
 		}
@@ -609,6 +631,7 @@ Keys:
   t        next theme (remembered for next time)
   j / k    scroll (the mouse wheel works too)
   x        reboot, after a confirmation (also the Reboot button)
+  z        zero the FEC counters (counts since pressed; the modem has no reset)
   space    refresh now
   h        help overlay
 
@@ -616,8 +639,8 @@ Themes: neon (default), synthwave, dracula, nord, gruvbox, matrix.
 Pick one with --theme NAME or HITRON_THEME; the t key saves your choice.
 
 Reboot: x (or a click on the Reboot button) opens a dialog that asks for the
-login unless --user/--password were given, then makes you type the word
-reboot. Nothing is sent before that. Factory reset and hard reset are not in
+login (not on the CODA6X, which needs none from the LAN), then makes you
+type the word reboot. Nothing is sent before that. Factory reset and hard reset are not in
 the TUI; they stay separate commands. The CODA-57 has no reboot button.
 
 Flags:

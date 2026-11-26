@@ -31,6 +31,11 @@ type TUIOptions struct {
 	// the dialog skips asking for them. The confirmation step is never skipped.
 	Username, Password string
 
+	// NoLogin means the device accepts a local reboot without credentials
+	// (CODA6X at its LAN address), so the dialog does not ask for any. A login
+	// passed in Username/Password is still handed to Reboot as a fallback.
+	NoLogin bool
+
 	NoMouse bool
 }
 
@@ -79,7 +84,13 @@ type model struct {
 	width, height int
 	scroll        int
 
+	// fecBase holds the codeword counters captured when the user pressed z.
+	// The modem has no reset, so counts shown are the change since then.
+	fecBase  map[string][2]uint64
+	fecSince time.Time
+
 	reboot            RebootFunc
+	noLogin           bool
 	preUser, prePass  string
 	dlg               dialogStage
 	fUser, fPass, fOK []rune
@@ -100,7 +111,7 @@ func RunTUI(ctx context.Context, o TUIOptions) error {
 		ctx: ctx, fetch: o.Fetch, interval: interval, host: o.Host,
 		history: NewHistory(), auto: true, showGraphs: true,
 		width: 100, height: 32, loading: true,
-		reboot: o.Reboot, preUser: o.Username, prePass: o.Password,
+		reboot: o.Reboot, noLogin: o.NoLogin, preUser: o.Username, prePass: o.Password,
 	}
 	opts := []tea.ProgramOption{tea.WithAltScreen(), tea.WithContext(ctx)}
 	if !o.NoMouse {
@@ -150,7 +161,7 @@ func (m model) openDialog() model {
 	}
 	m.fUser, m.fPass, m.fOK = nil, nil, nil
 	m.dlgText, m.dlgErr = "", nil
-	if m.preUser != "" && m.prePass != "" {
+	if m.noLogin || (m.preUser != "" && m.prePass != "") {
 		m.fUser, m.fPass = []rune(m.preUser), []rune(m.prePass)
 		m.dlg = dlgConfirm
 	} else {
@@ -239,6 +250,14 @@ func (m model) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.showGraphs = !m.showGraphs
 	case "t":
 		SaveTheme(NextTheme().Name)
+	case "z":
+		if m.snap != nil {
+			if m.fecBase != nil {
+				m.fecBase, m.fecSince = nil, time.Time{}
+			} else {
+				m.fecBase, m.fecSince = fecBaseline(m.snap), time.Now()
+			}
+		}
 	case "x":
 		m = m.openDialog()
 	case "h", "?":
@@ -417,7 +436,7 @@ func (m model) rebootButtonRange() (int, int) {
 func (m model) footerLine() string {
 	hints := []string{
 		keycap("q", "quit"), keycap("r", "refresh"), keycap("a", "auto"),
-		keycap("g", "graphs"), keycap("t", "theme"), keycap("h", "help"),
+		keycap("g", "graphs"), keycap("z", "zero FEC"), keycap("t", "theme"), keycap("h", "help"),
 	}
 	left := " " + strings.Join(hints, "  ")
 	if m.reboot == nil {
@@ -493,7 +512,13 @@ func (m model) bodyView() string {
 	if len(m.snap.Steps) > 0 {
 		panels = append(panels, panel(fmt.Sprintf("DOCSIS  %d/%d", m.snap.StepsOK(), len(m.snap.Steps)), provisionLines(m.snap, inner)))
 	}
-	panels = append(panels, panel("Channels", capture(func(b *strings.Builder) { Channels(b, m.snap) })))
+	chTitle := "Channels"
+	view := m.snap
+	if m.fecBase != nil {
+		view = applyFECBaseline(m.snap, m.fecBase)
+		chTitle += "  " + MutedText("codewords since "+m.fecSince.Format("15:04:05")+" (z to restore)")
+	}
+	panels = append(panels, panel(chTitle, capture(func(b *strings.Builder) { Channels(b, view) })))
 	if m.snap.MoCA != nil {
 		panels = append(panels, panel("MoCA", capture(func(b *strings.Builder) { Moca(b, m.snap) })))
 	}
@@ -526,6 +551,7 @@ func (m model) helpView() string {
 		{"r / space", "refresh now"},
 		{"a", "toggle automatic refresh"},
 		{"g", "toggle trend graphs"},
+		{"z", "zero the FEC counters (toggle; shows counts since now)"},
 		{"t", "next theme (remembered for next time)"},
 		{"j / k, ↓ / ↑", "scroll (the mouse wheel works too)"},
 		{"x", "reboot the device, after a confirmation"},
@@ -554,6 +580,7 @@ func (m model) helpView() string {
 	b.WriteString(MutedText("  · Reads never log in on the analyzed firmware.\n"))
 	b.WriteString(MutedText("  · Reboot asks you to type the word “reboot”; clicking the button only opens that dialog.\n"))
 	b.WriteString(MutedText("  · Factory reset and hard reset stay separate commands.\n"))
+	b.WriteString(MutedText("  · The modem has no FEC reset; z only hides counts from before you pressed it.\n"))
 	b.WriteString(MutedText("  · With the mouse on, select text by holding Option (or Shift); --no-mouse turns it off."))
 	return panelBox(0).Render(b.String())
 }
@@ -580,7 +607,10 @@ func (m model) dialogView() string {
 			"Password  "+strings.Repeat("•", len(m.fPass))+cursor,
 			"", MutedText("Enter next · Esc cancels"))
 	case dlgConfirm:
-		if m.preUser != "" && m.prePass != "" {
+		switch {
+		case m.noLogin && m.preUser == "":
+			lines = append(lines, MutedText("No username or password needed at this address."), "")
+		case m.preUser != "" && m.prePass != "":
 			lines = append(lines, MutedText("Using the login from --user / the environment: "+string(m.fUser)), "")
 		}
 		typed := string(m.fOK)
