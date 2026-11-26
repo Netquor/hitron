@@ -155,7 +155,7 @@ func codewordCells(has bool, corrected, uncorrect uint64) (string, string) {
 }
 
 func typeCell(label string) string {
-	if label == "Classic" {
+	if label == "SC-QAM" {
 		return label
 	}
 	return Cyan(label)
@@ -166,7 +166,7 @@ func countSummary(parts ...string) string {
 }
 
 // Channels prints one downstream and one upstream table. Each row is typed:
-// Classic (SC-QAM / ATDMA), OFDM (downstream) or OFDMA (upstream). Disabled
+// SC-QAM (incl. ATDMA upstream), OFDM (downstream) or OFDMA (upstream). Disabled
 // OFDMA channels carry no signal and are left out, with a count in the
 // heading.
 func Channels(w io.Writer, s *hitron.Snapshot) {
@@ -182,13 +182,13 @@ func Channels(w io.Writer, s *hitron.Snapshot) {
 	} else {
 		fmt.Fprintln(w, "  "+Bold("Downstream")+"  "+countSummary(
 			fmt.Sprintf("%d channels", total),
-			fmt.Sprintf("%d classic", len(ds)),
+			fmt.Sprintf("%d SC-QAM", len(ds)),
 			fmt.Sprintf("%d OFDM", len(ofdm))))
 		rows := make([][]string, 0, total)
 		for _, ch := range ds {
 			corrected, uncorrect := codewordCells(ch.HasCodewords, ch.Corrected, ch.Uncorrect)
 			rows = append(rows, []string{
-				typeCell("Classic"), emptyDash(ch.ID), freq(ch.Frequency),
+				typeCell("SC-QAM"), emptyDash(ch.ID), freq(ch.Frequency),
 				powerCell(ch.Power, ch.HasPower, -6, 15), snrCell(ch.SNR, ch.HasSNR),
 				emptyDash(ch.Modulation), Dim("—"), corrected, uncorrect,
 			})
@@ -230,7 +230,7 @@ func Channels(w io.Writer, s *hitron.Snapshot) {
 	}
 	summary := []string{
 		fmt.Sprintf("%d channels", total),
-		fmt.Sprintf("%d classic", len(us)),
+		fmt.Sprintf("%d SC-QAM", len(us)),
 		fmt.Sprintf("%d OFDMA", len(ofdma)),
 	}
 	if disabled > 0 {
@@ -244,7 +244,7 @@ func Channels(w io.Writer, s *hitron.Snapshot) {
 			mode = ch.Modulation
 		}
 		rows = append(rows, []string{
-			typeCell("Classic"), emptyDash(ch.ID), freq(ch.Frequency), bandwidth(ch.Bandwidth),
+			typeCell("SC-QAM"), emptyDash(ch.ID), freq(ch.Frequency), bandwidth(ch.Bandwidth),
 			powerCell(ch.Power, ch.HasPower, 35, 48), emptyDash(mode), Dim("—"),
 		})
 	}

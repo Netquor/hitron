@@ -139,7 +139,7 @@ func TestChannelsTypedAndHidesDisabledOFDMA(t *testing.T) {
 	var b strings.Builder
 	Channels(&b, s)
 	out := b.String()
-	for _, want := range []string{"3 channels · 2 classic · 1 OFDM", "2 channels · 1 classic · 1 OFDMA · 2 disabled hidden", "OFDMA", "+40.0"} {
+	for _, want := range []string{"3 channels · 2 SC-QAM · 1 OFDM", "2 channels · 1 SC-QAM · 1 OFDMA · 2 disabled hidden", "OFDMA", "+40.0"} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("missing %q in:\n%s", want, out)
 		}
@@ -148,6 +148,6 @@ func TestChannelsTypedAndHidesDisabledOFDMA(t *testing.T) {
 		t.Fatalf("disabled OFDMA rows should not be shown:\n%s", out)
 	}
 	if strings.Index(out, "561.0 MHz") > strings.Index(out, "567.0 MHz") {
-		t.Fatalf("classic channels should be sorted by channel ID:\n%s", out)
+		t.Fatalf("SC-QAM channels should be sorted by channel ID:\n%s", out)
 	}
 }
