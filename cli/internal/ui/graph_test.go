@@ -65,8 +65,8 @@ func TestSparklineRightAlignedAndScaled(t *testing.T) {
 	defer func() { Color = prev }()
 
 	got := sparkline([]float64{0, 10}, 5, 0, 10, nil)
-	if got != "   ▁█" {
-		t.Fatalf("sparkline = %q, want %q", got, "   ▁█")
+	if got != "▁█   " {
+		t.Fatalf("sparkline = %q, want %q", got, "▁█   ")
 	}
 	// clamps out-of-range values instead of indexing past the glyph table
 	got = sparkline([]float64{-99, 99}, 2, 0, 10, nil)

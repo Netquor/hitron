@@ -9,9 +9,9 @@ import (
 var blocks = []rune("▁▂▃▄▅▆▇█")
 
 // sparkline renders vals as one row of block glyphs, scaled between lo and hi
-// and colored per point by color. Values are right-aligned so the newest
-// reading is always at the right edge; when there are fewer samples than
-// width the left side is blank rather than stretched.
+// and colored per point by color. A short history fills left to right so the
+// graph sits next to its label; once it reaches width it scrolls, newest
+// reading at the right edge.
 //
 // Scaling against a fixed range (the spec envelope) instead of the data's own
 // min/max is deliberate: auto-zooming makes a perfectly stable line look like
@@ -24,7 +24,6 @@ func sparkline(vals []float64, width int, lo, hi float64, color func(v float64) 
 		vals = vals[len(vals)-width:]
 	}
 	var b strings.Builder
-	b.WriteString(strings.Repeat(" ", width-len(vals)))
 	span := hi - lo
 	for _, v := range vals {
 		idx := 0
@@ -44,6 +43,7 @@ func sparkline(vals []float64, width int, lo, hi float64, color func(v float64) 
 		}
 		b.WriteString(glyph)
 	}
+	b.WriteString(strings.Repeat(" ", width-len(vals)))
 	return b.String()
 }
 
@@ -94,20 +94,20 @@ func floorColor(floor float64) func(v float64) func(string) string {
 // graphRow is one labelled trend line:
 //
 //	label   sparkline   now  (min..max)
-func graphRow(label string, ser *series, width int, lo, hi float64, color func(float64) func(string) string, unit string) string {
+func graphRow(label string, ser *series, width int, lo, hi float64, color func(float64) func(string) string, unit, format string) string {
 	vals := ser.values()
 	if len(vals) == 0 {
 		return "  " + Dim(pad(label, 14)) + " " + Dim("no readings")
 	}
 	now, _ := ser.last()
 	wmin, wmax := minMax(vals)
-	trailer := fmt.Sprintf("%+.1f%s  %s", now, unit, Dim(fmt.Sprintf("(%+.1f..%+.1f)", wmin, wmax)))
+	trailer := fmt.Sprintf(format+"%s  %s", now, unit, Dim(fmt.Sprintf("("+format+".."+format+")", wmin, wmax)))
 	return "  " + Dim(pad(label, 14)) + " " + sparkline(vals, width, lo, hi, color) + "  " + trailer
 }
 
 // Graphs renders the trend block. Fixed ranges: downstream power uses the
 // spec envelope padded a little; SNR is plotted 20..45 dB, the range cable
-// plant actually lives in; upstream uses its 35..48 envelope.
+// plant actually lives in; upstream is plotted 28..52 so readings below the 35 floor stay visible.
 func Graphs(h *History, width int) []string {
 	// Reserve room for the label (14), gutters, and the numeric trailer.
 	graphWidth := width - 14 - 4 - 28
@@ -119,8 +119,8 @@ func Graphs(h *History, width int) []string {
 	}
 	return []string{
 		"  " + Bold("Trends") + "  " + Dim(fmt.Sprintf("%d polls", h.Samples)),
-		graphRow("DS power", &h.DSPower, graphWidth, -8, 17, specColor(-6, 15), " dBmV"),
-		graphRow("DS SNR (min)", &h.DSSNR, graphWidth, 20, 45, floorColor(33), " dB"),
-		graphRow("US power", &h.USPower, graphWidth, 33, 50, specColor(35, 48), " dBmV"),
+		graphRow("DS power", &h.DSPower, graphWidth, -8, 17, specColor(-6, 15), " dBmV", "%+.1f"),
+		graphRow("DS SNR (min)", &h.DSSNR, graphWidth, 20, 45, floorColor(33), " dB", "%.1f"),
+		graphRow("US power", &h.USPower, graphWidth, 28, 52, specColor(35, 48), " dBmV", "%+.1f"),
 	}
 }

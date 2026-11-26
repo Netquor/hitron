@@ -175,7 +175,7 @@ func (m model) View() string {
 
 	out := append(append([]string{}, header...), visible...)
 	if maxScroll > 0 {
-		footer += mutedStyle.Render(fmt.Sprintf("   j/k scroll %d/%d", m.scroll, maxScroll))
+		footer += mutedStyle.Render(fmt.Sprintf("  j/k scroll (%d/%d)", m.scroll, maxScroll))
 	}
 	return strings.Join(append(out, footer), "\n")
 }
@@ -205,7 +205,7 @@ func (m model) headerLines() []string {
 }
 
 func (m model) footerLine() string {
-	keys := "q quit  r refresh  a auto  g graphs  j/k scroll  h help"
+	keys := "q quit  r refresh  a auto  g graphs  h help"
 	if m.err != nil {
 		keys = strings.Replace(keys, "r refresh", "r retry", 1)
 	}
@@ -236,7 +236,7 @@ func (m model) bodyView() string {
 		panels = append(panels, panel("Trends", Graphs(m.history, inner)[1:]))
 	}
 	if len(m.snap.Steps) > 0 {
-		panels = append(panels, panel("DOCSIS", capture(func(b *strings.Builder) { Provision(b, m.snap) })))
+		panels = append(panels, panel(fmt.Sprintf("DOCSIS  %d/%d", m.snap.StepsOK(), len(m.snap.Steps)), provisionLines(m.snap, inner)))
 	}
 	panels = append(panels, panel("Channels", capture(func(b *strings.Builder) { Channels(b, m.snap) })))
 	if m.snap.MoCA != nil {
@@ -284,4 +284,33 @@ func (m model) helpView() string {
 	b.WriteString(mutedStyle.Render("  · Destructive actions are separate commands, never keys.\n"))
 	b.WriteString(mutedStyle.Render("  · Use --once for a one-shot report, --json for machine output."))
 	return panelStyle.Render(b.String())
+}
+
+// provisionLines lays the provisioning milestones out in rows that fit width,
+// so a failing step is never pushed off the right edge.
+func provisionLines(s *hitron.Snapshot, width int) []string {
+	var lines []string
+	row, rowLen := "", 0
+	for _, step := range s.Steps {
+		mark := Green("✓")
+		if !step.OK {
+			mark = Red("✗")
+		}
+		item := mark + " " + step.Name
+		itemLen := 2 + len([]rune(step.Name))
+		if row != "" && rowLen+3+itemLen > width-2 {
+			lines = append(lines, "  "+row)
+			row, rowLen = "", 0
+		}
+		if row != "" {
+			row += Dim("  ·  ")
+			rowLen += 5
+		}
+		row += item
+		rowLen += itemLen
+	}
+	if row != "" {
+		lines = append(lines, "  "+row)
+	}
+	return lines
 }
