@@ -32,6 +32,15 @@ type rawState struct {
 	saved string
 }
 
+// stty runs stty against the process's own stdin. Without an explicit Stdin,
+// os/exec gives the child /dev/null, so stty reports "not a terminal" and every
+// TUI invocation fails before the first frame.
+func stty(args ...string) *exec.Cmd {
+	cmd := exec.Command("stty", args...)
+	cmd.Stdin = os.Stdin
+	return cmd
+}
+
 // EnterRaw puts the terminal in raw mode without echo. Restore is safe to call
 // more than once.
 func EnterRaw() (*rawState, error) {
@@ -40,9 +49,7 @@ func EnterRaw() (*rawState, error) {
 		return nil, fmt.Errorf("stdin is not a terminal")
 	}
 	saved := strings.TrimSpace(string(out))
-	cmd := exec.Command("stty", "raw", "-echo")
-	cmd.Stdin = os.Stdin
-	if err := cmd.Run(); err != nil {
+	if err := stty("raw", "-echo").Run(); err != nil {
 		return nil, err
 	}
 	return &rawState{saved: saved}, nil
@@ -52,9 +59,7 @@ func (r *rawState) Restore() {
 	if r == nil || r.saved == "" {
 		return
 	}
-	cmd := exec.Command("stty", strings.Fields(r.saved)...)
-	cmd.Stdin = os.Stdin
-	_ = cmd.Run()
+	_ = stty(strings.Fields(r.saved)...).Run()
 }
 
 // ReadKey returns one byte from stdin.
@@ -79,15 +84,11 @@ func ReadPassword(prompt string) (string, error) {
 		return strings.TrimRight(line, "\r\n"), readErr
 	}
 	saved := strings.TrimSpace(string(out))
-	disable := exec.Command("stty", "-echo")
-	disable.Stdin = os.Stdin
-	if err := disable.Run(); err != nil {
+	if err := stty("-echo").Run(); err != nil {
 		return "", err
 	}
 	defer func() {
-		restore := exec.Command("stty", strings.Fields(saved)...)
-		restore.Stdin = os.Stdin
-		_ = restore.Run()
+		_ = stty(strings.Fields(saved)...).Run()
 		fmt.Fprintln(os.Stdout)
 	}()
 	line, err := bufio.NewReader(os.Stdin).ReadString('\n')

@@ -1,6 +1,6 @@
 [project]
 name = "hitron"
-version = "0.2.2"
+version = "0.3.0"
 description = "Golden source for Hitron HT-EM5 / CODA60 / CODA57: client libraries, OpenAPI specs, and a unified Prometheus metrics exporter."
 readme = "README.md"
 requires-python = ">=3.11"

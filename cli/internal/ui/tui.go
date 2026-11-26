@@ -3,6 +3,7 @@ package ui
 import (
 	"context"
 	"fmt"
+	"math"
 	"strings"
 	"time"
 
@@ -36,6 +37,13 @@ type TUIOptions struct {
 	// passed in Username/Password is still handed to Reboot as a fallback.
 	NoLogin bool
 
+	// Spectrum and constellation readers (CODA6X). Any may be nil; the view
+	// then says it is unavailable instead of failing.
+	Channels      func(context.Context) ([]hitron.SpectrumChannel, error)
+	Sweep         func(context.Context, float64) (*hitron.SpectrumSweep, error)
+	RealTime      func(context.Context) ([]hitron.RealTimeFrame, error)
+	Constellation func(context.Context, int) (*hitron.Constellation, error)
+
 	NoMouse bool
 	// NoBackground turns the themed gradient background off.
 	NoBackground bool
@@ -62,6 +70,27 @@ type snapMsg struct {
 	at   time.Time
 }
 
+// specMsg and consMsg carry one analyser capture. channels is set only when
+// the analyser channel list was fetched by this command.
+type specMsg struct {
+	channels      []hitron.SpectrumChannel
+	channelsTried bool
+	channelsErr   error
+	center        float64
+	sweep         *hitron.SpectrumSweep
+	sweepErr      error
+	frames        []hitron.RealTimeFrame
+}
+
+type consMsg struct {
+	channels      []hitron.SpectrumChannel
+	channelsTried bool
+	channelsErr   error
+	port          int
+	cons          *hitron.Constellation
+	err           error
+}
+
 type rebootMsg struct {
 	text string
 	err  error
@@ -85,6 +114,23 @@ type model struct {
 
 	width, height int
 	scroll        int
+
+	src  TUIOptions
+	mode viewMode
+	// dirty means the user changed view or channel while a capture was in
+	// flight; one more is issued as soon as it lands.
+	dirty bool
+
+	channels       []hitron.SpectrumChannel
+	channelsErr    error
+	channelsLoaded bool
+	centerMHz      float64
+	sweep          *hitron.SpectrumSweep
+	sweepErr       error
+	realTime       []hitron.RealTimeFrame
+	portID         int
+	cons           *hitron.Constellation
+	consErr        error
 
 	// fecBase holds the codeword counters captured when the user pressed z.
 	// The modem has no reset, so counts shown are the change since then.
@@ -111,6 +157,7 @@ func RunTUI(ctx context.Context, o TUIOptions) error {
 		interval = time.Second
 	}
 	m := model{
+		src: o, portID: -1,
 		ctx: ctx, fetch: o.Fetch, interval: interval, host: o.Host,
 		history: NewHistory(), auto: true, showGraphs: true,
 		width: 100, height: 32, loading: true,
@@ -179,13 +226,17 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
 	case snapMsg:
-		m.loading = false
 		if msg.err != nil {
 			m.err = msg.err
-			return m, nil
+			return m.afterRead()
 		}
 		m.snap, m.err, m.lastOK = msg.snap, nil, msg.at
 		m.history.Push(msg.snap)
+		return m.afterRead()
+	case specMsg:
+		return m.applySpec(msg).afterRead()
+	case consMsg:
+		return m.applyCons(msg).afterRead()
 	case rebootMsg:
 		wipe(m.fPass)
 		m.fPass = nil
@@ -195,8 +246,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// flight and no dialog is open, so a slow modem can't stack requests
 		// and a reboot isn't racing a poll.
 		if m.auto && !m.loading && m.dlg == dlgNone {
-			m.loading = true
-			return m, tea.Batch(m.fetchCmd(), m.tickCmd())
+			next, cmd := m.issue()
+			return next, tea.Batch(cmd, m.tickCmd())
 		}
 		return m, m.tickCmd()
 	case tea.MouseMsg:
@@ -211,7 +262,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m model) mouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
-	if m.dlg != dlgNone || m.showHelp {
+	if m.dlg != dlgNone || m.showHelp || m.mode != viewSummary {
 		return m, nil
 	}
 	switch {
@@ -244,9 +295,36 @@ func (m model) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, tea.Quit
 	case "r", " ":
 		if !m.loading {
-			m.loading = true
-			return m, m.fetchCmd()
+			return m.issue()
 		}
+	case "1":
+		m.mode, m.scroll = viewSummary, 0
+		return m.refreshOrQueue()
+	case "2", "s":
+		m.mode = viewSpectrum
+		return m.refreshOrQueue()
+	case "3", "c":
+		m.mode = viewConstellation
+		return m.refreshOrQueue()
+	case "[", "]", "p":
+		if m.mode == viewSummary {
+			return m, nil
+		}
+		delta := -1
+		if msg.String() != "[" {
+			delta = 1
+		}
+		return m.stepChannel(delta).refreshOrQueue()
+	case ",", ".":
+		if m.mode != viewSpectrum {
+			return m, nil
+		}
+		delta := -1.0
+		if msg.String() == "." {
+			delta = 1
+		}
+		m.centerMHz = math.Max(49, math.Min(1788, m.centerMHz+delta))
+		return m.refreshOrQueue()
 	case "a":
 		m.auto = !m.auto
 	case "g":
@@ -359,6 +437,10 @@ func (m model) render() string {
 		return m.dialogView()
 	case m.showHelp:
 		return m.helpView()
+	case m.mode == viewSpectrum:
+		return m.spectrumView()
+	case m.mode == viewConstellation:
+		return m.constellationView()
 	case m.snap == nil:
 		return m.waitingView()
 	}
@@ -417,14 +499,18 @@ func rule(width int) string {
 	return fg(CurrentTheme().Border, strings.Repeat("─", width))
 }
 
-func (m model) headerLines() []string {
+// topLine is the one-line title bar shared by every view.
+func (m model) topLine() string {
 	th := CurrentTheme()
-	model := m.snap.Model
-	if model == "" {
-		model = m.snap.Kind.Label()
+	model, detail := m.host, ""
+	if m.snap != nil {
+		model = m.snap.Model
+		if model == "" {
+			model = m.snap.Kind.Label()
+		}
+		detail = "  " + m.snap.Host + "  ·  " + m.snap.Kind.Label()
 	}
-	left := " " + AccentBold("hitron") + MutedText("  ·  ") + Bold(model) +
-		MutedText("  "+m.snap.Host+"  ·  "+m.snap.Kind.Label())
+	left := " " + AccentBold("hitron") + MutedText("  ·  ") + Bold(model) + MutedText(detail)
 	right := MutedText(time.Now().Format("15:04:05")) + "  " + m.statusText() + "  " + MutedText(th.Name) + " "
 	gap := m.width - lipgloss.Width(left) - lipgloss.Width(right)
 	if gap < 2 {
@@ -436,6 +522,11 @@ func (m model) headerLines() []string {
 	if gap >= 2 {
 		line = left + strings.Repeat(" ", gap) + right
 	}
+	return line
+}
+
+func (m model) headerLines() []string {
+	line := m.topLine()
 	lines := []string{line, rule(m.width)}
 	switch {
 	case m.err != nil:
@@ -478,7 +569,7 @@ func (m model) rebootButtonRange() (int, int) {
 
 func (m model) footerLine() string {
 	hints := []string{
-		keycap("q", "quit"), keycap("r", "refresh"), keycap("a", "auto"),
+		keycap("q", "quit"), keycap("r", "refresh"), keycap("a", "auto"), keycap("1 2 3", "views"),
 		keycap("g", "graphs"), keycap("z", "zero FEC"), keycap("t", "theme"), keycap("h", "help"),
 	}
 	left := " " + strings.Join(hints, "  ")
@@ -603,6 +694,9 @@ func (m model) helpView() string {
 		{"q / ctrl+c", "quit"},
 		{"r / space", "refresh now"},
 		{"a", "toggle automatic refresh"},
+		{"1 / 2 / 3", "summary / live spectrum / constellation (also s, c)"},
+		{"[ ]  p", "previous / next analyser channel"},
+		{", .", "fine-tune the spectrum centre by 1 MHz"},
 		{"g", "toggle trend graphs"},
 		{"b", "toggle the gradient background (needs a 24-bit colour terminal)"},
 		{"z", "zero the FEC counters (toggle; shows counts since now)"},
@@ -634,6 +728,8 @@ func (m model) helpView() string {
 	b.WriteString(MutedText("  · Reads never log in on the analyzed firmware.\n"))
 	b.WriteString(MutedText("  · Reboot asks you to type the word “reboot”; clicking the button only opens that dialog.\n"))
 	b.WriteString(MutedText("  · Factory reset and hard reset stay separate commands.\n"))
+	b.WriteString(MutedText("  · One hardware tuner serves every capture; requests stay sequential.\n"))
+	b.WriteString(MutedText("  · Inactive constellation ports answer empty; that is not an error.\n"))
 	b.WriteString(MutedText("  · The modem has no FEC reset; z only hides counts from before you pressed it.\n"))
 	b.WriteString(MutedText("  · With the mouse on, select text by holding Option (or Shift); --no-mouse turns it off."))
 	return panelBox(0).Render(b.String())

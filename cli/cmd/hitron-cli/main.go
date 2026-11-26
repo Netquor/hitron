@@ -241,7 +241,32 @@ func runMonitor(ctx context.Context, client *hitron.Client, opts options) int {
 	fetch := func(runCtx context.Context) (*hitron.Snapshot, error) {
 		return snapshotWithTimeout(runCtx, client, opts.timeout)
 	}
+	// Analyser reads share one hardware tuner on the modem, so each gets its
+	// own generous timeout and the TUI never runs two at once.
+	analyser := func(runCtx context.Context) (context.Context, context.CancelFunc) {
+		return context.WithTimeout(runCtx, opts.timeout*2)
+	}
 	tui := ui.TUIOptions{
+		Channels: func(runCtx context.Context) ([]hitron.SpectrumChannel, error) {
+			callCtx, cancel := analyser(runCtx)
+			defer cancel()
+			return client.SpectrumChannels(callCtx)
+		},
+		Sweep: func(runCtx context.Context, centerMHz float64) (*hitron.SpectrumSweep, error) {
+			callCtx, cancel := analyser(runCtx)
+			defer cancel()
+			return client.SpectrumSweep(callCtx, centerMHz)
+		},
+		RealTime: func(runCtx context.Context) ([]hitron.RealTimeFrame, error) {
+			callCtx, cancel := analyser(runCtx)
+			defer cancel()
+			return client.RealTimeSpectrum(callCtx)
+		},
+		Constellation: func(runCtx context.Context, portID int) (*hitron.Constellation, error) {
+			callCtx, cancel := analyser(runCtx)
+			defer cancel()
+			return client.Constellation(callCtx, portID)
+		},
 		Fetch:        fetch,
 		Interval:     opts.interval,
 		Host:         client.Addr(),
@@ -648,6 +673,11 @@ Keys:
   z        zero the FEC counters (counts since pressed; the modem has no reset)
   space    refresh now
   h        help overlay
+  1        summary
+  2 / s    live spectrum (6 MHz capture)
+  3 / c    constellation (I/Q)
+  [ ]      previous / next analyser channel
+  , .      fine-tune the spectrum centre by 1 MHz
 
 Themes: neon (default), synthwave, dracula, nord, gruvbox, matrix.
 Pick one with --theme NAME or HITRON_THEME; the t key saves your choice.
@@ -665,6 +695,10 @@ Flags:
 
 The TUI needs a real terminal. Use --once to get the same report as text, or
 --json for a snapshot.
+
+The spectrum and constellation views exist only on the CODA6X family. Both read
+the same single hardware tuner, so captures are sequential: one 6 MHz window
+per refresh. Inactive constellation ports answer 200 with an empty cloud.
 
 Examples:
   hitron-cli monitor --host 192.168.100.1 --interval 3s

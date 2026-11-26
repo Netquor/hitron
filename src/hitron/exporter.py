@@ -55,9 +55,15 @@ from .formats import (
 from .grafana import write_bundle
 from .ht_em5 import HitronMocaClient
 from .metrics import Sample, SpecRange, coda57_samples, coda60_samples, dedupe, ht_em5_samples
+from .models import ModelProfile, get_profile
 
 log = logging.getLogger("hitron.exporter")
-VERSION = "0.2.0"
+VERSION = "0.3.0"
+
+# Per-host capability profile, resolved once and reused for every scrape.
+# Detection costs ~10 GETs and only changes which endpoints are polled, so
+# caching it for the process lifetime is safe; a restart re-detects.
+_CODA60_PROFILES: dict[str, ModelProfile] = {}
 
 
 # ---------------------------------------------------------------------------
@@ -114,6 +120,7 @@ class Config:
     interval: float = 30.0
     phy_rates: bool = False
     spec: SpecRange = field(default_factory=SpecRange)
+    coda60_model: str | None = None
 
 
 @dataclass
@@ -186,7 +193,23 @@ class Collector:
 
     async def _coda60(self, target: Target) -> tuple[list[Sample], str]:
         try:
-            snapshot = await Coda60Client(target.host).get_all()
+            client = Coda60Client(target.host)
+            profile = _CODA60_PROFILES.get(target.host)
+            if profile is None:
+                if self.config.coda60_model:
+                    profile = get_profile(self.config.coda60_model)
+                    if profile is None:
+                        raise ValueError(f"unknown coda60 model profile {self.config.coda60_model!r}")
+                    _CODA60_PROFILES[target.host] = profile
+                else:
+                    match = await client.detect_profile()
+                    profile = match.profile
+                    _CODA60_PROFILES[target.host] = profile
+                    log.info(
+                        "coda60 %s: model profile %s (matched by %s)",
+                        target.name, profile.id, match.matched_by,
+                    )
+            snapshot = await client.get_all(profile=profile)
             return coda60_samples(snapshot, source=target.name), ""
         except Exception as exc:  # noqa: BLE001 - one bad device must not stop the rest
             return [], str(exc)
@@ -350,6 +373,7 @@ def build_config(args: argparse.Namespace) -> Config:
         interval=args.interval,
         phy_rates=args.phy_rates,
         spec=SpecRange(args.ds_spec_min, args.ds_spec_max, args.us_spec_min, args.us_spec_max),
+        coda60_model=args.coda60_model,
     )
 
 
@@ -387,6 +411,8 @@ def main(argv: list[str] | None = None) -> None:
     ap.add_argument("--interval", type=float, default=float(os.environ.get("HITRON_EXPORTER_INTERVAL", "30")))
     ap.add_argument("--ht-em5", action="append", default=[], metavar="[NAME=]HOST", help="HT-EM5 bridge; repeatable")
     ap.add_argument("--coda60", action="append", default=[], metavar="[NAME=]HOST", help="CODA6X gateway; repeatable")
+    ap.add_argument("--coda60-model", default=os.environ.get("HITRON_CODA60_MODEL") or None,
+                    help="force a CODA6X model profile (e.g. coda6011uv) instead of detecting it")
     ap.add_argument("--coda57", action="append", default=[], metavar="[NAME=]HOST", help="CODA-57 legacy gateway; repeatable")
     ap.add_argument("--phy-rates", action="store_true", help="also collect the HT-EM5 PHY-rate matrix (slow)")
     ap.add_argument("--ds-spec-min", type=float, default=float(os.environ.get("HITRON_DS_SPEC_MIN", "-6")))

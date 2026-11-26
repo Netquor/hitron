@@ -104,6 +104,69 @@ Full spec: `../specs/openapi-coda60.yaml`. Client: `../src/hitron/coda60.py`.
   (`/1/Device/API/Register`) issuing a bearer token sent as a custom `ht-app-header`.
 - Confirmed against the independently-derived `CODA_60.py` field names — they match,
   strong corroboration this spec's shape is right.
+- One firmware image is shared across the whole CODA family. `app/routes.ini` has 87
+  route patterns; the controllers' `@info` / `@ifname` branches expand them to 104
+  concrete read targets. Which of those a given SKU should be asked for is a
+  capability question, not a routing one — see the next two subsections.
+
+### Model identity: `/deviceinfo`, not TR-181
+
+On the live 8.7.1.0.1b4 unit both `CM/Version` and `Router/SysInfo` report
+`modelName: null`, so there is nothing in `/1/Device/*` to key a per-model adapter on.
+The root telemetry route does report it:
+
+    GET /deviceinfo
+    {"errCode":"000","device_id":"...","hw_model":"CODA60","hw_manufacturer":"Hitron Technologies",
+     "hardware_version":"1A","software_version":"8.7.1.0.1b4","serial_number":"..."}
+
+`/deviceinfo` is not under `/1/Device/` — it maps to the root `@info` route handled by
+`TelemetryAssist`, alongside `/rfmetrics` and `/pnm` (plus `/pnm/{rxmer,ch_est_coef,
+us_pre_eq,mod_prof}`). Those are unauthenticated and were missed by the earlier
+`/1/Device`-only survey. `src/hitron/models.py` prefers `hw_model` over
+`Device.DeviceInfo.ModelName`, then falls back to a probe-refined generic profile.
+If a build reports a family label rather than a SKU, pass `--model` explicitly; probe
+evidence can still add WiFi/voice back, but it cannot detect router mode.
+
+### Capability gating, and why a 200 is not proof
+
+`specs/models.json` is an 18-profile catalog (vendor portfolio rows plus the
+firmware-internal strings in `MenuCreater.php`: `CODA-4589-CGO`, `CODA-4589-RES`,
+`CHITA-MGC`, `CHITA-RES`, `CODA-4582-RES`). Each profile carries DOCSIS generation,
+WiFi bands, voice lines, MoCA, USB, battery and router-mode flags;
+`src/hitron/adapters.py` tags every endpoint with the capability it needs, and
+`plan(profile)` selects the intersection.
+
+The trap this design exists to avoid: the shared app answers `/1/Device/WiFi/WPS`
+and `/1/Device/MTA/StatusInfo` with **200 on a wired-only CODA60**, with empty strings
+and null hardware fields (`NumberOfSLIC: null`, all `LineNRegState: null`). A
+status-code-only prober concludes "WiFi + voice" and then alarms on hardware that does
+not exist. Probes are therefore evidence-based: a populated BSSID/SSID means a radio,
+a non-null SLIC count or line state means an EMTA. An empty USB list means an empty
+port, not an absent one, so it never removes the capability.
+
+### Live verification: 8.7.1.0.1b4 (customer-owned CODA60, 2026-11-26)
+
+GET-only, no writes, no reboot/reset. Full table in `VERIFICATION.md`; the machine
+readable report is `../specs/verification-coda60.json`. Headline:
+
+- 104 branch targets probed: **43 ok, 7 rejected, 54 PHP-8 500s**.
+- The 500s are shipped-controller bugs, not request shaping: 37
+  `Undefined array key "info"`, 7 `getInstanceIds()` (platform defines
+  `getInstanceIDs`), 5 `Optional parameter $radio declared before required`, plus
+  dynamic-property/type errors. They fail identically in the browser.
+- Every `/WiFi/Radios/*` and `/WiFi/SSIDs*` read is dead on this build: `RadioInfo`
+  fatals at class load, and `Utils::checkValidIfName()` does a `string + string`.
+- Corrected shapes vs. the first pass: `/Menu/Main` and `/Menu/Sub` are
+  case-sensitive (lowercase `main` is rejected); SSID reads need
+  `/WiFi/SSIDs/{ifname}/version`, not a numeric index; the WiFi survey shape is
+  `/WiFi/Radios/Advanced`; telemetry lives at the root, not under `/1/Device`.
+- `/1/Device/Manage` returns `cusadmin,false` in plaintext to an unauthenticated
+  GET — the admin username, disclosed before login.
+- `/1/Device/AdminRemoteManagement/Backup` is exposed but 500s: `confPhp get` never
+  creates `/tmp/basic.cfg`.
+- `/1/Device/Upload` accepts a `.cfg` upload into `/var/tmp` without auth; the
+  restore handler builds `exec('confPhp restore '.$target)` from an unvalidated
+  filename. Neither was exercised.
 
 ### Radio/channel deep dive
 
@@ -204,9 +267,9 @@ development machine during this pass (different subnet). Re-verify before relyin
 3. ~~**HT-EM5:** sweep the other two bridges to confirm the register map and TR-069
    block are consistent across units.~~ **Done.** Confirmed identical on all three
    physical bridges — see §1.
-4. **CODA6X:** confirm the exact `@info` routing convention (path segment vs.
-   querystring) against live traffic — `coda60.py` assumes path segments
-   (`/1/Device/CM/DsInfo`) based on the router pattern in the firmware's `routes.ini`.
+4. ~~**CODA6X:** confirm the exact `@info` routing convention (path segment vs.
+   querystring) against live traffic.~~ **Done.** Path segments; 104 concrete
+   targets measured on 8.7.1.0.1b4 — see `VERIFICATION.md`.
 5. **CODA6X:** never exercise `/1/Device/Manage` (admin password), reboot, or factory
    reset against a real unit without being asked each time.
 6. **Decide on the TR-069 finding** — it's a firmware default shared across every
@@ -217,5 +280,11 @@ development machine during this pass (different subnet). Re-verify before relyin
    the external `hitron-client` sidecar with `pip install`-ing this repo (or vendoring
    it) and pointing `server/src/features/modem` and the exporter at it. Not done as
    part of writing this repo — a deliberate choice for whoever does that integration.
-8. **Add the spectrum analyzer to `coda60.py`** — `/1/Device/Spectrum/*` is read-only
-   and documented in the spec but not yet wrapped in the client.
+8. ~~**Add the spectrum analyzer to `coda60.py`**~~ **Partly done.** Every Spectrum
+   GET is in the adapter registry and the verifier, and `/Spectrum`, `/FreqList` and
+   `/RTData` are measured working. `/Constellation` and `/FreqPower` 500 on this build
+   (the handler reads `$args['query']`, which the route never supplies), so they stay
+   out of the poller.
+9. **Fix upstream, not around:** the PHP-8 fatals are a firmware bug. If Hitron ships a
+   build with `getInstanceIDs()` and the `$radio`/`$f3` signature corrected, most of
+   the 48 dead endpoints come back with no client change.

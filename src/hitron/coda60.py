@@ -25,7 +25,15 @@ from typing import Any
 
 import aiohttp
 
-__all__ = ["Coda60Client", "WriteNotAuthenticated"]
+from .adapters import get_endpoint
+from .models import (
+    CapabilityProbes,
+    ModelProfile,
+    ProfileMatch,
+    detect_profile as _detect_profile,
+)
+
+__all__ = ["Coda60Client", "WriteNotAuthenticated", "select_endpoints"]
 
 
 class WriteNotAuthenticated(RuntimeError):
@@ -304,7 +312,52 @@ ENDPOINTS: list[dict[str, Any]] = [
             "mocaLink": "Link Status",
         },
     },
+    {
+        # Only present on SKUs with WiFi. select_endpoints() drops this for a
+        # CODA60/60U/60V, so a wireless-less gateway is never asked for it.
+        "endpoint": "WiFi/WPS",
+        "gathers": {
+            "wlsWpsOnOff": "WPS Enabled",
+            "wlsWpsStatus": "WPS Status",
+            "wlsWpsMethod": "WPS Method",
+        },
+    },
+    {
+        # Only present on voice SKUs (CODA60V / 6011UV / 57 / EN2251-HSP).
+        "endpoint": "MTA/StatusInfo",
+        "gathers": {
+            "telDhcp": "Telephony DHCP",
+            "telSec": "Telephony Security",
+            "telReg": "Telephony Registration",
+            "voiceProtocol": "Voice Protocol",
+            "line1CallState": "Line 1 Call State",
+        },
+    },
+    {
+        "endpoint": "USB/DeviceList",
+        "gathers": {
+            "ListNumberOfEntries": "USB Device Count",
+        },
+    },
 ]
+
+
+def select_endpoints(profile: ModelProfile | None) -> list[dict[str, Any]]:
+    """The subset of ENDPOINTS that ``profile`` can actually answer.
+
+    ``profile=None`` returns everything (the historical behaviour). A profile
+    with no WiFi drops ``WiFi/WPS``; no voice drops ``MTA/StatusInfo``; no MoCA
+    drops ``MoCA``; no battery/LTE drops those too. The capability requirement
+    itself lives once, in ``adapters.ENDPOINTS``.
+    """
+    if profile is None:
+        return list(ENDPOINTS)
+    selected: list[dict[str, Any]] = []
+    for entry in ENDPOINTS:
+        endpoint = get_endpoint(f"/1/Device/{entry['endpoint']}")
+        if endpoint is None or (endpoint.applies_to(profile) and endpoint.working):
+            selected.append(entry)
+    return selected
 
 
 def clean_value(val: Any) -> Any:
@@ -379,6 +432,89 @@ class Coda60Client:
 
     async def __aexit__(self, *exc) -> None:
         await self.close()
+
+    # ---- capability detection --------------------------------------------
+
+    async def _probe_json(self, session: aiohttp.ClientSession, path: str) -> Any:
+        url = f"http://{self.host}{path}" if path.startswith("/") else f"{self.base_url}/{path}"
+        try:
+            async with session.get(
+                url, timeout=aiohttp.ClientTimeout(total=self.timeout)
+            ) as resp:
+                if resp.status != 200:
+                    return None
+                return await resp.json(content_type=None)
+        except Exception:  # noqa: BLE001 - a probe that fails is "unknown", not fatal
+            return None
+
+    async def get_identity(self) -> dict[str, Any]:
+        """Merge /deviceinfo, CM/Version and Router/SysInfo into one identity dict."""
+        async with aiohttp.ClientSession() as session:
+            info = await self._probe_json(session, "/deviceinfo")
+            version = await self._probe_json(session, "CM/Version")
+            router = await self._probe_json(session, "Router/SysInfo")
+        identity: dict[str, Any] = {}
+        for body in (info, version, router):
+            if isinstance(body, dict):
+                identity.update({k: v for k, v in body.items() if k not in ("errCode", "errMsg") and v is not None})
+        return identity
+
+    async def detect_profile(self, model: str | None = None) -> ProfileMatch:
+        """Read-only: probe capabilities, then resolve a model profile.
+
+        ``model`` forces a profile id/alias (e.g. ``coda6011uv``); otherwise the
+        device's ``hw_model`` (from ``/deviceinfo``) is used, falling back to a
+        probe-refined generic profile.
+
+        Probes are evidence-based, not status-based: the shared CODA6X app
+        answers ``/WiFi/WPS`` and ``/MTA/StatusInfo`` on a wired-only CODA60,
+        so a 200 only counts when the payload shows a real radio/SLIC.
+        """
+        async with aiohttp.ClientSession() as session:
+            info = await self._probe_json(session, "/deviceinfo")
+            version = await self._probe_json(session, "CM/Version")
+            router = await self._probe_json(session, "Router/SysInfo")
+            wifi_wps = await self._probe_json(session, "WiFi/WPS")
+            wifi_guest = await self._probe_json(session, "WiFi/GuestSSID")
+            mta = await self._probe_json(session, "MTA/StatusInfo")
+            moca = await self._probe_json(session, "MoCA")
+            usb = await self._probe_json(session, "USB/DeviceList")
+            spectrum = await self._probe_json(session, "Spectrum")
+            ds_ofdm = await self._probe_json(session, "CM/DsOfdm")
+            us_ofdm = await self._probe_json(session, "CM/UsOfdm")
+
+        identity: dict[str, Any] = {}
+        for body in (info, version, router):
+            if isinstance(body, dict):
+                identity.update({k: v for k, v in body.items() if k not in ("errCode", "errMsg") and v is not None})
+
+        wifi_body = {**(wifi_wps or {}), **(wifi_guest or {})}
+        wifi: bool | None = None
+        if wifi_body:
+            wifi = any(
+                isinstance(wifi_body.get(k), str) and wifi_body[k].strip()
+                for k in ("bssid", "bssid5G", "ssidName", "ssidName5G", "wlsWpsState24g", "wlsWpsState5g")
+            )
+
+        voice: bool | None = None
+        if isinstance(mta, dict):
+            slic = mta.get("NumberOfSLIC")
+            line_states = [mta.get(f"Line{i}RegState") for i in range(1, 5)]
+            if (isinstance(slic, int) and slic > 0) or any(v is not None for v in line_states):
+                voice = True
+            elif slic is None and all(v is None for v in line_states):
+                voice = False
+
+        probes = CapabilityProbes(
+            wifi=wifi,
+            voice=voice,
+            moca=("moca_status" in moca) if isinstance(moca, dict) else None,
+            usb=(True if usb.get("ListNumberOfEntries", 0) > 0 else None) if isinstance(usb, dict) else None,            spectrum=isinstance(spectrum, (dict, list)),
+            ofdm_downstream=(len(ds_ofdm.get("Freq_List") or []) > 0) if isinstance(ds_ofdm, dict) else None,
+            ofdm_upstream=(len(us_ofdm.get("Freq_List") or []) > 0) if isinstance(us_ofdm, dict) else None,
+        )
+        return _detect_profile(identity, probes, override=model)
+
 
     async def _write(self, path: str, model: dict[str, Any]) -> dict[str, Any]:
         if self._session is None:
@@ -482,13 +618,29 @@ class Coda60Client:
             except Exception as e:  # noqa: BLE001 - this is a best-effort poller, one bad endpoint shouldn't kill the rest
                 return safe_key, {"error": str(e)}
 
-    async def get_all(self, endpoints: list[dict] | None = None) -> dict[str, Any]:
-        """Fetch every endpoint in ENDPOINTS (or a caller-supplied subset) concurrently, bounded by max_concurrency."""
+    async def get_all(
+        self,
+        endpoints: list[dict] | None = None,
+        profile: ModelProfile | None = None,
+    ) -> dict[str, Any]:
+        """Fetch every applicable endpoint concurrently, bounded by max_concurrency.
+
+        Pass ``profile`` (from ``detect_profile()``) to skip endpoints this SKU
+        cannot answer — no WiFi/MoCA/voice/LTE/USB probes on a model without
+        them. With no profile, every known endpoint is fetched (legacy shape).
+        """
+        if endpoints is None:
+            endpoints = select_endpoints(profile)
         sem = asyncio.Semaphore(self.max_concurrency)
         async with aiohttp.ClientSession() as session:
-            tasks = [self._fetch_one(session, ed, sem) for ed in (endpoints or ENDPOINTS)]
+            tasks = [self._fetch_one(session, ed, sem) for ed in endpoints]
             results = await asyncio.gather(*tasks)
         return {
-            "metadata": {"timestamp": datetime.now(timezone.utc).isoformat(), "device_ip": self.host},
+            "metadata": {
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "device_ip": self.host,
+                "model_profile": profile.id if profile else None,
+                "capabilities": sorted(profile.capabilities) if profile else None,
+            },
             "metrics": dict(results),
         }
