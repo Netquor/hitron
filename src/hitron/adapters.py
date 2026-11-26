@@ -404,7 +404,12 @@ ENDPOINTS: tuple[Endpoint, ...] = (
     # --- writes / actions (never in plan() unless include_writes=True) ----
     E("cm.reboot", "/1/Device/CM/Reboot", summary="Reboot / factory-reset flag", methods=("POST",),
       read=False, state=_UNTESTED, group="write",
-      note="Body {reboot:1}, {factoryReset:1} or {restoreReset:1}; the last one execs reboot directly."),
+      note="Body {reboot:1}, {factoryReset:1} or {restoreReset:1}; the last one execs reboot "
+           "directly. Measured on 8.7.1.0.1b4: {reboot:1} answers 200 {errCode:000} but the "
+           "unit does not reboot (ICMP stays up, WAN lease and DOCSIS counters unchanged, no "
+           "CM Reboot Reason log entry). The RDKB write of "
+           "Device.DeviceInfo.X_HITRON_COM_MGMT.Reboot is inert on this build/config; the "
+           "other two branches were not run."),
     E("adminremote.manage", "/1/Device/AdminRemoteManagement/Manage", summary="Enable/disable WAN admin",
       methods=("POST",), read=False, state=_UNTESTED, group="write"),
     E("adminremote.rlist.write", "/1/Device/AdminRemoteManagement/RList",

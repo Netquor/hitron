@@ -274,7 +274,9 @@ func (c *Client) coda6xAction(ctx context.Context, model map[string]int) (map[st
 }
 
 // Reboot asks the gateway to reboot. On the CODA6X this is the flag-based
-// ModelInfo path; the device acts on it asynchronously.
+// ModelInfo path; the device acts on it asynchronously. Measured on 8.7.1.0.1b4
+// the flag is accepted (errCode 000) but the unit does not reboot, so treat the
+// call as a request, not a guarantee.
 func (c *Client) Reboot(ctx context.Context) (map[string]any, error) {
 	switch c.Kind {
 	case KindCoda6X:

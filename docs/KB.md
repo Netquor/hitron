@@ -205,7 +205,9 @@ readable report is `../specs/verification-coda60.json`. Headline:
 - **Reboot family — all three hit the same endpoint**, `POST /1/Device/CM/Reboot`,
   distinguished only by the body flag (`ModelInfo.php::doRebootAction`):
   - `{"reboot": 1}` → sets `Device.DeviceInfo.X_HITRON_COM_MGMT.Reboot = true` (a
-    TR-181 flag; some other backend process is expected to act on it).
+    TR-181 flag; some other backend process is expected to act on it). **Measured
+    inert on 8.7.1.0.1b4** — the call answers `errCode 000` and nothing happens
+    (see `docs/VERIFICATION.md`).
   - `{"factoryReset": 1}` → sets the matching FactoryReset flag the same way.
   - `{"restoreReset": 1}` → **no flag indirection at all** — the PHP code itself runs
     `exec('sync; ncpu_exec -e ht_reset_cmd.sh reboot'); exec('reboot')`. This is the
@@ -215,9 +217,9 @@ readable report is `../specs/verification-coda60.json`. Headline:
   `POST /1/Device/Manage/Username` (body `{newUsername}`).
 - **WiFi radio:** already documented above — `PUT /1/Device/WiFi/Radios/{index}`.
 
-None of these were executed against the real device in this session — see the
-README's "Writes" section for the handling policy (explicit login, no auto-write, CLI
-requires `--yes-really-do-this` for the destructive ones).
+Only `{"reboot": 1}` has been executed against the real device; it was inert. Nothing
+else here has — see the README's "Writes" section for the handling policy (explicit
+login, no auto-write, CLI requires `--yes-really-do-this` for the destructive ones).
 
 ### Quirks found in the firmware source (informational, none exploited)
 - Shipped with `DEBUG=5` (Fat-Free verbose-error mode) in `app/config.ini`.

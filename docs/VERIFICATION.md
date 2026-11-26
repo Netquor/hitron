@@ -149,6 +149,37 @@ Measured capture behaviour (`FreqPower`, repeated while the link was up):
 - **ok (non-json)** — `/1/Device/Manage` returns the literal text `cusadmin,false`:
   the admin username, unauthenticated.
 
+## Write path measured: `POST /1/Device/CM/Reboot` is inert
+
+The one write that was exercised on 8.7.1.0.1b4 is the reboot flag, because it is
+the least destructive of the three branches:
+
+```bash
+curl -sS -X POST http://192.168.100.1/1/Device/CM/Reboot \
+  -H 'Content-Type: application/x-www-form-urlencoded' \
+  --data-urlencode 'model={"reboot":1}'
+# {"errCode":"000","errMsg":""}   HTTP 200
+```
+
+`errCode 000` is the controller's "handled" answer, but the unit does not reboot:
+
+- ICMP keeps answering at the same latency for 40 s after the 200.
+- The WAN DHCP lease is unchanged (`D: 05 H: 00 M: 00 S: 00`), so the link never
+  dropped and re-acquired.
+- DOCSIS downstream octets keep incrementing across the call (about 3 MB in 30 s).
+- No `CM Reboot Reason` entry appears in `/1/Device/CM/Log`; the newest entry stays
+  at the pre-call timestamp.
+
+So `Device.DeviceInfo.X_HITRON_COM_MGMT.Reboot = true` is accepted by `setStr()`
+and then ignored by whatever is supposed to consume it. Treat `/1/Device/CM/Reboot`
+as a request that can silently do nothing, not as a working reboot. The
+`factoryReset` and `restoreReset` branches were **not** run.
+
+The controller's own error handling is also broken: a body of `{"reboot":0}` or `{}`
+produces a PHP 8 fatal (`Undefined array key "factoryReset"` / `"reboot"`) instead of
+`errCode 001`, because `doRebootAction()` reads every flag before checking which one
+is set.
+
 ## Reproduce
 
 ```bash
