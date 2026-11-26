@@ -154,9 +154,37 @@ on `--interval`.
 | `r`, `space` | refresh now |
 | `a` | toggle automatic refresh |
 | `h`, `?` | help overlay |
+| `1` | summary |
+| `2`, `s` | live spectrum |
+| `3`, `c` | constellation (I/Q) |
+| `[`, `]` | previous / next analyser channel |
+| `,`, `.` | fine-tune the spectrum centre by 1 MHz |
 
 Destructive actions are deliberately not keys. They are separate commands with
 their own confirmation.
+
+### Spectrum and constellation
+
+Both views read `/1/Device/Spectrum` on the CODA6X and are unavailable on the
+other families. The firmware drives one shared hardware tuner, so the client
+keeps captures sequential and draws whatever the tuner actually returned:
+
+- **Spectrum** is a braille trace of one 6 MHz window (300 points at 20 kHz
+  spacing on a CODA-60). `[`/`]` jumps between the analyser's downstream
+  channels, `,`/`.` tunes by 1 MHz. The header carries the raw min/max/average
+  dBmV; the vertical axis trims the tuner's 30–40 dB edge roll-off so the
+  channel itself fills the panel. The `RTData` power/MER snapshot sits below it.
+- **Constellation** plots the 256 I/Q samples for one analyser port, auto-scaled
+  to the returned cloud, with modulation, bandwidth, MER, and power in the
+  header. Ports are the analyser's own ids (a live CODA-60 reports `0, 25..31`
+  for eight downstream channels), not DOCSIS channel numbers.
+
+`FreqPower` only accepts at most one non-zero fractional digit (`637.5`, never
+`637.500`); a value that misses the handler's regex silently falls back to the
+645/637.5/643.5 defaults. The client formats frequencies accordingly.
+
+An inactive constellation port, or a tuner that has not settled, answers `200`
+with an empty list. The TUI says so instead of treating it as an error.
 
 ## Exit codes
 

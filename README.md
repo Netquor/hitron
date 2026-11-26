@@ -143,8 +143,11 @@ cd cli && go build -o hitron-cli ./cmd/hitron-cli
 
 It detects CODA6X, CODA-57, and HT-EM5 itself, reads CODA6X and CODA-57
 anonymously (prompting once if a device gates the read), uses HTTP Basic for
-the HT-EM5, and checks every RF reading against the Midco envelope. Destructive
-actions are separate verbs with a `y/N` prompt that `--confirm` skips:
+the HT-EM5, and checks every RF reading against the Midco envelope. In the live
+view, `1` is the summary, `2` a live 6 MHz spectrum trace, and `3` the I/Q
+constellation for one downstream port; the last two exist only on the CODA6X.
+Destructive actions are separate verbs with a `y/N` prompt that `--confirm`
+skips:
 
 ```bash
 ./hitron-cli reboot        192.168.100.1 -u admin -p admin

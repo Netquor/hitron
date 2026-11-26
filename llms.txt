@@ -44,6 +44,7 @@ cookies or a vendor `Ht-App-Auth` header.
     hitron ht-em5 192.168.0.212
 
     hitron-cli 192.168.100.1               # Go binary: live TUI
+    hitron-cli monitor                     # TUI views: 1 stats, 2 spectrum, 3 constellation
     hitron-cli stats --once --json         # one report, machine-readable
     hitron-cli reboot --confirm -u admin -p admin
 

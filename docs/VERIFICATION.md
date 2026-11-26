@@ -20,7 +20,7 @@ the `coda60` profile: DOCSIS 4.0, no WiFi, no voice, no MoCA, no USB, no router 
 
 Plan size: 43 endpoints, including known-broken ones because the verifier re-measures rather than trusts the registry.
 
-Registry states across all models: `ok` 50, `php8` 53, `session` 5, `untested` 3, `verb` 1.
+Registry states across all models: `ok` 52, `php8` 51, `session` 5, `untested` 3, `verb` 1.
 
 ## Per-endpoint results (CODA60 plan)
 
@@ -78,6 +78,35 @@ Registry states across all models: `ok` 50, `php8` 53, `session` 5, `untested` 3
 | `spectrum.rtdata` | `/1/Device/Spectrum/RTData` | 200 | ok | 297 |
 | `spectrum.constellation` | `/1/Device/Spectrum/Constellation` | 200 | ok | 49 |
 | `spectrum.freqpower` | `/1/Device/Spectrum/FreqPower` | 200 | ok | 6811 |
+
+All four branches shell out to `/usr/sbin/hitrondec`. They share one hardware
+tuner, so captures are sequential; two sweeps in flight return interleaved or
+empty data.
+
+Measured capture behaviour (`FreqPower`, repeated while the link was up):
+
+| Request | Points | Window actually returned |
+| --- | ---: | --- |
+| `centFreq=267&fromFreq=264&toFreq=270` | 300 | 264.0–269.98 MHz |
+| `centFreq=273&fromFreq=270&toFreq=276` | 300 | 270.0–275.98 MHz |
+| `centFreq=291&fromFreq=288&toFreq=294` | 300 | 288.0–293.98 MHz |
+| `centFreq=645&fromFreq=637.5&toFreq=643.5` | 300 | 637.5–643.48 MHz |
+| `centFreq=645&fromFreq=642&toFreq=648` | 300 | 643.5–649.48 MHz |
+
+- 300 points at 20 kHz spacing across 6 MHz. Requesting a wider window
+  (`fromFreq`/`toFreq` 12 MHz apart) returns an empty `spectrum` array.
+- The window starts at `fromFreq` when that value sits on the tuner's raster,
+  and can shift by 1.5 MHz otherwise. Clients must plot the `f` values in the
+  payload, not the request.
+- The handler's parameter regex
+  `^[1-9][0-9][0-9]?[0-9]?\.?[1-9]?$` allows at most one non-zero fractional
+  digit. `273.000` misses it and silently falls back to the 645/637.5/643.5
+  defaults, which returns an unrelated slice.
+- `Constellation?portId=N` returns 256 `{i,q}` points for the eight locked
+  downstream ports. `FreqList` reports those ports as `ri` 0 and 25..31;
+  ports 1..24 answer 200 with an empty array, not an error.
+- `RTData` returns a rolling buffer of timestamped frames (10 on this build,
+  eight channels each); `m` is MER in dB, not a max-hold power.
 
 ### system
 

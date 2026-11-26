@@ -204,10 +204,36 @@ func runSnapshot(ctx context.Context, client *hitron.Client, opts options) int {
 }
 
 func runMonitor(ctx context.Context, client *hitron.Client, opts options) int {
-	fetch := func(runCtx context.Context) (*hitron.Snapshot, error) {
-		return snapshotWithTimeout(runCtx, client, opts.timeout)
+	timeout := opts.timeout
+	withTimeout := func(runCtx context.Context) (context.Context, context.CancelFunc) {
+		return context.WithTimeout(runCtx, timeout*2)
 	}
-	if err := ui.RunTUI(ctx, fetch, opts.interval, client.Addr()); err != nil {
+	live := ui.LiveSource{
+		Snapshot: func(runCtx context.Context) (*hitron.Snapshot, error) {
+			return snapshotWithTimeout(runCtx, client, timeout)
+		},
+		Channels: func(runCtx context.Context) ([]hitron.SpectrumChannel, error) {
+			callCtx, cancel := withTimeout(runCtx)
+			defer cancel()
+			return client.SpectrumChannels(callCtx)
+		},
+		Sweep: func(runCtx context.Context, centerMHz float64) (*hitron.SpectrumSweep, error) {
+			callCtx, cancel := withTimeout(runCtx)
+			defer cancel()
+			return client.SpectrumSweep(callCtx, centerMHz)
+		},
+		RealTime: func(runCtx context.Context) ([]hitron.RealTimeFrame, error) {
+			callCtx, cancel := withTimeout(runCtx)
+			defer cancel()
+			return client.RealTimeSpectrum(callCtx)
+		},
+		Constellation: func(runCtx context.Context, portID int) (*hitron.Constellation, error) {
+			callCtx, cancel := withTimeout(runCtx)
+			defer cancel()
+			return client.Constellation(callCtx, portID)
+		},
+	}
+	if err := ui.RunTUI(ctx, live, opts.interval, client.Addr()); err != nil {
 		return fail(err)
 	}
 	return 0
@@ -539,10 +565,19 @@ Keys:
   a        toggle automatic refresh
   space    refresh now
   h        help overlay
+  1        summary
+  2 / s    live spectrum (6 MHz capture)
+  3 / c    constellation (I/Q)
+  [ ]      previous / next analyser channel
+  , .      fine-tune the spectrum centre by 1 MHz
 
 The TUI needs a real terminal. Use --once to get the same report as text, or
 --json for a snapshot. Destructive actions are deliberately not keys in the
 TUI; they are separate commands with their own confirmation.
+
+The spectrum and constellation views exist only on the CODA6X family. Both read
+the same single hardware tuner, so captures are sequential: one 6 MHz window
+per refresh. Inactive constellation ports answer 200 with an empty cloud.
 
 Examples:
   hitron-cli monitor --host 192.168.100.1 --interval 3s

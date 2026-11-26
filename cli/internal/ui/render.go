@@ -471,9 +471,9 @@ func Frame(s *hitron.Snapshot, width, height int, interval time.Duration, auto b
 		}
 	}
 
-	footer := "  " + Dim("q quit  r refresh  a auto  h help")
+	footer := "  " + Dim("q quit  r refresh  a auto  1 stats  2 spectrum  3 constellation  h help")
 	if errText != "" {
-		footer = "  " + Dim("q quit  r retry  a auto  h help")
+		footer = "  " + Dim("q quit  r retry  a auto  2 spectrum  3 constellation  h help")
 	}
 	lines = append(lines, "", footer)
 
@@ -492,16 +492,25 @@ func Frame(s *hitron.Snapshot, width, height int, interval time.Duration, auto b
 func HelpOverlay(width int) []string {
 	lines := []string{
 		"",
+		"  " + Bold("Views"),
+		"  " + Dim("1") + "        summary",
+		"  " + Dim("2") + " / " + Dim("s") + "    live spectrum (6 MHz capture)",
+		"  " + Dim("3") + " / " + Dim("c") + "    constellation (I/Q)",
+		"",
 		"  " + Bold("Keys"),
 		"  " + Dim("q") + "        quit",
 		"  " + Dim("r") + "        refresh now",
-		"  " + Dim("a") + "        toggle automatic refresh",
 		"  " + Dim("space") + "    refresh now",
+		"  " + Dim("a") + "        toggle automatic refresh",
+		"  " + Dim("[ ]") + "      previous / next analyser channel",
+		"  " + Dim(", .") + "      fine-tune the spectrum centre by 1 MHz",
 		"  " + Dim("h") + "        close this help",
 		"",
 		"  " + Bold("Notes"),
 		"  " + Dim("· Reads never log in on the analyzed firmware."),
-		"  " + Dim("· Destructive actions are separate commands, never keys."),
+		"  " + Dim("· One hardware tuner serves every capture; requests stay sequential."),
+		"  " + Dim("· The spectrum axis trims the tuner's edge roll-off; the header keeps raw min/max."),
+		"  " + Dim("· Inactive constellation ports answer empty; that is not an error."),
 		"  " + Dim("· Use --once for a one-shot report, --json for machine output."),
 	}
 	for index, line := range lines {

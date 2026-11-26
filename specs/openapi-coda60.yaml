@@ -14,7 +14,7 @@ info:
     Device.*. Every path below is therefore a thin projection of a TR-181 subtree,
     not an independent API.
 
-    Read surface, measured on 8.7.1.0.1b4: 50 working, 53 PHP-8 fatals, 5 session-gated, 1 verb-rejected, 3 untested.
+    Read surface, measured on 8.7.1.0.1b4: 52 working, 51 PHP-8 fatals, 5 session-gated, 1 verb-rejected, 3 untested.
     A PHP-8 fatal is a defect in the shipped controller (undefined array key,
     getInstanceIds vs getInstanceIDs, a parameter declared before a required one),
     not a request-shaping problem: it fails identically for the browser UI.
@@ -341,8 +341,8 @@ x-hitron:
   firmware: "8.7.1.0.1b4"
   modelCatalog: "./models.json"
   stateCounts:
-    ok: 50
-    php8: 53
+    ok: 52
+    php8: 51
     session: 5
     untested: 3
     verb: 1
@@ -2177,13 +2177,13 @@ paths:
       x-hitron:
         requires:
           - spectrum
-        state: php8
-        httpStatus: 500
+        state: ok
+        httpStatus: 200
         verifiedOn: "8.7.1.0.1b4"
         destructive: false
         models: []
       x-hitron-destructive: false
-      description: "Handler reads $args['query'], which the route never supplies."
+      description: "portId is the analyser's own id, not the DOCSIS channel id: a live CODA-60 reports points for 0 and 25..31 only. Inactive ports answer 200 with an empty array. The handler parses the query with Utils::getUrlParams(), whose unquoted $_SERVER[HTTP_HOST] is a PHP 8 undefined-constant fatal; this build answers 200, so it is not running PHP 8."
       parameters:
         - name: portId
           in: query
@@ -2196,8 +2196,6 @@ paths:
       responses:
         "200":
           description: "Envelope with errCode/errMsg plus the payload."
-        "500":
-          description: "PHP 8 fatal in the shipped controller on 8.7.1.0.1b4. Handler reads $args['query'], which the route never supplies."
   "/1/Device/Spectrum/FreqPower":
     get:
       operationId: spectrum_freqpower
@@ -2207,13 +2205,13 @@ paths:
       x-hitron:
         requires:
           - spectrum
-        state: php8
-        httpStatus: 500
+        state: ok
+        httpStatus: 200
         verifiedOn: "8.7.1.0.1b4"
         destructive: false
         models: []
       x-hitron-destructive: false
-      description: "Same $args['query'] defect as Constellation."
+      description: "One 6 MHz window per call from the shared tuner, 300 points at 20 kHz spacing. The handler accepts at most one non-zero fractional digit (637.5, never 637.500); a value that misses its regex silently falls back to the 645/637.5/643.5 defaults. The returned window can still start up to 1.5 MHz away from fromFreq, so plot the frequencies in the payload, not the request."
       parameters:
         - name: centFreq
           in: query
@@ -2242,8 +2240,6 @@ paths:
       responses:
         "200":
           description: "Envelope with errCode/errMsg plus the payload."
-        "500":
-          description: "PHP 8 fatal in the shipped controller on 8.7.1.0.1b4. Same $args['query'] defect as Constellation."
   "/1/Device/Time":
     get:
       operationId: time

@@ -331,12 +331,21 @@ ENDPOINTS: tuple[Endpoint, ...] = (
       requires=("spectrum",), group="spectrum", state=_OK, http_status=200),
     E("spectrum.constellation", "/1/Device/Spectrum/Constellation",
       summary="Constellation points for one downstream port", requires=("spectrum",),
-      group="spectrum", state=_PHP8, http_status=500,
-      query={"portId": 24}, note="Handler reads $args['query'], which the route never supplies."),
+      group="spectrum", state=_OK, http_status=200,
+      query={"portId": 24},
+      note="portId is the analyser's own id, not the DOCSIS channel id: a live CODA-60 "
+           "reports points for 0 and 25..31 only. Inactive ports answer 200 with an empty "
+           "array. The handler parses the query with Utils::getUrlParams(), whose unquoted "
+           "$_SERVER[HTTP_HOST] is a PHP 8 undefined-constant fatal; this build answers "
+           "200, so it is not running PHP 8."),
     E("spectrum.freqpower", "/1/Device/Spectrum/FreqPower", summary="Power sweep over a frequency range",
-      requires=("spectrum",), group="spectrum", state=_PHP8, http_status=500,
+      requires=("spectrum",), group="spectrum", state=_OK, http_status=200,
       query={"centFreq": 645, "fromFreq": 637.5, "toFreq": 643.5},
-      note="Same $args['query'] defect as Constellation."),
+      note="One 6 MHz window per call from the shared tuner, 300 points at 20 kHz spacing. "
+           "The handler accepts at most one non-zero fractional digit (637.5, never "
+           "637.500); a value that misses its regex silently falls back to the "
+           "645/637.5/643.5 defaults. The returned window can still start up to 1.5 MHz "
+           "away from fromFreq, so plot the frequencies in the payload, not the request."),
 
     # --- system -----------------------------------------------------------
     E("time", "/1/Device/Time", summary="NTP/time configuration", group="system",

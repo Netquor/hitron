@@ -3,7 +3,7 @@
   "info": {
     "title": "Hitron CODA6X console REST API (reverse engineered)",
     "version": "8.7.1.0.1b4",
-    "description": "Not an official Hitron specification. Reconstructed from a static read of a real\nCODA6X firmware image (SquashFS rootfs mounted read-only; nothing executed from\nit) and then verified GET-by-GET against a live, customer-owned CODA60 running\n8.7.1.0.1b4 on 2026-11-26.\n\nArchitecture: lighttpd + php-fpm serve a Fat-Free-Framework PHP app at\nwww/hitron/. app/routes.ini maps URL patterns to app/controllers/*.php; those\ncontrollers call the RDK-B COSA bridge (extension=cosa.so) which speaks TR-181\nDevice.*. Every path below is therefore a thin projection of a TR-181 subtree,\nnot an independent API.\n\nRead surface, measured on 8.7.1.0.1b4: 50 working, 53 PHP-8 fatals, 5 session-gated, 1 verb-rejected, 3 untested.\nA PHP-8 fatal is a defect in the shipped controller (undefined array key,\ngetInstanceIds vs getInstanceIDs, a parameter declared before a required one),\nnot a request-shaping problem: it fails identically for the browser UI.\n\nTwo responses on this platform are stubs and must not be read as capability\nevidence: /WiFi/* and /MTA/StatusInfo return 200 with empty strings or null\nhardware fields on a unit that has no radios or SLIC. Model/capability detection\ntherefore keys on /deviceinfo's hw_model plus payload evidence, and each\nendpoint carries its `requires` capability in x-hitron.\n\nEvery operation is tagged with x-hitron.state as measured against\n8.7.1.0.1b4. Five reads require the web UI session and one rejects GET;\neverything else, including /1/Device/Manage, answers anonymously. Only\noperations marked with `security` present a cookie. The attached model catalog\n(18 profiles, specs/models.json) is what src/hitron/adapters.py uses to\ndecide which of these paths a given SKU should be asked for.\n",
+    "description": "Not an official Hitron specification. Reconstructed from a static read of a real\nCODA6X firmware image (SquashFS rootfs mounted read-only; nothing executed from\nit) and then verified GET-by-GET against a live, customer-owned CODA60 running\n8.7.1.0.1b4 on 2026-11-26.\n\nArchitecture: lighttpd + php-fpm serve a Fat-Free-Framework PHP app at\nwww/hitron/. app/routes.ini maps URL patterns to app/controllers/*.php; those\ncontrollers call the RDK-B COSA bridge (extension=cosa.so) which speaks TR-181\nDevice.*. Every path below is therefore a thin projection of a TR-181 subtree,\nnot an independent API.\n\nRead surface, measured on 8.7.1.0.1b4: 52 working, 51 PHP-8 fatals, 5 session-gated, 1 verb-rejected, 3 untested.\nA PHP-8 fatal is a defect in the shipped controller (undefined array key,\ngetInstanceIds vs getInstanceIDs, a parameter declared before a required one),\nnot a request-shaping problem: it fails identically for the browser UI.\n\nTwo responses on this platform are stubs and must not be read as capability\nevidence: /WiFi/* and /MTA/StatusInfo return 200 with empty strings or null\nhardware fields on a unit that has no radios or SLIC. Model/capability detection\ntherefore keys on /deviceinfo's hw_model plus payload evidence, and each\nendpoint carries its `requires` capability in x-hitron.\n\nEvery operation is tagged with x-hitron.state as measured against\n8.7.1.0.1b4. Five reads require the web UI session and one rejects GET;\neverything else, including /1/Device/Manage, answers anonymously. Only\noperations marked with `security` present a cookie. The attached model catalog\n(18 profiles, specs/models.json) is what src/hitron/adapters.py uses to\ndecide which of these paths a given SKU should be asked for.\n",
     "contact": {
       "name": "Netquor SDN - internal reverse-engineering notes"
     },
@@ -455,8 +455,8 @@
     "firmware": "8.7.1.0.1b4",
     "modelCatalog": "./models.json",
     "stateCounts": {
-      "ok": 50,
-      "php8": 53,
+      "ok": 52,
+      "php8": 51,
       "session": 5,
       "untested": 3,
       "verb": 1
@@ -3044,14 +3044,14 @@
           "requires": [
             "spectrum"
           ],
-          "state": "php8",
-          "httpStatus": 500,
+          "state": "ok",
+          "httpStatus": 200,
           "verifiedOn": "8.7.1.0.1b4",
           "destructive": false,
           "models": []
         },
         "x-hitron-destructive": false,
-        "description": "Handler reads $args['query'], which the route never supplies.",
+        "description": "portId is the analyser's own id, not the DOCSIS channel id: a live CODA-60 reports points for 0 and 25..31 only. Inactive ports answer 200 with an empty array. The handler parses the query with Utils::getUrlParams(), whose unquoted $_SERVER[HTTP_HOST] is a PHP 8 undefined-constant fatal; this build answers 200, so it is not running PHP 8.",
         "parameters": [
           {
             "name": "portId",
@@ -3068,9 +3068,6 @@
         "responses": {
           "200": {
             "description": "Envelope with errCode/errMsg plus the payload."
-          },
-          "500": {
-            "description": "PHP 8 fatal in the shipped controller on 8.7.1.0.1b4. Handler reads $args['query'], which the route never supplies."
           }
         }
       }
@@ -3086,14 +3083,14 @@
           "requires": [
             "spectrum"
           ],
-          "state": "php8",
-          "httpStatus": 500,
+          "state": "ok",
+          "httpStatus": 200,
           "verifiedOn": "8.7.1.0.1b4",
           "destructive": false,
           "models": []
         },
         "x-hitron-destructive": false,
-        "description": "Same $args['query'] defect as Constellation.",
+        "description": "One 6 MHz window per call from the shared tuner, 300 points at 20 kHz spacing. The handler accepts at most one non-zero fractional digit (637.5, never 637.500); a value that misses its regex silently falls back to the 645/637.5/643.5 defaults. The returned window can still start up to 1.5 MHz away from fromFreq, so plot the frequencies in the payload, not the request.",
         "parameters": [
           {
             "name": "centFreq",
@@ -3132,9 +3129,6 @@
         "responses": {
           "200": {
             "description": "Envelope with errCode/errMsg plus the payload."
-          },
-          "500": {
-            "description": "PHP 8 fatal in the shipped controller on 8.7.1.0.1b4. Same $args['query'] defect as Constellation."
           }
         }
       }

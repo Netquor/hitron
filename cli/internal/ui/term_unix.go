@@ -24,17 +24,24 @@ type rawState struct {
 	saved string
 }
 
+// stty runs stty against the process's own stdin. Without an explicit Stdin,
+// os/exec gives the child /dev/null, so stty reports "not a terminal" and every
+// TUI invocation fails before the first frame.
+func stty(args ...string) *exec.Cmd {
+	cmd := exec.Command("stty", args...)
+	cmd.Stdin = os.Stdin
+	return cmd
+}
+
 // EnterRaw puts the terminal in raw mode without echo. Restore is safe to call
 // more than once.
 func EnterRaw() (*rawState, error) {
-	out, err := exec.Command("stty", "-g").Output()
+	out, err := stty("-g").Output()
 	if err != nil {
 		return nil, fmt.Errorf("stdin is not a terminal")
 	}
 	saved := strings.TrimSpace(string(out))
-	cmd := exec.Command("stty", "raw", "-echo")
-	cmd.Stdin = os.Stdin
-	if err := cmd.Run(); err != nil {
+	if err := stty("raw", "-echo").Run(); err != nil {
 		return nil, err
 	}
 	return &rawState{saved: saved}, nil
@@ -44,9 +51,7 @@ func (r *rawState) Restore() {
 	if r == nil || r.saved == "" {
 		return
 	}
-	cmd := exec.Command("stty", strings.Fields(r.saved)...)
-	cmd.Stdin = os.Stdin
-	_ = cmd.Run()
+	_ = stty(strings.Fields(r.saved)...).Run()
 }
 
 // ReadKey returns one byte from stdin.
@@ -65,21 +70,17 @@ func ReadKey() (byte, error) {
 // ReadPassword reads a line with echo disabled.
 func ReadPassword(prompt string) (string, error) {
 	fmt.Fprint(os.Stdout, prompt)
-	out, err := exec.Command("stty", "-g").Output()
+	out, err := stty("-g").Output()
 	if err != nil {
 		line, readErr := bufio.NewReader(os.Stdin).ReadString('\n')
 		return strings.TrimRight(line, "\r\n"), readErr
 	}
 	saved := strings.TrimSpace(string(out))
-	disable := exec.Command("stty", "-echo")
-	disable.Stdin = os.Stdin
-	if err := disable.Run(); err != nil {
+	if err := stty("-echo").Run(); err != nil {
 		return "", err
 	}
 	defer func() {
-		restore := exec.Command("stty", strings.Fields(saved)...)
-		restore.Stdin = os.Stdin
-		_ = restore.Run()
+		_ = stty(strings.Fields(saved)...).Run()
 		fmt.Fprintln(os.Stdout)
 	}()
 	line, err := bufio.NewReader(os.Stdin).ReadString('\n')
@@ -100,7 +101,7 @@ func Size() (int, int) {
 		}
 	}
 	if width == 100 && height == 32 {
-		if out, err := exec.Command("stty", "size").Output(); err == nil {
+		if out, err := stty("size").Output(); err == nil {
 			fields := strings.Fields(string(out))
 			if len(fields) == 2 {
 				if rows, err := strconv.Atoi(fields[0]); err == nil && rows > 8 {
