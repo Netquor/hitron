@@ -17,12 +17,15 @@ func paint(code, text string) string {
 	return "\x1b[" + code + "m" + text + "\x1b[0m"
 }
 
-func Bold(text string) string   { return paint("1", text) }
-func Dim(text string) string    { return paint("2", text) }
-func Green(text string) string  { return paint("32", text) }
-func Red(text string) string    { return paint("31", text) }
-func Yellow(text string) string { return paint("33", text) }
-func Cyan(text string) string   { return paint("36", text) }
+func Bold(text string) string { return paint("1", text) }
+func Dim(text string) string  { return paint("2", text) }
+
+// Green, Yellow and Red carry meaning (good, near the edge, bad) and Cyan is
+// the accent. All four follow the active theme.
+func Green(text string) string  { return fg(CurrentTheme().Good, text) }
+func Red(text string) string    { return fg(CurrentTheme().Bad, text) }
+func Yellow(text string) string { return fg(CurrentTheme().Warn, text) }
+func Cyan(text string) string   { return fg(CurrentTheme().Accent, text) }
 
 // Power colors a dBmV reading against the Midco envelope. The two outer bands
 // are amber so a drifting channel is visible before it fails the check.

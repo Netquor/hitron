@@ -271,3 +271,18 @@ func TestAveragesUseSameChannelsAsRange(t *testing.T) {
 		t.Fatalf("empty snapshot should report no average")
 	}
 }
+
+func TestCMTSMacFromLogs(t *testing.T) {
+	logs := []LogEntry{
+		{Event: "MDD message timeout;CM-MAC=c0:3f:0e:5a:1b:2c;CMTS-MAC=00:00:00:00:00:00;CM-QOS=1.1;CM-VER=3.1;"},
+		{Event: "Unrelated event"},
+		{Event: "SYNC Timing Synchronization failure;CM-MAC=c0:3f:0e:5a:1b:2c;CMTS-MAC=a4:7b:2c:11:22:33;CM-QOS=1.1;CM-VER=3.1;"},
+		{Event: "Older;CMTS-MAC=ff:ee:dd:cc:bb:aa;"},
+	}
+	if got := CMTSMacFromLogs(logs); got != "A4:7B:2C:11:22:33" {
+		t.Fatalf("CMTSMacFromLogs = %q; want the newest non-zero MAC", got)
+	}
+	if got := CMTSMacFromLogs([]LogEntry{{Event: "nothing here"}}); got != "" {
+		t.Fatalf("got %q, want empty", got)
+	}
+}

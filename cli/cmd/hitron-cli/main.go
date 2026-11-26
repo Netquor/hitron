@@ -33,6 +33,8 @@ type options struct {
 	confirm  bool
 	once     bool
 	noBanner bool
+	noMouse  bool
+	theme    string
 
 	command string
 	topic   string
@@ -73,6 +75,10 @@ func run(argv []string) int {
 	}
 
 	ui.Color = !opts.noColor && os.Getenv("NO_COLOR") == "" && os.Getenv("TERM") != "dumb"
+	if err := chooseTheme(opts.theme); err != nil {
+		fmt.Fprintln(os.Stderr, "hitron-cli: "+err.Error())
+		return 2
+	}
 	if !opts.json && !opts.noBanner {
 		fmt.Fprintln(os.Stderr, ui.Banner(version))
 		fmt.Fprintln(os.Stderr)
@@ -203,11 +209,65 @@ func runSnapshot(ctx context.Context, client *hitron.Client, opts options) int {
 	return 0
 }
 
+// chooseTheme picks the palette: --theme, then HITRON_THEME, then the one the
+// `t` key saved last time. A bad name from the flag or environment is an error;
+// a stale saved name is ignored.
+func chooseTheme(flagValue string) error {
+	for _, name := range []string{flagValue, os.Getenv("HITRON_THEME")} {
+		if name == "" {
+			continue
+		}
+		if !ui.SetTheme(name) {
+			return fmt.Errorf("unknown theme %q (themes: %s)", name, strings.Join(ui.ThemeNames(), ", "))
+		}
+		return nil
+	}
+	if saved := ui.SavedTheme(); saved != "" {
+		ui.SetTheme(saved)
+	}
+	return nil
+}
+
 func runMonitor(ctx context.Context, client *hitron.Client, opts options) int {
 	fetch := func(runCtx context.Context) (*hitron.Snapshot, error) {
 		return snapshotWithTimeout(runCtx, client, opts.timeout)
 	}
-	if err := ui.RunTUI(ctx, fetch, opts.interval, client.Addr()); err != nil {
+	tui := ui.TUIOptions{
+		Fetch:    fetch,
+		Interval: opts.interval,
+		Host:     client.Addr(),
+		NoMouse:  opts.noMouse,
+	}
+	// Reboot is offered where the CLI's own reboot command works. The CODA-57
+	// has no confirmed write endpoint, so it gets no button at all.
+	if client.Kind != hitron.KindCoda57 {
+		tui.Reboot = func(runCtx context.Context, user, pass string) (string, error) {
+			// Work on a copy so the polling client's credentials never change
+			// underneath an in-flight read.
+			act := *client
+			act.Creds = hitron.Credentials{Username: user, Password: pass}
+			act.DefaultCreds = false
+			if err := act.Login(runCtx); err != nil {
+				return "", err
+			}
+			callCtx, cancel := context.WithTimeout(runCtx, opts.timeout*2)
+			defer cancel()
+			result, err := act.Reboot(callCtx)
+			if err != nil {
+				return "", err
+			}
+			if code := fmt.Sprint(result["errCode"]); code != "" && code != "000" && code != "<nil>" {
+				return "", fmt.Errorf("device answered errCode %s %v", code, result["errMsg"])
+			}
+			return fmt.Sprintf("Reboot sent to %s (%s)", client.Addr(), client.Kind.Label()), nil
+		}
+		// A login given on the command line or in the environment is reused;
+		// the confirmation still has to be typed.
+		if !client.DefaultCreds && opts.user != "" && opts.password != "" {
+			tui.Username, tui.Password = opts.user, opts.password
+		}
+	}
+	if err := ui.RunTUI(ctx, tui); err != nil {
 		return fail(err)
 	}
 	return 0
@@ -266,7 +326,7 @@ func runAction(ctx context.Context, client *hitron.Client, opts options) int {
 		return 0
 	}
 	fmt.Printf("%s sent to %s (%s)\n", action, client.Addr(), client.Kind.Label())
-	if code := fmt.Sprint(result["errCode"]); code != "" && code != "000" {
+	if code := fmt.Sprint(result["errCode"]); code != "" && code != "000" && code != "<nil>" {
 		fmt.Printf("device answered errCode %s %v\n", code, result["errMsg"])
 	}
 	return 0
@@ -386,6 +446,14 @@ func parseArgs(argv []string) (options, error) {
 				opts.once = true
 			case "--no-banner":
 				opts.noBanner = true
+			case "--no-mouse":
+				opts.noMouse = true
+			case "--theme":
+				got, err := takeValue()
+				if err != nil {
+					return opts, err
+				}
+				opts.theme = got
 			case "--help":
 				opts.command = "help"
 			case "--version":
@@ -537,15 +605,31 @@ Keys:
   q        quit
   r        refresh now
   a        toggle automatic refresh
+  g        toggle trend graphs
+  t        next theme (remembered for next time)
+  j / k    scroll (the mouse wheel works too)
+  x        reboot, after a confirmation (also the Reboot button)
   space    refresh now
   h        help overlay
 
+Themes: neon (default), synthwave, dracula, nord, gruvbox, matrix.
+Pick one with --theme NAME or HITRON_THEME; the t key saves your choice.
+
+Reboot: x (or a click on the Reboot button) opens a dialog that asks for the
+login unless --user/--password were given, then makes you type the word
+reboot. Nothing is sent before that. Factory reset and hard reset are not in
+the TUI; they stay separate commands. The CODA-57 has no reboot button.
+
+Flags:
+  --theme NAME   color theme
+  --no-mouse     do not capture the mouse (lets you select text normally)
+
 The TUI needs a real terminal. Use --once to get the same report as text, or
---json for a snapshot. Destructive actions are deliberately not keys in the
-TUI; they are separate commands with their own confirmation.
+--json for a snapshot.
 
 Examples:
   hitron-cli monitor --host 192.168.100.1 --interval 3s
+  hitron-cli monitor --theme dracula
   hitron-cli monitor --once --no-color`
 	case "detect":
 		return `hitron-cli detect — identify the device
@@ -582,7 +666,9 @@ spec check, DOCSIS provisioning milestones, and Ethernet port state.
 Usage:
   hitron-cli channels [host] [flags]
 
-Prints SC-QAM downstream and upstream channels, then OFDM and OFDMA channels.
+Prints one downstream table (SC-QAM and OFDM) and one upstream table (SC-QAM
+and OFDMA), each row typed and sorted by channel. Disabled OFDMA channels are
+hidden and counted in the heading.
 Power is colored against the Midco envelope: downstream -6 to +15 dBmV,
 upstream 35 to 48 dBmV (OFDMA uses repPower1_6 + 6 dB).
 
@@ -648,6 +734,7 @@ right before it acts, so the action is one traceable operation.`
   HITRON_APP_TOKEN   CODA6X Ht-App-Auth token
   HITRON_TIMEOUT     request timeout in seconds (10)
   HITRON_INTERVAL    live refresh interval (5s)
+  HITRON_THEME       color theme (neon, synthwave, dracula, nord, gruvbox, matrix)
   NO_COLOR           disable ANSI color
 
 Flags always override the environment.`
@@ -751,6 +838,8 @@ Global flags:
       --no-color         plain text
       --confirm          skip the y/N question on a destructive command
       --no-banner        suppress the startup art
+      --theme NAME       TUI color theme (neon, synthwave, dracula, nord, gruvbox, matrix)
+      --no-mouse         do not capture the mouse in the TUI
   -h, --help             this text
   -V, --version          version
 

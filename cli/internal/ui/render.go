@@ -69,17 +69,21 @@ func identityPairs(s *hitron.Snapshot) [][2]string {
 		{"Hardware", s.Hardware},
 		{"Serial", s.Serial},
 		{"RF MAC", s.RFMac},
+		{"CMTS MAC", s.CMTSMac},
 		{"Uptime", uptime},
 		{"WAN IP", s.WANIP},
 		{"Gateway", s.Gateway},
 		{"Netmask", s.Netmask},
 		{"Lease", s.Lease},
-		{"Config", s.ConfigName},
+		{"Config file", s.ConfigName},
 		{"Access", s.AccessType},
 	}
 	if s.Kind == hitron.KindMoca {
-		pairs[7][0] = "Device IP"
-		pairs[0][1] = s.Model
+		for i := range pairs {
+			if pairs[i][0] == "WAN IP" {
+				pairs[i][0] = "Device IP"
+			}
+		}
 	}
 	return pairs
 }
@@ -92,18 +96,18 @@ func Identity(w io.Writer, s *hitron.Snapshot) {
 func specLine(s *hitron.Snapshot) []string {
 	lines := make([]string, 0, 2)
 	if ok, low, high := s.DSInSpec(); s.DSHasReadings() {
-		state := Red("out of spec")
+		state := PillBad("OUT OF SPEC")
 		if ok {
-			state = Green("in spec")
+			state = PillGood("IN SPEC")
 		}
 		avg, _ := s.DSAverage()
 		lines = append(lines, "  "+Dim(pad("Downstream", 11))+"  "+
 			fmt.Sprintf("%+.1f to %+.1f dBmV", low, high)+"  "+fmt.Sprintf("avg %+.1f", avg)+"  "+Dim("(-6 to +15)")+"  "+state)
 	}
 	if ok, low, high := s.USInSpec(); s.USHasReadings() {
-		state := Red("out of spec")
+		state := PillBad("OUT OF SPEC")
 		if ok {
-			state = Green("in spec")
+			state = PillGood("IN SPEC")
 		}
 		avg, _ := s.USAverage()
 		lines = append(lines, "  "+Dim(pad("Upstream", 11))+"  "+
@@ -147,11 +151,38 @@ func chanOrder(id string) int {
 	return n
 }
 
-func codewordCells(has bool, corrected, uncorrect uint64) (string, string) {
+// codewordCell renders corrected/uncorrectable codeword counters as one
+// "14/640" cell. Any uncorrectable codeword is red; corrected counts are
+// green while small, yellow when large and red when very large. They are
+// cumulative since the modem last (re)locked, so only the uncorrectables are
+// treated as a real fault at any size.
+func codewordCell(has bool, corrected, uncorrect uint64) string {
 	if !has && corrected == 0 && uncorrect == 0 {
-		return Dim("—"), Dim("—")
+		return Dim("—")
 	}
-	return formatCount(corrected), formatCount(uncorrect)
+	c := Green(formatCount(corrected))
+	switch {
+	case corrected >= 1_000_000:
+		c = Red(formatCount(corrected))
+	case corrected >= 100_000:
+		c = Yellow(formatCount(corrected))
+	}
+	u := Green(formatCount(uncorrect))
+	if uncorrect > 0 {
+		u = Red(formatCount(uncorrect))
+	}
+	// The modem reports no total-codeword counter, so the percentage is the
+	// uncorrectable share of the codewords that were errored at all.
+	pct := Green("0.00%")
+	if uncorrect > 0 {
+		share := 100 * float64(uncorrect) / float64(corrected+uncorrect)
+		text := fmt.Sprintf("%.2f%%", share)
+		if share < 0.01 {
+			text = "<0.01%"
+		}
+		pct = Red(text)
+	}
+	return c + Dim("/") + u + " " + pct
 }
 
 func typeCell(label string) string {
@@ -186,25 +217,25 @@ func Channels(w io.Writer, s *hitron.Snapshot) {
 			fmt.Sprintf("%d OFDM", len(ofdm))))
 		rows := make([][]string, 0, total)
 		for _, ch := range ds {
-			corrected, uncorrect := codewordCells(ch.HasCodewords, ch.Corrected, ch.Uncorrect)
+			cw := codewordCell(ch.HasCodewords, ch.Corrected, ch.Uncorrect)
 			rows = append(rows, []string{
 				typeCell("SC-QAM"), emptyDash(ch.ID), freq(ch.Frequency),
 				powerCell(ch.Power, ch.HasPower, -6, 15), snrCell(ch.SNR, ch.HasSNR),
-				emptyDash(ch.Modulation), Dim("—"), corrected, uncorrect,
+				emptyDash(ch.Modulation), Dim("—"), cw,
 			})
 		}
 		for _, ch := range ofdm {
-			corrected, uncorrect := codewordCells(ch.HasCounters, ch.Corrected, ch.Uncorrect)
+			cw := codewordCell(ch.HasCounters, ch.Corrected, ch.Uncorrect)
 			rows = append(rows, []string{
 				typeCell("OFDM"), emptyDash(ch.Index), freq(ch.Frequency),
 				plcPowerCell(ch.PLCPower, ch.HasPLCPower), snrCell(ch.SNR, ch.HasSNR),
-				emptyDash(ch.FFTType), lockText(ch.PLCLock, ch.NCPLock, ch.MDC1Lock), corrected, uncorrect,
+				emptyDash(ch.FFTType), lockText(ch.PLCLock, ch.NCPLock, ch.MDC1Lock), cw,
 			})
 		}
 		writeLines(w, columns(
-			[]string{"Type", "Ch", "Frequency", "Power", "SNR", "Mod/FFT", "Locks", "Corrected", "Uncorrect"},
+			[]string{"Type", "Ch", "Frequency", "Power", "SNR", "Mod/FFT", "Locks", "CCWE/UCCWE"},
 			rows,
-			[]int{7, 4, 11, 7, 6, 8, 12, 10, 10},
+			[]int{7, 4, 11, 7, 6, 8, 12, 25},
 		))
 	}
 

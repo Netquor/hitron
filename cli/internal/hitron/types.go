@@ -174,6 +174,9 @@ type Snapshot struct {
 	Hardware string `json:"hardware,omitempty"`
 	Serial   string `json:"serial,omitempty"`
 	RFMac    string `json:"rf_mac,omitempty"`
+	// CMTSMac is read from the DOCSIS event log; the device API has no field
+	// for it, so it is empty until a log line names one.
+	CMTSMac string `json:"cmts_mac,omitempty"`
 
 	UptimeSeconds int64 `json:"uptime_seconds,omitempty"`
 	HasUptime     bool  `json:"-"`
