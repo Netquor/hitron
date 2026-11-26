@@ -22,6 +22,7 @@ PORT="${HITRON_PORT:-8000}"
 LISTEN="${HITRON_LISTEN:-127.0.0.1}"
 RUN=0
 READ_ONLY=0
+NO_OPEN=0
 UNINSTALL=0
 
 usage() {
@@ -37,6 +38,7 @@ Options:
   --listen ADDR     bind address for --run (default: $LISTEN)
   --run             start the local docs site + gateway proxy after install
   --read-only       with --run, block write verbs at the proxy
+  --no-open         do not open the default browser (it opens automatically)
   --ref REF         branch or tag to install (default: $REF)
   --prefix DIR      install venv here (default: $PREFIX)
   --bin-dir DIR     symlink the command here (default: $BINDIR)
@@ -61,6 +63,7 @@ while [ $# -gt 0 ]; do
     --listen) LISTEN="${2:?--listen needs a value}"; shift 2 ;;
     --run) RUN=1; shift ;;
     --read-only) READ_ONLY=1; shift ;;
+    --no-open) NO_OPEN=1; shift ;;
     --ref) REF="${2:?--ref needs a value}"; shift 2 ;;
     --prefix) PREFIX="${2:?--prefix needs a value}"; shift 2 ;;
     --bin-dir) BINDIR="${2:?--bin-dir needs a value}"; shift 2 ;;
@@ -142,8 +145,11 @@ if [ "$RUN" = 1 ]; then
   if [ "$READ_ONLY" = 1 ]; then
     ARGS+=(--read-only)
   fi
-  echo "Starting the local site + proxy on http://$LISTEN:$PORT (gateway $DEVICE)"
-  echo "Press Ctrl-C to stop."
+  if [ "$NO_OPEN" = 1 ]; then
+    ARGS+=(--no-open)
+  fi
+  echo "Starting the local site + proxy for gateway $DEVICE"
+  echo "Open http://127.0.0.1:$PORT (Ctrl-C to stop)"
   exec "$PREFIX/venv/bin/hitron" "${ARGS[@]}"
 else
   echo "Start the local site + proxy with:"

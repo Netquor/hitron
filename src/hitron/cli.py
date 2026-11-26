@@ -30,6 +30,8 @@ def _run_site(args: argparse.Namespace) -> None:
         argv += ["--dir", args.dir]
     if args.read_only:
         argv += ["--read-only"]
+    if args.no_open:
+        argv += ["--no-open"]
     site_main(argv)
 
 
@@ -136,6 +138,11 @@ def main() -> None:
         "--read-only",
         action="store_true",
         help="proxy GET/HEAD only; writes (reboot, reset) return 403",
+    )
+    p.add_argument(
+        "--no-open",
+        action="store_true",
+        help="do not open the default browser (it opens automatically otherwise)",
     )
     p.set_defaults(sync=_run_site)
 

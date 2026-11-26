@@ -404,8 +404,9 @@ function selectOp(op) {
       <button class="btn primary" id="send-op" type="button">Send request</button>
       <button class="btn ghost" id="copy-curl" type="button">Copy as cURL</button>
       <button class="btn ghost" id="try-rf" type="button">Send and chart</button>
-      <span class="muted small">Read routes answer without login on the analyzed firmware.</span>
+      <span id="send-state" class="send-state" role="status" aria-live="polite"></span>
     </div>
+    <p class="muted small op-note">Read routes answer without login on the analyzed firmware.</p>
     <details style="margin-top:1.2rem">
       <summary class="muted small">Response schema</summary>
       <div class="schema-tree">${schemaTree(responseSchema(op.op)) || '<p class="muted small">No JSON schema.</p>'}</div>
@@ -459,6 +460,43 @@ function buildRequest() {
   return { op, url, method: op.method, ...(bodyInit || {}) };
 }
 
+function setSendState(text, kind) {
+  const el = $('#send-state');
+  if (!el) return;
+  el.textContent = text || '';
+  el.className = `send-state${kind ? ` ${kind}` : ''}`;
+}
+
+function setSendBusy(busy) {
+  for (const id of ['#send-op', '#try-rf']) {
+    const button = $(id);
+    if (button) button.disabled = busy;
+  }
+}
+
+// The response panel sits below the operation detail, so on a laptop the click
+// can land with the panel just under the fold. Reveal it (and the charts, for
+// "Send and chart") so a send always has a visible result.
+function reveal(selector) {
+  const target = $(selector);
+  if (!target) return;
+  const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const margin = 16;
+  const rect = target.getBoundingClientRect();
+  const fullyVisible = rect.top >= margin && rect.bottom <= window.innerHeight - margin;
+  if (!fullyVisible && rect.height > 0) {
+    window.scrollTo({
+      top: Math.max(0, window.scrollY + rect.top - margin),
+      behavior: reduced ? 'auto' : 'smooth',
+    });
+  }
+  if (selector === '.response-panel') {
+    target.classList.remove('flash');
+    // restart the animation on the next frame
+    requestAnimationFrame(() => target.classList.add('flash'));
+  }
+}
+
 async function sendSelected(alsoChart) {
   const request = buildRequest();
   if (!request) return;
@@ -466,6 +504,8 @@ async function sendSelected(alsoChart) {
   const statusEl = $('#resp-status');
   statusEl.textContent = 'sending…';
   statusEl.className = 'pill muted';
+  setSendBusy(true);
+  setSendState('sending…', 'busy');
 
   try {
     const response = await fetch(request.url, {
@@ -484,6 +524,8 @@ async function sendSelected(alsoChart) {
       statusEl.className = 'pill bad';
       $('#resp-time').textContent = `${elapsed.toFixed(0)} ms`;
       $('#resp-size').textContent = `${text.length} B`;
+      setSendState(`${response.status} · no local proxy`, 'bad');
+      reveal('.response-panel');
       logRequest(request.method, request.url, response.status, elapsed, 'no local proxy');
       return;
     }
@@ -501,12 +543,20 @@ async function sendSelected(alsoChart) {
     statusEl.className = `pill ${ok ? 'ok' : 'bad'}`;
     $('#resp-time').textContent = `${elapsed.toFixed(0)} ms`;
     $('#resp-size').textContent = `${text.length} B`;
+    setSendState(
+      `${response.status} ${response.statusText || ''} · ${elapsed.toFixed(0)} ms · ${formatBytes(text.length)}`,
+      ok ? 'ok' : 'bad'
+    );
+    reveal('.response-panel');
 
     logRequest(request.method, request.url, response.status, elapsed);
 
     if (parsed) {
       ingestResponse(request.op.path, parsed);
-      if (alsoChart) await fetchRfPoints();
+      if (alsoChart) {
+        await fetchRfPoints();
+        reveal('#charts');
+      }
     }
   } catch (error) {
     const elapsed = performance.now() - started;
@@ -517,8 +567,18 @@ async function sendSelected(alsoChart) {
       (proxyAvailable()
         ? 'The local page is up, but the proxy could not reach the gateway. Check --device and that the modem is on this LAN.'
         : proxyHint());
+    setSendState('network error', 'bad');
+    reveal('.response-panel');
     logRequest(request.method, request.url, 0, elapsed, error.message);
+  } finally {
+    setSendBusy(false);
   }
+}
+
+function formatBytes(size) {
+  if (size < 1024) return `${size} B`;
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} kB`;
+  return `${(size / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 function requestForCurl() {
@@ -836,14 +896,78 @@ function wireUi() {
     renderRequestLog();
   });
 
+  const install = $('#install');
+  if (install) {
+    const modes = $$('#install-modes button');
+    const platforms = $$('#install-platforms button');
+    const command = install.querySelector('#install-cmd');
+    const prompt = install.querySelector('#install-prompt');
+    const note = $('#install-note');
+    const notes = {
+      rw: 'Reboots and resets pass through to the modem.',
+      ro: 'GET and HEAD only. Anything that could reboot the modem returns 403.',
+    };
+    const commands = {
+      unix: {
+        rw: 'curl -fsSL https://hitron.netquor.dev/install.sh | bash -s -- --run --device 192.168.100.1',
+        ro: 'curl -fsSL https://hitron.netquor.dev/install.sh | bash -s -- --run --device 192.168.100.1 --read-only',
+      },
+      windows: {
+        rw: '& ([scriptblock]::Create((irm https://hitron.netquor.dev/install.ps1))) -Run -Device 192.168.100.1',
+        ro: '& ([scriptblock]::Create((irm https://hitron.netquor.dev/install.ps1))) -Run -Device 192.168.100.1 -ReadOnly',
+      },
+    };
+    const render = () => {
+      const mode = install.dataset.mode;
+      const platform = install.dataset.platform;
+      if (command) command.textContent = commands[platform][mode];
+      if (prompt) prompt.textContent = platform === 'windows' ? 'PS>' : '$';
+      if (note) note.textContent = notes[mode] || '';
+      $$('.checkout').forEach((list) => { list.hidden = list.dataset.platform !== platform; });
+    };
+    modes.forEach((button) => {
+      button.addEventListener('click', () => {
+        install.dataset.mode = button.dataset.mode;
+        modes.forEach((other) => other.setAttribute('aria-pressed', String(other === button)));
+        render();
+      });
+    });
+    platforms.forEach((button) => {
+      button.addEventListener('click', () => {
+        install.dataset.platform = button.dataset.platform;
+        platforms.forEach((other) => other.setAttribute('aria-pressed', String(other === button)));
+        render();
+      });
+    });
+    render();
+  }
+
   $$('.copy').forEach((button) => {
     button.addEventListener('click', () => {
       const target = $(button.dataset.copy);
       if (!target) return;
-      navigator.clipboard.writeText(target.textContent).then(
-        () => toast('Copied'),
-        () => toast('Clipboard blocked')
-      );
+      const text = target.textContent.trim();
+      const done = () => toast('Copied');
+      const fallback = () => {
+        const area = document.createElement('textarea');
+        area.value = text;
+        area.setAttribute('readonly', '');
+        area.style.position = 'fixed';
+        area.style.opacity = '0';
+        document.body.appendChild(area);
+        area.select();
+        try {
+          document.execCommand('copy') ? done() : toast('Select and copy manually');
+        } catch (_) {
+          toast('Select and copy manually');
+        }
+        area.remove();
+      };
+      if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(text).then(done, fallback);
+      } else {
+        fallback();
+      }
     });
   });
 

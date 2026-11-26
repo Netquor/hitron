@@ -1,0 +1,107 @@
+name: Release hitron-cli
+
+on:
+  push:
+    tags:
+      - "cli/v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to stamp into the binaries (e.g. 0.1.0)"
+        required: false
+        default: "0.1.0"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: cli-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: build ${{ matrix.goos }}/${{ matrix.goarch }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        goos: [linux, darwin, windows]
+        goarch: [amd64, arm64]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: cli/go.mod
+
+      - name: Vet and test
+        working-directory: cli
+        run: |
+          go vet ./...
+          go test ./...
+
+      - name: Build
+        working-directory: cli
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: "0"
+        run: |
+          version="${{ github.event.inputs.version }}"
+          if [ -z "$version" ]; then
+            version="${GITHUB_REF_NAME#cli/v}"
+          fi
+          suffix=""
+          if [ "$GOOS" = "windows" ]; then suffix=".exe"; fi
+          out="hitron-cli_${version}_${GOOS}_${GOARCH}${suffix}"
+          mkdir -p dist
+          go build -trimpath -ldflags "-s -w -X main.version=${version}" \
+            -o "dist/${out}" ./cmd/hitron-cli
+          (cd dist && shasum -a 256 "${out}" > "${out}.sha256")
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hitron-cli-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: cli/dist/*
+          if-no-files-found: error
+
+  release:
+    name: publish release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          version="${{ github.event.inputs.version }}"
+          if [ -z "$version" ]; then
+            version="${GITHUB_REF_NAME#cli/v}"
+          fi
+          tag="cli/v${version}"
+          cat > notes.md <<EOF
+          Standalone \`hitron-cli\` binaries for Linux, macOS, and Windows.
+
+          No runtime, no dependencies: download the file for your platform, make it
+          executable, and run \`hitron-cli help\`.
+
+          | Platform | File |
+          | --- | --- |
+          $(cd dist && ls hitron-cli_* | grep -v '.sha256$' | sed 's/.*/| `&` |/')
+
+          Each binary has a matching \`.sha256\` file.
+          EOF
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release upload "$tag" dist/* --clobber
+          else
+            gh release create "$tag" dist/* \
+              --title "hitron-cli ${version}" \
+              --notes-file notes.md
+          fi

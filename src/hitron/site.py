@@ -10,6 +10,8 @@ to the device.
     hitron site --device 192.168.100.1 --port 8000
 
 Then open http://127.0.0.1:8000 and leave the API base URL at ``/proxy``.
+The default browser opens on its own unless ``--no-open`` (or the
+``HITRON_NO_OPEN`` environment variable) is set.
 """
 
 from __future__ import annotations
@@ -20,13 +22,13 @@ import os
 import posixpath
 import urllib.error
 import urllib.request
-from functools import partial
+import webbrowser
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 from urllib.parse import unquote, urlparse
 
-__all__ = ["main", "find_site_dir"]
+__all__ = ["main", "find_site_dir", "browse_url"]
 
 PROXY_PREFIX = "/proxy"
 HOP_HEADERS = {
@@ -61,6 +63,24 @@ def find_site_dir(explicit: str | None = None) -> Path:
         "could not find the site directory; pass --dir, set HITRON_SITE_DIR, "
         "or reinstall hitron (the published package bundles the site)"
     )
+
+
+def browse_url(listen: str, port: int) -> str:
+    """The URL a human should open. A wildcard bind is not clickable, so map
+    ``0.0.0.0`` and ``::`` to the loopback address."""
+    host = listen.strip()
+    if host in ("", "0.0.0.0", "::", "[::]"):
+        host = "127.0.0.1"
+    if ":" in host and not host.startswith("["):
+        host = f"[{host}]"
+    return f"http://{host}:{port}/"
+
+
+def _should_open_browser(listen: str) -> bool:
+    if os.environ.get("HITRON_NO_OPEN"):
+        return False
+    # Only a local viewer can open a browser; a LAN bind is usually a server.
+    return listen.strip() in ("127.0.0.1", "localhost", "::1", "[::1]", "")
 
 
 def _handler(site_dir: Path, device: str | None, read_only: bool = False):
@@ -196,18 +216,44 @@ def main(argv: list[str] | None = None) -> None:
         action="store_true",
         help="proxied requests may only read (GET/HEAD); write verbs return 403",
     )
+    ap.add_argument(
+        "--no-open",
+        action="store_true",
+        help="do not open the default browser (also: HITRON_NO_OPEN=1)",
+    )
     args = ap.parse_args(argv)
 
     site_dir = find_site_dir(args.dir)
     handler = _handler(site_dir, args.device, read_only=args.read_only)
-    server = ThreadingHTTPServer((args.listen, args.port), handler)
+    try:
+        server = ThreadingHTTPServer((args.listen, args.port), handler)
+    except OSError as exc:
+        if getattr(exc, "errno", None) in (48, 98):  # macOS / Linux EADDRINUSE
+            raise SystemExit(
+                f"hitron site: port {args.port} is already in use. "
+                f"Try --port {args.port + 1}, or stop the other server."
+            ) from exc
+        raise
+
+    url = browse_url(args.listen, args.port)
     mode = "read-only" if args.read_only else "read/write"
-    print(f"hitron site: http://{args.listen}:{args.port}  (site={site_dir}, device={args.device or 'none'}, {mode})")
-    print("API console base URL: /proxy" if args.device else "start with --device to enable the API console proxy")
+    print(f"hitron site: {url}")
+    print(f"  site     {site_dir}")
+    print(f"  gateway  {args.device or 'none (start with --device to enable /proxy)'}")
+    print(f"  mode     {mode}  ·  API base URL  /proxy")
+    print("  stop     Ctrl-C")
+
+    if not args.no_open and _should_open_browser(args.listen):
+        print(f"  opening  {url} in your default browser")
+        try:
+            webbrowser.open(url)
+        except Exception:  # noqa: BLE001 - a headless box just keeps the URL
+            pass
+
     try:
         server.serve_forever()
     except KeyboardInterrupt:
-        pass
+        print("\nhitron site: stopped")
     finally:
         server.server_close()
 

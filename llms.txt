@@ -17,7 +17,8 @@ firmware's own, including typos such as `Raidos_List`.
 - [Reverse-engineering knowledge base](https://github.com/Netquor/hitron/blob/main/docs/KB.md): auth model, shell sinks, firmware quirks.
 - [Static site](https://hitron.netquor.dev/): API console, live charts, logs.
 - [Run the site and gateway proxy locally](https://github.com/Netquor/hitron/blob/main/docs/LOCAL-PROXY.md): one-line installer, pipx/uv alternatives, troubleshooting.
-- Installer script: https://hitron.netquor.dev/install.sh (`curl -fsSL ... | bash`).
+- Installer script: https://hitron.netquor.dev/install.sh (`curl -fsSL ... | bash`); Windows: https://hitron.netquor.dev/install.ps1.
+- Standalone Go client, no runtime: https://github.com/Netquor/hitron/tree/main/cli (releases at /releases).
 - [Source](https://github.com/Netquor/hitron)
 
 ## API specifications
@@ -41,6 +42,10 @@ cookies or a vendor `Ht-App-Auth` header.
     hitron coda60 192.168.100.1            # read everything, print JSON
     hitron coda57 192.168.100.2 --spec-check
     hitron ht-em5 192.168.0.212
+
+    hitron-cli 192.168.100.1               # Go binary: live TUI
+    hitron-cli stats --once --json         # one report, machine-readable
+    hitron-cli reboot --confirm -u admin -p admin
 
     hitron-exporter --coda60 192.168.100.1 --ht-em5 192.168.0.212
     hitron-exporter --coda60 edge=192.168.100.1 --once --format telegraf

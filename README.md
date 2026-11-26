@@ -19,6 +19,7 @@ endpoint, every auth scheme, firmware quirks, and open questions.
 | `src/hitron/formats.py` | Prometheus, Influx/Telegraf, OTLP/HTTP JSON, and JSON encoders. |
 | `src/hitron/exporter.py` | Multi-device poller with `/metrics`, `/healthz`, `/api/v1/samples`, `/api/v1/logs`, and OTLP push. |
 | `dashboards/` + `deploy/` | Importable Grafana JSON and a one-command Prometheus/Grafana/Loki stack. |
+| `cli/` | Standalone Go `hitron-cli`: detection, live TUI, RF detail, and confirmed reset actions. No dependencies. |
 | `site/` | Build-free GitHub Pages docs: API console, live charts, logs. |
 
 Guides: [`docs/GETTING-STARTED.md`](docs/GETTING-STARTED.md) (end to end),
@@ -45,6 +46,16 @@ curl -fsSL https://hitron.netquor.dev/install.sh | bash
 It links `~/.local/bin/hitron` and `hitron-exporter`. Add `-s -- --run` to start
 the local docs site and gateway proxy immediately. There is **no PyPI
 package**: `pip install hitron` is an unrelated project.
+
+Windows PowerShell 5.1 or newer uses the same install, with no admin rights:
+
+```powershell
+& ([scriptblock]::Create((irm https://hitron.netquor.dev/install.ps1))) -Run
+```
+
+Drop `-Run` to install without starting the site. Both installers keep
+everything under the user profile and can be removed with `--uninstall` or
+`-Uninstall`.
 
 Manual install from a checkout:
 
@@ -78,6 +89,35 @@ hitron coda60-set-username  192.168.100.1 --username admin --password admin --ne
 ```
 
 These act on a real device the instant they run — see "Writes" below.
+
+## Go terminal client
+
+`cli/` is a standalone `hitron-cli` for the same three families: a single
+static binary, standard library only, no Python, no config file. Releases are
+built for Linux, macOS, and Windows on amd64 and arm64.
+
+```bash
+cd cli && go build -o hitron-cli ./cmd/hitron-cli
+
+./hitron-cli 192.168.100.1            # live view in a terminal
+./hitron-cli stats --once             # one report and exit
+./hitron-cli detect 192.168.100.1
+./hitron-cli channels --json
+./hitron-cli monitor --interval 3s
+```
+
+It detects CODA6X, CODA-57, and HT-EM5 itself, reads CODA6X and CODA-57
+anonymously (prompting once if a device gates the read), uses HTTP Basic for
+the HT-EM5, and checks every RF reading against the Midco envelope. Destructive
+actions are separate verbs with a `y/N` prompt that `--confirm` skips:
+
+```bash
+./hitron-cli reboot        192.168.100.1 -u admin -p admin
+./hitron-cli factory-reset 192.168.100.1 -u admin -p admin --confirm
+```
+
+Full command, flag, and auth reference: [`cli/README.md`](cli/README.md), or
+`hitron-cli help` and `hitron-cli help auth`.
 
 ## Metrics exporter
 
@@ -206,6 +246,16 @@ The suite is offline and needs no device:
   and `llms.txt` are consistent.
 * `test_coda60_write_payloads.py`, `test_coda57_spec_check.py`, and
   `test_ht_em5_decode.py` cover the original clients.
+
+The Go client has its own offline suite:
+
+```bash
+cd cli && go vet ./... && go test ./...
+```
+
+It uses `httptest` fixtures shaped like the captured responses, including the
+null OFDM slots, `-inf` power sentinels, mixed IPv6/IPv4 WAN field, and
+newest-first logs.
 
 There is still no integration-test suite against real hardware — see
 `docs/KB.md` §4.

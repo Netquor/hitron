@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>hitron — CODA6X API, exporter, and Grafana</title>
 <meta name="description" content="Reverse-engineered Hitron CODA6X/CODA-60 API reference, interactive console, Prometheus/Telegraf/OpenTelemetry exporter, and Grafana dashboards.">
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📡</text></svg>">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%230f6b5c'/><circle cx='16' cy='16' r='6.5' fill='none' stroke='%23f7f7f5' stroke-width='2.5'/></svg>">
 <link rel="stylesheet" href="assets/style.css">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" defer></script>
 <script src="assets/app.js" defer></script>
@@ -15,7 +15,9 @@
 
 <header class="topbar">
   <a class="brand" href="#top">
-    <span class="brand-mark">◉</span>
+    <span class="brand-mark" aria-hidden="true">
+      <svg viewBox="0 0 16 16" width="14" height="14"><circle cx="8" cy="8" r="5.5" fill="none" stroke="currentColor" stroke-width="2.2"/></svg>
+    </span>
     <span>hitron<span class="dim">/docs</span></span>
   </a>
   <nav class="topnav">
@@ -25,12 +27,15 @@
     <a href="#charts">Live charts</a>
     <a href="#dashboards">Grafana</a>
     <a href="#telemetry">Telemetry</a>
-    <a href="#logs">Logs</a>
-    <a href="llms.txt">llms.txt</a>
+    <a href="#logs" class="nav-secondary">Logs</a>
+    <a href="llms.txt" class="nav-secondary">llms.txt</a>
   </nav>
   <div class="topbar-actions">
     <span id="spec-status" class="pill muted">loading spec…</span>
-    <button id="theme-toggle" class="icon-btn" type="button" title="Toggle theme" aria-label="Toggle theme">◐</button>
+    <button id="theme-toggle" class="icon-btn" type="button" title="Toggle theme" aria-label="Toggle theme">
+      <svg class="icon-sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M5.2 5.2l1.6 1.6M17.2 17.2l1.6 1.6M18.8 5.2l-1.6 1.6M6.8 17.2l-1.6 1.6"/></svg>
+      <svg class="icon-moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.4A8.6 8.6 0 0 1 9.6 4 8.6 8.6 0 1 0 20 14.4Z"/></svg>
+    </button>
   </div>
 </header>
 
@@ -45,13 +50,13 @@
       for <strong>CODA6X</strong>, <strong>CODA-57</strong>, and <strong>HT-EM5</strong>.
     </p>
     <div class="cta-row">
-      <a class="btn primary" href="#explorer">Open the API console</a>
-      <a class="btn" href="openapi.json" download>Download OpenAPI JSON</a>
-      <a class="btn ghost" href="https://github.com/Netquor/hitron">GitHub ↗</a>
+      <a class="btn primary" href="#explorer">Open API console</a>
+      <a class="btn" href="openapi.json" download>OpenAPI JSON</a>
+      <a class="quiet-link" href="https://github.com/Netquor/hitron">GitHub ↗</a>
     </div>
     <div class="cmd" role="group" aria-label="Install command">
-      <code id="install-cmd">curl -fsSL https://hitron.netquor.dev/install.sh | bash -s -- --run</code>
-      <button class="copy" data-copy="#install-cmd" type="button">Copy</button>
+      <code id="hero-install-cmd">curl -fsSL https://hitron.netquor.dev/install.sh | bash -s -- --run</code>
+      <button class="copy" data-copy="#hero-install-cmd" type="button">Copy</button>
     </div>
   </div>
   <div class="hero-card">
@@ -65,10 +70,7 @@
       "portId": 25,
       "frequency": "267000000",
       "signalStrength": "8.098",
-      "snr": "43.377",
-      "channelId": "1",
-      "correcteds": "0",
-      "uncorrect": "0"
+      "snr": "43.377"
     }
   ]
 }</code></pre>
@@ -97,7 +99,7 @@
         <pre><code>python3 -m venv .venv &amp;&amp; source .venv/bin/activate
 pip install -e ".[dev]"
 hitron coda60 192.168.100.1 | head</code></pre>
-        <p class="muted">Read routes work without a login on the analyzed firmware. Writes need <code>hitron coda60-…</code> and <code>--yes-really-do-this</code>.</p>
+        <p class="muted">Read routes work without a login on the analyzed firmware. Writes need <code>hitron coda60-…</code> and <code>--yes-really-do-this</code>. No Python? The standalone <a href="https://github.com/Netquor/hitron/tree/main/cli">Go client</a> prints the same snapshot from one binary.</p>
       </div>
     </li>
     <li>
@@ -190,29 +192,52 @@ hitron coda60 192.168.100.1 | head</code></pre>
 <section id="local" class="section">
   <div class="section-head">
     <h2>Run the API console locally</h2>
-    <p>The published page is static, so it cannot call your modem. One line installs an isolated virtualenv, starts the site, and proxies <code>/proxy</code> to the gateway on the same origin.</p>
+    <p>This page is static, so it cannot call your modem. One install puts the same page and <code>/proxy</code> on one origin, then starts it.</p>
   </div>
-  <div class="cards three">
-    <article class="card">
-      <h3>One line</h3>
-      <pre><code>curl -fsSL https://hitron.netquor.dev/install.sh | bash -s -- \
-  --run --device 192.168.100.1</code></pre>
-      <p class="muted">Open <code>http://127.0.0.1:8000</code>. No sudo, no system packages, nothing outside <code>~/.local/share/hitron</code>.</p>
-    </article>
-    <article class="card">
-      <h3>Read-only, if you prefer</h3>
-      <pre><code>curl -fsSL https://hitron.netquor.dev/install.sh | bash -s -- \
-  --run --device 192.168.100.1 --read-only</code></pre>
-      <p class="muted">The proxy answers <code>GET</code>/<code>HEAD</code> only and returns 403 for anything that could reboot the modem.</p>
-    </article>
-    <article class="card">
-      <h3>Already have Python 3.11+?</h3>
-      <pre><code>git clone https://github.com/Netquor/hitron
-cd hitron &amp;&amp; python3 -m venv .venv
-. .venv/bin/activate &amp;&amp; pip install -e .
-hitron site --device 192.168.100.1</code></pre>
-      <p class="muted"><a href="https://github.com/Netquor/hitron/blob/main/docs/LOCAL-PROXY.md">Step-by-step guide and troubleshooting →</a></p>
-    </article>
+  <div class="local-grid">
+    <div class="install" id="install" data-mode="rw" data-platform="unix">
+      <div class="install-head">
+        <h3>Install and start</h3>
+        <div class="segmented" id="install-platforms" role="group" aria-label="Operating system">
+          <button type="button" data-platform="unix" aria-pressed="true">macOS · Linux</button>
+          <button type="button" data-platform="windows" aria-pressed="false">Windows</button>
+        </div>
+      </div>
+      <div class="install-term">
+        <pre class="install-code"><span class="prompt" aria-hidden="true" id="install-prompt">$</span><code id="install-cmd">curl -fsSL https://hitron.netquor.dev/install.sh | bash -s -- --run --device 192.168.100.1</code></pre>
+      </div>
+      <div class="install-actions">
+        <button class="btn primary copy" type="button" data-copy="#install-cmd" id="install-copy">Copy command</button>
+        <div class="segmented" id="install-modes" role="group" aria-label="Proxy mode">
+          <button type="button" data-mode="rw" aria-pressed="true">Read + write</button>
+          <button type="button" data-mode="ro" aria-pressed="false">Read-only</button>
+        </div>
+      </div>
+      <p class="install-note" id="install-note">Reboots and resets pass through to the modem.</p>
+      <dl class="install-facts">
+        <div><dt>Then open</dt><dd><a href="http://127.0.0.1:8000">http://127.0.0.1:8000</a></dd></div>
+        <div><dt>API base</dt><dd><code>/proxy</code> is the default</dd></div>
+        <div><dt>Stop</dt><dd><kbd>Ctrl</kbd><kbd>C</kbd></dd></div>
+        <div><dt>Update</dt><dd>run the same command</dd></div>
+      </dl>
+    </div>
+    <div class="local-alt">
+      <h3>Or from a checkout</h3>
+      <ol class="checkout" data-platform="unix">
+        <li><span class="checkout-label">Clone</span><code>git clone https://github.com/Netquor/hitron</code></li>
+        <li><span class="checkout-label">Create the venv</span><code>cd hitron &amp;&amp; python3 -m venv .venv</code></li>
+        <li><span class="checkout-label">Install</span><code>. .venv/bin/activate &amp;&amp; pip install -e .</code></li>
+        <li><span class="checkout-label">Run</span><code>hitron site --device 192.168.100.1</code></li>
+      </ol>
+      <ol class="checkout" data-platform="windows" hidden>
+        <li><span class="checkout-label">Clone</span><code>git clone https://github.com/Netquor/hitron</code></li>
+        <li><span class="checkout-label">Create the venv</span><code>cd hitron; py -3 -m venv .venv</code></li>
+        <li><span class="checkout-label">Install</span><code>.venv\Scripts\Activate.ps1; pip install -e .</code></li>
+        <li><span class="checkout-label">Run</span><code>hitron site --device 192.168.100.1</code></li>
+      </ol>
+      <p class="local-alt-note">Needs Python 3.11 or newer. There is no <code>hitron</code> package on PyPI; that name belongs to another project.</p>
+      <p class="local-alt-link"><a href="https://github.com/Netquor/hitron/blob/main/docs/LOCAL-PROXY.md">Step-by-step guide and troubleshooting →</a></p>
+    </div>
   </div>
 </section>
 
