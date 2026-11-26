@@ -74,9 +74,15 @@ at what looks like a lab/dev ACS (`10.1.1.150`), not a live carrier endpoint. Tr
 "ever point it at a real ACS" as its own, separate decision — it's a carrier-grade
 remote-management channel, a different risk class from the `/ms/` register API.
 
-Confirmed against one physical bridge so far; sweeps of the other two units are in
-progress as of this writing — update this line once they complete (see §4.2 — this
-was item 3 in the previous KB and is being actively re-checked, not assumed).
+**Confirmed identical across all three physical bridges** (`.212`, `.241`, `.60`):
+the same 412 OIDs answer on every unit, with byte-for-byte identical values for the
+entire TR-069 block (same ACS URL, same `admin` username, same `stun_test`/
+`stun_pass` placeholders) — this is a shared default baked into the firmware image,
+not per-device config. The only values that differ between units are exactly the
+ones that should: each bridge's own MAC (`0x103`), IP (`0x20b`), a per-device counter
+(`0x104`), and two config flags (`0x1002` preferred-NC, `0x1009` band mask) that
+simply happen to differ because these particular units were configured differently,
+not because the firmware build differs.
 
 ## 2. CODA6X / CODA-60
 
@@ -171,16 +177,21 @@ development machine during this pass (different subnet). Re-verify before relyin
    unconfirmed) and whether `/login.html` actually gates anything.
 2. **HT-EM5:** decode the remaining `0x10a9`-`0x1173` config block and the `0x269`
    ACS-password word alignment. Both are read-only investigation, no device risk.
-3. **CODA6X:** confirm the exact `@info` routing convention (path segment vs.
+3. ~~**HT-EM5:** sweep the other two bridges to confirm the register map and TR-069
+   block are consistent across units.~~ **Done.** Confirmed identical on all three
+   physical bridges — see §1.
+4. **CODA6X:** confirm the exact `@info` routing convention (path segment vs.
    querystring) against live traffic — `coda60.py` assumes path segments
    (`/1/Device/CM/DsInfo`) based on the router pattern in the firmware's `routes.ini`.
-4. **CODA6X:** never exercise `/1/Device/Manage` (admin password), reboot, or factory
+5. **CODA6X:** never exercise `/1/Device/Manage` (admin password), reboot, or factory
    reset against a real unit without being asked each time.
-5. **Decide on the TR-069 finding** — leave it dormant, or treat "does this bridge ever
-   phone home to a real ACS" as its own, separate investigation.
-6. **Wire this package into `netquor-sdn`** — replace `aggregator/moca_client.py` and
+6. **Decide on the TR-069 finding** — it's a firmware default shared across every
+   unit, not per-device config, which makes it more plausible this is an
+   intentionally-shipped management hook rather than a leftover. Leave it dormant, or
+   treat "does this bridge ever phone home to a real ACS" as its own investigation.
+7. **Wire this package into `netquor-sdn`** — replace `aggregator/moca_client.py` and
    the external `hitron-client` sidecar with `pip install`-ing this repo (or vendoring
    it) and pointing `server/src/features/modem` and the exporter at it. Not done as
    part of writing this repo — a deliberate choice for whoever does that integration.
-7. **Add the spectrum analyzer to `coda60.py`** — `/1/Device/Spectrum/*` is read-only
+8. **Add the spectrum analyzer to `coda60.py`** — `/1/Device/Spectrum/*` is read-only
    and documented in the spec but not yet wrapped in the client.
