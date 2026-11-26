@@ -40,7 +40,7 @@ Registry states across all models: `ok` 50, `php8` 53, `session` 5, `untested` 3
 | `cm.provision` | `/1/Device/CM/DocsisProvision` | 200 | ok | 253 |
 | `cm.ds` | `/1/Device/CM/DsInfo` | 200 | ok | 1390 |
 | `cm.us` | `/1/Device/CM/UsInfo` | 200 | ok | 324 |
-| `cm.ds.ofdm` | `/1/Device/CM/DsOfdm` | 200 | ok | 1090 |
+| `cm.ds.ofdm` | `/1/Device/CM/DsOfdm` | 200 | ok | 1091 |
 | `cm.us.ofdm` | `/1/Device/CM/UsOfdm` | 200 | ok | 1362 |
 | `cm.log` | `/1/Device/CM/Log` | 200 | ok | 4984 |
 | `cm.ready` | `/1/Device/CM/Ready` | 400 | rejected (400) — {"errCode":"001","errMsg":"Invalid Paramters."} | 48 |
@@ -75,7 +75,7 @@ Registry states across all models: `ok` 50, `php8` 53, `session` 5, `untested` 3
 | --- | --- | ---: | --- | ---: |
 | `spectrum` | `/1/Device/Spectrum` | 200 | ok | 64 |
 | `spectrum.freqlist` | `/1/Device/Spectrum/FreqList` | 200 | ok | 211 |
-| `spectrum.rtdata` | `/1/Device/Spectrum/RTData` | 200 | ok | 1574 |
+| `spectrum.rtdata` | `/1/Device/Spectrum/RTData` | 200 | ok | 297 |
 | `spectrum.constellation` | `/1/Device/Spectrum/Constellation` | 200 | ok | 49 |
 | `spectrum.freqpower` | `/1/Device/Spectrum/FreqPower` | 200 | ok | 6811 |
 
@@ -89,7 +89,7 @@ Registry states across all models: `ok` 50, `php8` 53, `session` 5, `untested` 3
 | `adminremote.root` | `/1/Device/AdminRemoteManagement` | 500 | php8: missing key — Undefined array key "info" | 418 |
 | `adminremote.status` | `/1/Device/AdminRemoteManagement/Status` | 200 | ok | 51 |
 | `adminremote.aclist` | `/1/Device/AdminRemoteManagement/AcList` | 500 | php8: type error — count(): Argument #1 ($value) must be of type Countable\|array, RemoteAc given [ | 78765 |
-| `adminremote.rlist` | `/1/Device/AdminRemoteManagement/RList` | 500 | php8: missing function — Call to undefined function getInstanceIDs() [/www/hitron/app/controllers/AdminRe | 78794 |
+| `adminremote.rlist` | `/1/Device/AdminRemoteManagement/RList` | 500 | php8: missing function — Call to undefined function getInstanceIDs() [/www/hitron/app/controllers/AdminRe | 78786 |
 | `health.root` | `/1/Device/Health` | 500 | php8: missing key — Undefined array key "info" | 382 |
 | `health.settings` | `/1/Device/Health/Settings` | 400 | rejected (400) — {"errCode":"001","errMsg":"Invalid Paramters."} | 48 |
 | `tempaccess.status` | `/1/Device/TempAccess/Status` | 400 | rejected (400) — {"errCode":"005","errMsg":"GET request is not supported for this model"} | 73 |
@@ -100,11 +100,11 @@ Registry states across all models: `ok` 50, `php8` 53, `session` 5, `untested` 3
 
 | id | path | HTTP | result | bytes |
 | --- | --- | ---: | --- | ---: |
-| `telemetry.rfmetrics` | `/rfmetrics` | 200 | ok | 12868 |
-| `telemetry.pnm` | `/pnm` | 200 | ok | 121141 |
-| `telemetry.pnm.rxmer` | `/pnm/rxmer` | 200 | ok | 19142 |
+| `telemetry.rfmetrics` | `/rfmetrics` | 200 | ok | 12880 |
+| `telemetry.pnm` | `/pnm` | 200 | ok | 121117 |
+| `telemetry.pnm.rxmer` | `/pnm/rxmer` | 200 | ok | 19128 |
 | `telemetry.pnm.ch_est_coef` | `/pnm/ch_est_coef` | 200 | ok | 75427 |
-| `telemetry.pnm.us_pre_eq` | `/pnm/us_pre_eq` | 200 | ok | 7015 |
+| `telemetry.pnm.us_pre_eq` | `/pnm/us_pre_eq` | 200 | ok | 17122 |
 | `telemetry.pnm.mod_prof` | `/pnm/mod_prof` | 200 | ok | 9726 |
 
 ## What the failures are

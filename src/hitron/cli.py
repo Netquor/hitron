@@ -22,6 +22,29 @@ from .models import all_profiles, get_profile
 from .verify import verify
 
 
+def _run_site(args: argparse.Namespace) -> None:
+    from .site import main as site_main
+
+    argv = ["--port", str(args.port), "--listen", args.listen]
+    if args.device:
+        argv += ["--device", args.device]
+    if args.dir:
+        argv += ["--dir", args.dir]
+    if args.read_only:
+        argv += ["--read-only"]
+    if args.no_open:
+        argv += ["--no-open"]
+    site_main(argv)
+
+
+def _run_grafana(args: argparse.Namespace) -> None:
+    from .grafana import write_bundle
+
+    written = write_bundle(args.dir)
+    for name, path in written.items():
+        print(f"{name}: {path}")
+
+
 async def _ht_em5(args: argparse.Namespace) -> dict:
     async with HitronMocaClient(args.host, username=args.username, password=args.password) as client:
         data = await client.get_all()
@@ -144,7 +167,31 @@ def main() -> None:
     p.add_argument("--yes-really-do-this", action="store_true", dest="confirmed")
     p.set_defaults(run=_coda60_action, action="set-username")
 
+    p = sub.add_parser("site", help="serve the static docs site and proxy a gateway")
+    p.add_argument("--port", type=int, default=8000)
+    p.add_argument("--listen", default="127.0.0.1")
+    p.add_argument("--device", default=None, help="gateway used by the /proxy endpoint")
+    p.add_argument("--dir", default=None, help="site directory (defaults to ./site)")
+    p.add_argument(
+        "--read-only",
+        action="store_true",
+        help="proxy GET/HEAD only; writes (reboot, reset) return 403",
+    )
+    p.add_argument(
+        "--no-open",
+        action="store_true",
+        help="do not open the default browser (it opens automatically otherwise)",
+    )
+    p.set_defaults(sync=_run_site)
+
+    p = sub.add_parser("grafana", help="write the Grafana dashboards and provisioning bundle")
+    p.add_argument("--dir", default="deploy/grafana", help="output directory")
+    p.set_defaults(sync=_run_grafana)
+
     args = ap.parse_args()
+    if getattr(args, "sync", None) is not None:
+        args.sync(args)
+        return
     if getattr(args, "run", None) is _coda60_action and not getattr(args, "confirmed", False):
         ap.error(f"this is a real action against {args.host} - pass --yes-really-do-this to proceed")
 

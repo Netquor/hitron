@@ -1,0 +1,95 @@
+# hitron
+
+> Reverse-engineered clients, a complete OpenAPI 3.0 description, and one
+> exporter for Hitron CODA6X (CODA-60 class), CODA-57, and HT-EM5 gateways.
+> The exporter emits Prometheus text, Influx line protocol (Telegraf),
+> OTLP/HTTP JSON (OpenTelemetry), and plain JSON from a single normalized
+> metric vocabulary.
+
+Everything here is derived from a signed CODA-60 firmware image and live
+responses, not from vendor documentation. Field names and casing are the
+firmware's own, including typos such as `Raidos_List`.
+
+## Start here
+
+- [Getting started, end to end](https://github.com/Netquor/hitron/blob/main/docs/GETTING-STARTED.md): install, verify, export, scrape, alert, troubleshoot.
+- [Grafana tutorial](https://github.com/Netquor/hitron/blob/main/docs/GRAFANA.md): dashboards, panels, alerts, Loki.
+- [Reverse-engineering knowledge base](https://github.com/Netquor/hitron/blob/main/docs/KB.md): auth model, shell sinks, firmware quirks.
+- [Static site](https://hitron.netquor.dev/): API console, live charts, logs.
+- [Run the site and gateway proxy locally](https://github.com/Netquor/hitron/blob/main/docs/LOCAL-PROXY.md): one-line installer, pipx/uv alternatives, troubleshooting.
+- Installer script: https://hitron.netquor.dev/install.sh (`curl -fsSL ... | bash`); Windows: https://hitron.netquor.dev/install.ps1.
+- Standalone Go client, no runtime: https://github.com/Netquor/hitron/tree/main/cli (releases at /releases).
+- [Source](https://github.com/Netquor/hitron)
+
+## API specifications
+
+- CODA6X console API (CODA-60 class), full: `specs/openapi-coda60.yaml`.
+  116 paths, 171 operations, envelope `{errCode, errMsg}`, `errCode == "000"`
+  means success. Request bodies are a form field `model` holding JSON;
+  `_method` tunnels PUT/DELETE/PATCH through POST.
+- HT-EM5 MoCA bridge: `specs/openapi-ht-em5.yaml`.
+- CODA-57 legacy `.asp` API: `specs/openapi-coda57-legacy.yaml`.
+- Rendered JSON for tooling: `site/openapi.json`.
+
+Base URLs: `http://192.168.100.1` (factory LAN), or the address your ISP build
+uses. Auth in the analyzed build is disabled for reads; writes use session
+cookies or a vendor `Ht-App-Auth` header.
+
+## Commands
+
+    pip install -e ".[dev]"
+
+    hitron coda60 192.168.100.1            # read everything, print JSON
+    hitron coda57 192.168.100.2 --spec-check
+    hitron ht-em5 192.168.0.212
+
+    hitron-cli 192.168.100.1               # Go binary: live TUI
+    hitron-cli stats --once --json         # one report, machine-readable
+    hitron-cli reboot --confirm -u admin -p admin
+
+    hitron-exporter --coda60 192.168.100.1 --ht-em5 192.168.0.212
+    hitron-exporter --coda60 edge=192.168.100.1 --once --format telegraf
+    hitron-exporter --coda60 192.168.100.1 --once --format otlp
+    hitron-exporter --coda60 192.168.100.1 --otlp-endpoint http://collector:4318/v1/metrics
+
+    hitron grafana --dir deploy/grafana   # regenerate dashboards + provisioning
+    hitron site --device 192.168.100.1    # static docs + gateway proxy on :8000
+
+Exporter endpoints: `/metrics`, `/healthz`, `/api/v1/samples`, `/api/v1/logs`.
+
+## Metric vocabulary
+
+Prefix `modem_` for CODA6X and CODA-57; `hitron_` for HT-EM5 and self-metrics.
+Counters end in `_total`. Labels are bounded identifiers, never free text.
+
+- `modem_downstream_channel_power_dbmv{source,channel_id,port_id}`
+- `modem_downstream_channel_snr_db{source,channel_id}`
+- `modem_downstream_channel_{octets,corrected,uncorrectable}_total`
+- `modem_upstream_channel_power_dbmv{source,channel_id}`
+- `modem_downstream_ofdm_channel_{plc_power_dbmv,snr_db,frequency_hz}`
+- `modem_downstream_ofdm_channel_{plc,ncp,mdc1}_locked`
+- `modem_upstream_ofdm_channel_{power_dbmv,power_1_6_dbmv,bandwidth_mhz,operating}`
+- `modem_power_in_spec{direction}` (CODA-57, envelope configurable)
+- `modem_wifi_client_count{band}`, `modem_wifi_client_rssi_dbm`
+- `modem_host_count`, `modem_host_info`, `modem_ethernet_port_link_up`
+- `modem_moca_link_up`, `hitron_moca_phy_rate_mbps{node_id,peer_node_id}`
+- `hitron_exporter_up{source,kind}`, `hitron_exporter_scrape_error_info`
+
+## Dashboards and deployment
+
+- `dashboards/hitron-coda6x.json`, `dashboards/hitron-ht-em5.json` (importable)
+- `deploy/compose.yaml` (exporter + Prometheus + Grafana + Loki + Promtail)
+- `deploy/prometheus/prometheus.yml`, `deploy/telegraf/telegraf.conf`,
+  `deploy/otel/collector.yaml`, `deploy/grafana/prometheus/rules/hitron.rules.yml`
+
+## Safety
+
+`POST /1/Device/CM/Reboot` accepts `{"reboot":1}`, `{"factoryReset":1}`, or
+`{"restoreReset":1}`; the last one reboots immediately from the handler. The
+CLI guards these behind `--yes-really-do-this`. `/1/Device/Upload`,
+`/1/Device/AdminRemoteManagement/Restore`, and credential routes also mutate
+the device. The exporter never calls any of them.
+
+## License
+
+Private - Netquor internal. Not affiliated with Hitron.

@@ -1,0 +1,414 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>hitron — CODA6X API, exporter, and Grafana</title>
+<meta name="description" content="Reverse-engineered Hitron CODA6X/CODA-60 API reference, interactive console, Prometheus/Telegraf/OpenTelemetry exporter, and Grafana dashboards.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%230f6b5c'/><circle cx='16' cy='16' r='6.5' fill='none' stroke='%23f7f7f5' stroke-width='2.5'/></svg>">
+<link rel="stylesheet" href="assets/style.css">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" defer></script>
+<script src="assets/app.js" defer></script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="topbar">
+  <a class="brand" href="#top">
+    <span class="brand-mark" aria-hidden="true">
+      <svg viewBox="0 0 16 16" width="14" height="14"><circle cx="8" cy="8" r="5.5" fill="none" stroke="currentColor" stroke-width="2.2"/></svg>
+    </span>
+    <span>hitron<span class="dim">/docs</span></span>
+  </a>
+  <nav class="topnav">
+    <a href="#quickstart">Quickstart</a>
+    <a href="#explorer">API console</a>
+    <a href="#local">Run locally</a>
+    <a href="#charts">Live charts</a>
+    <a href="#dashboards">Grafana</a>
+    <a href="#telemetry">Telemetry</a>
+    <a href="#logs" class="nav-secondary">Logs</a>
+    <a href="llms.txt" class="nav-secondary">llms.txt</a>
+  </nav>
+  <div class="topbar-actions">
+    <span id="spec-status" class="pill muted">loading spec…</span>
+    <button id="theme-toggle" class="icon-btn" type="button" title="Toggle theme" aria-label="Toggle theme">
+      <svg class="icon-sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M5.2 5.2l1.6 1.6M17.2 17.2l1.6 1.6M18.8 5.2l-1.6 1.6M6.8 17.2l-1.6 1.6"/></svg>
+      <svg class="icon-moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.4A8.6 8.6 0 0 1 9.6 4 8.6 8.6 0 1 0 20 14.4Z"/></svg>
+    </button>
+  </div>
+</header>
+
+<main id="main">
+<section id="top" class="hero">
+  <div class="hero-copy">
+    <p class="eyebrow">Reverse-engineered from a signed CODA-60 firmware image</p>
+    <h1>The Hitron CODA6X,<br>fully mapped.</h1>
+    <p class="lede">
+      Every route, field, and quirk of the <code>/1/Device</code> console API — plus a
+      single exporter that speaks Prometheus, Telegraf, Grafana, and OpenTelemetry
+      for <strong>CODA6X</strong>, <strong>CODA-57</strong>, and <strong>HT-EM5</strong>.
+    </p>
+    <div class="cta-row">
+      <a class="btn primary" href="#explorer">Open API console</a>
+      <a class="btn" href="openapi.json" download>OpenAPI JSON</a>
+      <a class="quiet-link" href="https://github.com/Netquor/hitron">GitHub ↗</a>
+    </div>
+    <div class="cmd" role="group" aria-label="Install command">
+      <code id="hero-install-cmd">curl -fsSL https://hitron.netquor.dev/install.sh | bash -s -- --run</code>
+      <button class="copy" data-copy="#hero-install-cmd" type="button">Copy</button>
+    </div>
+  </div>
+  <div class="hero-card">
+    <div class="hero-card-head"><span class="dot ok"></span> live shape, not a mock-up</div>
+    <pre><code>GET /1/Device/CM/DsInfo
+
+{
+  "errCode": "000",
+  "Freq_List": [
+    {
+      "portId": 25,
+      "frequency": "267000000",
+      "signalStrength": "8.098",
+      "snr": "43.377"
+    }
+  ]
+}</code></pre>
+    <p class="muted small">Field names and casing are the firmware's own.</p>
+  </div>
+</section>
+
+<section class="stats" aria-label="Coverage">
+  <div><strong id="stat-paths">116</strong><span>documented paths</span></div>
+  <div><strong id="stat-ops">171</strong><span>operations</span></div>
+  <div><strong>3</strong><span>device families</span></div>
+  <div><strong>4</strong><span>metric formats</span></div>
+  <div><strong>0</strong><span>extra Python deps</span></div>
+</section>
+
+<section id="quickstart" class="section">
+  <div class="section-head">
+    <h2>End-to-end in four commands</h2>
+    <p>From a clean checkout to a dashboard. The long version is in <a href="https://github.com/Netquor/hitron/blob/main/docs/GETTING-STARTED.md">docs/GETTING-STARTED.md</a>.</p>
+  </div>
+  <ol class="steps">
+    <li>
+      <div class="step-num">1</div>
+      <div>
+        <h3>Install and prove the device answers</h3>
+        <pre><code>python3 -m venv .venv &amp;&amp; source .venv/bin/activate
+pip install -e ".[dev]"
+hitron coda60 192.168.100.1 | head</code></pre>
+        <p class="muted">Read routes work without a login on the analyzed firmware. Writes need <code>hitron coda60-…</code> and <code>--yes-really-do-this</code>. No Python? The standalone <a href="https://github.com/Netquor/hitron/tree/main/cli">Go client</a> prints the same snapshot from one binary.</p>
+      </div>
+    </li>
+    <li>
+      <div class="step-num">2</div>
+      <div>
+        <h3>Start the exporter</h3>
+        <pre><code>hitron-exporter --port 9877 \
+  --coda60 192.168.100.1 \
+  --ht-em5 192.168.0.212 \
+  --coda57 192.168.100.2</code></pre>
+        <p class="muted">Also serves <code>/healthz</code>, <code>/api/v1/samples</code>, and <code>/api/v1/logs</code>.</p>
+      </div>
+    </li>
+    <li>
+      <div class="step-num">3</div>
+      <div>
+        <h3>Point Prometheus at it</h3>
+        <pre><code>scrape_configs:
+  - job_name: hitron
+    static_configs:
+      - targets: ["192.168.1.10:9877"]</code></pre>
+        <p class="muted">A ready-made stack lives in <code>deploy/compose.yaml</code>.</p>
+      </div>
+    </li>
+    <li>
+      <div class="step-num">4</div>
+      <div>
+        <h3>Import the dashboard</h3>
+        <pre><code>curl -O https://raw.githubusercontent.com/Netquor/hitron/main/dashboards/hitron-coda6x.json
+# Grafana → Dashboards → New → Import → upload</code></pre>
+        <p class="muted">Or run <code>hitron grafana --dir deploy/grafana</code> for provisioning.</p>
+      </div>
+    </li>
+  </ol>
+</section>
+
+<section id="explorer" class="section">
+  <div class="section-head">
+    <h2>API console</h2>
+    <p>Pick an operation, fill the path, send it. When this page is served by <code>hitron site</code>, the base URL is <code>/proxy</code> and the browser never touches the device directly.</p>
+  </div>
+
+  <div class="console-bar">
+    <label>Base URL
+      <input id="base-url" type="text" value="/proxy" spellcheck="false" autocomplete="off">
+    </label>
+    <label>Username
+      <input id="username" type="text" value="admin" autocomplete="username">
+    </label>
+    <label>Password
+      <input id="password" type="password" value="" autocomplete="current-password" placeholder="device password">
+    </label>
+    <button id="login-btn" class="btn" type="button">Login via proxy</button>
+    <span id="auth-state" class="pill muted">not logged in</span>
+  </div>
+  <p class="muted small" id="proxy-hint">
+    <span id="proxy-hint-text">Static hosting (GitHub Pages) cannot call <code>http://192.168.100.1</code> because of mixed content and CORS.
+    Run <code>hitron site --device 192.168.100.1</code> locally and use <code>/proxy</code>.</span>
+  </p>
+
+  <div class="explorer">
+    <aside class="op-sidebar">
+      <div class="op-search-wrap">
+        <input id="op-search" type="search" placeholder="Filter paths, tags, fields…" autocomplete="off">
+        <select id="tag-filter" aria-label="Filter by tag"><option value="">All tags</option></select>
+      </div>
+      <div id="op-list" class="op-list" aria-live="polite"></div>
+    </aside>
+    <div id="op-detail" class="op-detail">
+      <div class="empty-state">
+        <h3>Choose an operation</h3>
+        <p>Try <code>GET /1/Device/CM/DsInfo</code> to populate the RF charts below.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="response-panel">
+    <div class="response-head">
+      <h3>Response</h3>
+      <div class="response-meta">
+        <span id="resp-status" class="pill muted">—</span>
+        <span id="resp-time" class="muted small"></span>
+        <span id="resp-size" class="muted small"></span>
+      </div>
+    </div>
+    <pre id="resp-body" class="code-block">Send a request to see the response.</pre>
+  </div>
+</section>
+
+<section id="local" class="section">
+  <div class="section-head">
+    <h2>Run the API console locally</h2>
+    <p>This page is static, so it cannot call your modem. One install puts the same page and <code>/proxy</code> on one origin, then starts it.</p>
+  </div>
+  <div class="local-grid">
+    <div class="install" id="install" data-mode="rw" data-platform="unix">
+      <div class="install-head">
+        <h3>Install and start</h3>
+        <div class="segmented" id="install-platforms" role="group" aria-label="Operating system">
+          <button type="button" data-platform="unix" aria-pressed="true">macOS · Linux</button>
+          <button type="button" data-platform="windows" aria-pressed="false">Windows</button>
+        </div>
+      </div>
+      <div class="install-term">
+        <pre class="install-code"><span class="prompt" aria-hidden="true" id="install-prompt">$</span><code id="install-cmd">curl -fsSL https://hitron.netquor.dev/install.sh | bash -s -- --run --device 192.168.100.1</code></pre>
+      </div>
+      <div class="install-actions">
+        <button class="btn primary copy" type="button" data-copy="#install-cmd" id="install-copy">Copy command</button>
+        <div class="segmented" id="install-modes" role="group" aria-label="Proxy mode">
+          <button type="button" data-mode="rw" aria-pressed="true">Read + write</button>
+          <button type="button" data-mode="ro" aria-pressed="false">Read-only</button>
+        </div>
+      </div>
+      <p class="install-note" id="install-note">Reboots and resets pass through to the modem.</p>
+      <dl class="install-facts">
+        <div><dt>Then open</dt><dd><a href="http://127.0.0.1:8000">http://127.0.0.1:8000</a></dd></div>
+        <div><dt>API base</dt><dd><code>/proxy</code> is the default</dd></div>
+        <div><dt>Stop</dt><dd><kbd>Ctrl</kbd><kbd>C</kbd></dd></div>
+        <div><dt>Update</dt><dd>run the same command</dd></div>
+      </dl>
+    </div>
+    <div class="local-alt">
+      <h3>Or from a checkout</h3>
+      <ol class="checkout" data-platform="unix">
+        <li><span class="checkout-label">Clone</span><code>git clone https://github.com/Netquor/hitron</code></li>
+        <li><span class="checkout-label">Create the venv</span><code>cd hitron &amp;&amp; python3 -m venv .venv</code></li>
+        <li><span class="checkout-label">Install</span><code>. .venv/bin/activate &amp;&amp; pip install -e .</code></li>
+        <li><span class="checkout-label">Run</span><code>hitron site --device 192.168.100.1</code></li>
+      </ol>
+      <ol class="checkout" data-platform="windows" hidden>
+        <li><span class="checkout-label">Clone</span><code>git clone https://github.com/Netquor/hitron</code></li>
+        <li><span class="checkout-label">Create the venv</span><code>cd hitron; py -3 -m venv .venv</code></li>
+        <li><span class="checkout-label">Install</span><code>.venv\Scripts\Activate.ps1; pip install -e .</code></li>
+        <li><span class="checkout-label">Run</span><code>hitron site --device 192.168.100.1</code></li>
+      </ol>
+      <p class="local-alt-note">Needs Python 3.11 or newer. There is no <code>hitron</code> package on PyPI; that name belongs to another project.</p>
+      <p class="local-alt-link"><a href="https://github.com/Netquor/hitron/blob/main/docs/LOCAL-PROXY.md">Step-by-step guide and troubleshooting →</a></p>
+    </div>
+  </div>
+</section>
+
+<section id="charts" class="section">
+  <div class="section-head">
+    <h2>Live RF charts</h2>
+    <p>Charts fill from the responses you fetch, or from <code>--once</code> JSON pasted below. Nothing is uploaded anywhere; history is in <code>localStorage</code>.</p>
+  </div>
+  <div class="chart-controls">
+    <label class="inline"><input id="poll-toggle" type="checkbox"> Poll every 10 s</label>
+    <button id="refresh-rf" class="btn" type="button">Fetch DS/US/OFDM now</button>
+    <span id="poll-state" class="pill muted">idle</span>
+  </div>
+  <div class="chart-grid">
+    <article class="chart-card">
+      <header><h3>Downstream power</h3><span class="muted small">dBmV per channel</span></header>
+      <div class="chart-wrap"><canvas id="rf-ds-power"></canvas></div>
+    </article>
+    <article class="chart-card">
+      <header><h3>Downstream SNR</h3><span class="muted small">dB per channel</span></header>
+      <div class="chart-wrap"><canvas id="rf-ds-snr"></canvas></div>
+    </article>
+    <article class="chart-card">
+      <header><h3>Upstream power</h3><span class="muted small">dBmV per channel</span></header>
+      <div class="chart-wrap"><canvas id="rf-us-power"></canvas></div>
+    </article>
+    <article class="chart-card">
+      <header><h3>Latency</h3><span class="muted small">ms per request</span></header>
+      <div class="chart-wrap"><canvas id="latency"></canvas></div>
+    </article>
+  </div>
+</section>
+
+<section id="dashboards" class="section">
+  <div class="section-head">
+    <h2>Grafana, without the guesswork</h2>
+    <p>Two dashboards ship in the repo and in the provisioning bundle. Panels cover RF, provisioning, wireless, hosts, MoCA, and exporter health.</p>
+  </div>
+  <div class="cards three">
+    <article class="card">
+      <h3>CODA6X dashboard</h3>
+      <p>Downstream/upstream power and SNR, corrected and uncorrectable codewords, OFDM/OFDMA locks, Wi-Fi clients, host count, MoCA, and scrape errors.</p>
+      <div class="card-actions">
+        <a class="btn" href="dashboards/hitron-coda6x.json" download>Download JSON</a>
+        <a class="btn ghost" href="https://github.com/Netquor/hitron/blob/main/docs/GRAFANA.md">Step-by-step →</a>
+      </div>
+    </article>
+    <article class="card">
+      <h3>HT-EM5 dashboard</h3>
+      <p>MoCA link, node inventory, PHY-rate matrix, Ethernet counters, and configured bands for every HT-EM5 bridge.</p>
+      <div class="card-actions">
+        <a class="btn" href="dashboards/hitron-ht-em5.json" download>Download JSON</a>
+      </div>
+    </article>
+    <article class="card">
+      <h3>Alerts included</h3>
+      <p>Prometheus rules for source down, provisioning failure, power out of spec, low SNR, uncorrectable errors, MoCA link down, and slow polls.</p>
+      <div class="card-actions">
+        <a class="btn" href="alerts/hitron.rules.yml" download>Rules YAML</a>
+      </div>
+    </article>
+  </div>
+  <div class="tutorial">
+    <h3>Ten-minute Grafana path</h3>
+    <ol class="tight">
+      <li>Copy <code>deploy/compose.yaml</code>, adjust the device IPs in <code>deploy/prometheus/prometheus.yml</code>, then <code>docker compose up -d</code>.</li>
+      <li>Open Grafana at <code>http://localhost:3000</code> (admin / admin on first boot).</li>
+      <li>Dashboards → Hitron → <em>Hitron CODA6X</em>. The datasource and dashboard are provisioned.</li>
+      <li>Set the <code>source</code> template variable to your exporter target name.</li>
+      <li>Alerts → Alert rules → Hitron. Silence or tune the power envelope to your carrier.</li>
+    </ol>
+  </div>
+</section>
+
+<section id="telemetry" class="section">
+  <div class="section-head">
+    <h2>One collector, four outputs</h2>
+    <p>The same normalized series feed Prometheus, Telegraf, OpenTelemetry, and plain JSON. No second mapping table to rot.</p>
+  </div>
+  <div class="tabs" role="tablist">
+    <button class="tab active" data-tab="prom" role="tab">Prometheus</button>
+    <button class="tab" data-tab="telegraf" role="tab">Telegraf</button>
+    <button class="tab" data-tab="otel" role="tab">OpenTelemetry</button>
+    <button class="tab" data-tab="json" role="tab">JSON</button>
+  </div>
+  <div class="tab-body">
+    <div class="tab-panel active" id="tab-prom">
+      <pre><code>hitron-exporter --port 9877 --coda60 192.168.100.1
+curl -s http://127.0.0.1:9877/metrics | head
+
+# modem_downstream_channel_power_dbmv{source="192.168.100.1",channel_id="1"} 8.098
+# modem_downstream_channel_snr_db{source="192.168.100.1",channel_id="1"} 43.377
+# modem_upstream_channel_power_dbmv{source="192.168.100.1",channel_id="10"} 31.0
+# hitron_exporter_up{source="192.168.100.1",kind="coda60"} 1</code></pre>
+    </div>
+    <div class="tab-panel" id="tab-telegraf">
+      <pre><code># /etc/telegraf/telegraf.conf
+[[inputs.exec]]
+  commands = ["/opt/hitron/bin/hitron-exporter --coda60 192.168.100.1 --once --format telegraf"]
+  data_format = "influx"
+  interval = "30s"
+  timeout = "25s"
+
+[[outputs.influxdb_v2]]
+  urls = ["http://influxdb:8086"]
+  token = "$INFLUX_TOKEN"
+  organization = "home"
+  bucket = "hitron"</code></pre>
+      <p class="muted">Telegraf consumes the Influx line protocol on stdout; no listener or plugin is required.</p>
+    </div>
+    <div class="tab-panel" id="tab-otel">
+      <pre><code>hitron-exporter --coda60 192.168.100.1 \
+  --otlp-endpoint http://otel-collector:4318/v1/metrics
+
+# The exporter posts OTLP/HTTP JSON. Point an otlphttp exporter at your backend:
+exporters:
+  otlphttp:
+    endpoint: https://otlp.example.com
+service:
+  pipelines:
+    metrics:
+      receivers: [otlp]
+      exporters: [otlphttp]</code></pre>
+    </div>
+    <div class="tab-panel" id="tab-json">
+      <pre><code>hitron-exporter --coda60 192.168.100.1 --once --format json
+hitron-exporter --coda60 192.168.100.1 --once --format otlp   # inspect the payload
+curl -s http://127.0.0.1:9877/api/v1/samples | jq '.[0]'</code></pre>
+    </div>
+  </div>
+</section>
+
+<section id="logs" class="section">
+  <div class="section-head">
+    <h2>Logs and request history</h2>
+    <p>Two different logs: the device's own DOCSIS event log, and this page's request history. Both stay local.</p>
+  </div>
+  <div class="log-toolbar">
+    <button id="fetch-device-log" class="btn" type="button">Fetch DOCSIS event log</button>
+    <input id="log-filter" type="search" placeholder="Filter request log…" autocomplete="off">
+    <button id="download-log" class="btn ghost" type="button">Download JSON</button>
+    <button id="clear-log" class="btn ghost danger" type="button">Clear</button>
+  </div>
+  <div class="log-grid">
+    <article class="log-card">
+      <header><h3>Device event log</h3><span class="muted small">CM/Log</span></header>
+      <div class="table-wrap"><table id="device-log"><thead><tr><th>Time</th><th>Priority</th><th>Type</th><th>Event</th></tr></thead><tbody><tr><td colspan="4" class="muted">Fetch to load.</td></tr></tbody></table></div>
+    </article>
+    <article class="log-card">
+      <header><h3>Request log</h3><span id="log-count" class="muted small">0 entries</span></header>
+      <div class="table-wrap"><table id="request-log"><thead><tr><th>Time</th><th>Method</th><th>Path</th><th>Status</th><th>ms</th></tr></thead><tbody></tbody></table></div>
+    </article>
+  </div>
+</section>
+
+<section class="section guide">
+  <div class="section-head">
+    <h2>Read next</h2>
+  </div>
+  <div class="cards three">
+    <a class="card link" href="https://github.com/Netquor/hitron/blob/main/docs/GETTING-STARTED.md"><h3>End-to-end guide</h3><p>Install, verify, export, scrape, alert, and troubleshoot, in order.</p></a>
+    <a class="card link" href="https://github.com/Netquor/hitron/blob/main/docs/GRAFANA.md"><h3>Grafana tutorial</h3><p>Import or provision, pick panels, write alerts, and ship logs with Loki.</p></a>
+    <a class="card link" href="https://github.com/Netquor/hitron/blob/main/docs/KB.md"><h3>Reverse-engineering KB</h3><p>Auth model, firmware quirks, shell sinks, and open questions.</p></a>
+  </div>
+</section>
+</main>
+
+<footer class="footer">
+  <p>Not official Hitron documentation. Field names come from the device; mistakes are ours. <a href="llms.txt">llms.txt</a> · <a href="openapi.json">OpenAPI</a> · <a href="https://github.com/Netquor/hitron">Source</a></p>
+</footer>
+
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+</body>
+</html>

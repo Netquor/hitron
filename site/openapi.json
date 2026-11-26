@@ -1,0 +1,4095 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Hitron CODA6X console REST API (reverse engineered)",
+    "version": "8.7.1.0.1b4",
+    "description": "Not an official Hitron specification. Reconstructed from a static read of a real\nCODA6X firmware image (SquashFS rootfs mounted read-only; nothing executed from\nit) and then verified GET-by-GET against a live, customer-owned CODA60 running\n8.7.1.0.1b4 on 2026-11-26.\n\nArchitecture: lighttpd + php-fpm serve a Fat-Free-Framework PHP app at\nwww/hitron/. app/routes.ini maps URL patterns to app/controllers/*.php; those\ncontrollers call the RDK-B COSA bridge (extension=cosa.so) which speaks TR-181\nDevice.*. Every path below is therefore a thin projection of a TR-181 subtree,\nnot an independent API.\n\nRead surface, measured on 8.7.1.0.1b4: 50 working, 53 PHP-8 fatals, 5 session-gated, 1 verb-rejected, 3 untested.\nA PHP-8 fatal is a defect in the shipped controller (undefined array key,\ngetInstanceIds vs getInstanceIDs, a parameter declared before a required one),\nnot a request-shaping problem: it fails identically for the browser UI.\n\nTwo responses on this platform are stubs and must not be read as capability\nevidence: /WiFi/* and /MTA/StatusInfo return 200 with empty strings or null\nhardware fields on a unit that has no radios or SLIC. Model/capability detection\ntherefore keys on /deviceinfo's hw_model plus payload evidence, and each\nendpoint carries its `requires` capability in x-hitron.\n\nEvery operation is tagged with x-hitron.state as measured against\n8.7.1.0.1b4. Five reads require the web UI session and one rejects GET;\neverything else, including /1/Device/Manage, answers anonymously. Only\noperations marked with `security` present a cookie. The attached model catalog\n(18 profiles, specs/models.json) is what src/hitron/adapters.py uses to\ndecide which of these paths a given SKU should be asked for.\n",
+    "contact": {
+      "name": "Netquor SDN - internal reverse-engineering notes"
+    },
+    "license": {
+      "name": "Private - Netquor internal"
+    }
+  },
+  "externalDocs": {
+    "description": "Unified Hitron KB (HT-EM5 + CODA6X + CODA-57)",
+    "url": "./KB.md"
+  },
+  "servers": [
+    {
+      "url": "http://{host}",
+      "variables": {
+        "host": {
+          "default": "192.168.100.1",
+          "description": "The gateway's LAN IP."
+        }
+      }
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "cookieAuth": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "SESSION.uid"
+      },
+      "appTokenAuth": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "ht-app-header"
+      }
+    },
+    "schemas": {
+      "Envelope": {
+        "type": "object",
+        "description": "Every response wraps its payload in this envelope. errCode 000 is success; 001 is a rejected parameter or missing session; 005 is a verb the model does not support.",
+        "properties": {
+          "errCode": {
+            "type": "string",
+            "example": "000"
+          },
+          "errMsg": {
+            "type": "string"
+          }
+        }
+      },
+      "DeviceInfo": {
+        "type": "object",
+        "description": "GET /deviceinfo (root telemetry route). The only place hw_model is populated on 8.7.1.0.1b4; this is what model detection keys on.",
+        "properties": {
+          "device_id": {
+            "type": "string",
+            "description": "RF/device MAC"
+          },
+          "mso": {
+            "type": "string"
+          },
+          "hw_model": {
+            "type": "string",
+            "example": "CODA60"
+          },
+          "hw_manufacturer": {
+            "type": "string"
+          },
+          "hardware_version": {
+            "type": "string",
+            "example": "1A"
+          },
+          "software_version": {
+            "type": "string",
+            "example": "8.7.1.0.1b4"
+          },
+          "serial_number": {
+            "type": "string"
+          },
+          "parent": {
+            "type": "string"
+          },
+          "connect_type": {
+            "type": "string"
+          }
+        }
+      },
+      "CmVersion": {
+        "type": "object",
+        "description": "GET /1/Device/CM/Version. Unauthenticated on this build."
+      },
+      "RouterSysInfo": {
+        "type": "object",
+        "description": "GET /1/Device/Router/SysInfo. modelName/vendorName/deploymentName are null even when the device reports hw_model elsewhere.",
+        "properties": {
+          "hwVersion": {
+            "type": "string"
+          },
+          "swVersion": {
+            "type": "string"
+          },
+          "serialNumber": {
+            "type": "string"
+          },
+          "systemTime": {
+            "type": "string"
+          },
+          "rfMac": {
+            "type": "string"
+          },
+          "systemUptime": {
+            "type": "string"
+          }
+        }
+      },
+      "DocsisDs": {
+        "type": "object",
+        "description": "One locked downstream SC-QAM channel.",
+        "properties": {
+          "portId": {
+            "type": "integer"
+          },
+          "frequency": {
+            "type": "string",
+            "description": "Hz"
+          },
+          "modulation": {
+            "type": "string"
+          },
+          "signalStrength": {
+            "type": "string",
+            "description": "dBmV"
+          },
+          "snr": {
+            "type": "string",
+            "description": "dB"
+          },
+          "channelId": {
+            "type": "string"
+          },
+          "dsoctets": {
+            "type": "string"
+          },
+          "correcteds": {
+            "type": "string"
+          },
+          "uncorrect": {
+            "type": "string"
+          }
+        }
+      },
+      "DocsisUs": {
+        "type": "object",
+        "properties": {
+          "portId": {
+            "type": "integer"
+          },
+          "frequency": {
+            "type": "string"
+          },
+          "modtype": {
+            "type": "string"
+          },
+          "signalStrength": {
+            "type": "string"
+          },
+          "bandwidth": {
+            "type": "string"
+          },
+          "channelId": {
+            "type": "string"
+          },
+          "scdmaMode": {
+            "type": "string"
+          }
+        }
+      },
+      "DocsisDsOfdm": {
+        "type": "object",
+        "properties": {
+          "receive": {
+            "type": "string"
+          },
+          "ffttype": {
+            "type": "string"
+          },
+          "Subcarr0freqFreq": {
+            "type": "string"
+          },
+          "plclock": {
+            "type": "string"
+          },
+          "ncplock": {
+            "type": "string"
+          },
+          "mdc1lock": {
+            "type": "string"
+          },
+          "plcpower": {
+            "type": "string"
+          },
+          "SNR": {
+            "type": "string"
+          },
+          "dsoctets": {
+            "type": "string"
+          },
+          "correcteds": {
+            "type": "string"
+          },
+          "uncorrect": {
+            "type": "string"
+          },
+          "index": {
+            "type": "string"
+          }
+        }
+      },
+      "DocsisUsOfdm": {
+        "type": "object",
+        "properties": {
+          "uschindex": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          },
+          "frequency": {
+            "type": "string"
+          },
+          "digAtten": {
+            "type": "string"
+          },
+          "channelBw": {
+            "type": "string"
+          },
+          "repPower": {
+            "type": "string",
+            "description": "dBmV"
+          },
+          "repPower1_6": {
+            "type": "string",
+            "description": "DOCSIS 3.0-equivalent reported power"
+          },
+          "fftVal": {
+            "type": "string"
+          }
+        }
+      },
+      "DocsisLog": {
+        "type": "object",
+        "properties": {
+          "index": {
+            "type": "string"
+          },
+          "time": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          },
+          "priority": {
+            "type": "string"
+          },
+          "event": {
+            "type": "string"
+          }
+        }
+      },
+      "WifiWps": {
+        "type": "object",
+        "description": "GET /1/Device/WiFi/WPS. Answers 200 on units with no radios; all state fields are empty strings. Treat a populated wlsWpsState24g/5g as the evidence a radio exists."
+      },
+      "WifiGuestSsid": {
+        "type": "object",
+        "description": "GET /1/Device/WiFi/GuestSSID. bssid/ssidName are the radio-presence evidence; empty strings mean a stub response."
+      },
+      "MtaStatus": {
+        "type": "object",
+        "description": "GET /1/Device/MTA/StatusInfo. NumberOfSLIC and the LineNRegState fields are null on a unit with no EMTA hardware even though the route returns 200.",
+        "properties": {
+          "telDhcp": {
+            "type": "string"
+          },
+          "telSec": {
+            "type": "string"
+          },
+          "telTftp": {
+            "type": "string"
+          },
+          "telReg": {
+            "type": "string"
+          },
+          "Line1RegState": {
+            "type": "string",
+            "nullable": true
+          },
+          "Line2RegState": {
+            "type": "string",
+            "nullable": true
+          },
+          "Line3RegState": {
+            "type": "string",
+            "nullable": true
+          },
+          "Line4RegState": {
+            "type": "string",
+            "nullable": true
+          },
+          "NumberOfSLIC": {
+            "type": "integer",
+            "nullable": true
+          }
+        }
+      },
+      "MoCA": {
+        "type": "object",
+        "description": "Field set from models/MoCA.php. password is plaintext on the device; it is deliberately not requested here.",
+        "properties": {
+          "moca_status": {
+            "type": "string",
+            "enum": [
+              "ON",
+              "OFF"
+            ]
+          },
+          "fs_mode": {
+            "type": "string"
+          },
+          "fs_channel": {
+            "type": "integer"
+          },
+          "txpower": {
+            "type": "string"
+          },
+          "beaconpwr": {
+            "type": "string"
+          },
+          "nctype": {
+            "type": "string",
+            "enum": [
+              "Preferred",
+              "Auto Negotiated"
+            ]
+          },
+          "mocaNTSecurity": {
+            "type": "string",
+            "enum": [
+              "Enable",
+              "Disable"
+            ]
+          },
+          "fwVersion": {
+            "type": "string"
+          },
+          "mocaMac": {
+            "type": "string"
+          },
+          "coaxTx": {
+            "type": "string"
+          },
+          "coaxRx": {
+            "type": "string"
+          },
+          "mocaLink": {
+            "type": "string"
+          }
+        }
+      },
+      "AdvancedSwitchPort": {
+        "type": "object",
+        "description": "On-board Ethernet switch port. The live CODA60 reports exactly one (1Gbps, linked).",
+        "properties": {
+          "portId": {
+            "type": "integer"
+          },
+          "power": {
+            "type": "string",
+            "enum": [
+              "true",
+              "false"
+            ]
+          },
+          "neg": {
+            "type": "string"
+          },
+          "speed": {
+            "type": "string",
+            "example": "1Gbps"
+          },
+          "duplex": {
+            "type": "string"
+          },
+          "linked": {
+            "type": "string"
+          }
+        }
+      },
+      "PnmBundle": {
+        "type": "object",
+        "description": "Proactive Network Maintenance bundle from the root telemetry route. Arrays carry base64-encoded, vendor-encoded payloads (rxmer, us_pre_eq, mod_prof) keyed by channel_id.",
+        "properties": {
+          "mac": {
+            "type": "string"
+          },
+          "timestamp": {
+            "type": "string",
+            "description": "Unix seconds, device clock"
+          },
+          "rxmer": {
+            "type": "string",
+            "description": "base64 vendor-encoded per-subcarrier MER"
+          },
+          "ch_est_coef": {
+            "type": "string",
+            "description": "base64 channel-estimation coefficients"
+          },
+          "us_pre_eq": {
+            "type": "string",
+            "description": "base64 upstream pre-equalization"
+          },
+          "mod_prof": {
+            "type": "string",
+            "description": "base64 modulation profile"
+          }
+        },
+        "additionalProperties": true
+      },
+      "RegisterRequest": {
+        "type": "object",
+        "required": [
+          "appid",
+          "seckey"
+        ],
+        "properties": {
+          "appid": {
+            "type": "string"
+          },
+          "seckey": {
+            "type": "string",
+            "description": "RS256 JWT with jti, iss=Hitron, vendor (from Device.X_HITRON_COM_App.VendorList), model."
+          }
+        }
+      }
+    }
+  },
+  "x-hitron": {
+    "generated": "2026-11-26",
+    "generator": "tools/gen_spec.py",
+    "firmware": "8.7.1.0.1b4",
+    "modelCatalog": "./models.json",
+    "stateCounts": {
+      "ok": 50,
+      "php8": 53,
+      "session": 5,
+      "untested": 3,
+      "verb": 1
+    },
+    "note": "Paths, methods, capability tags and states come from src/hitron/adapters.py. Do not edit the paths block by hand; run tools/gen_spec.py."
+  },
+  "tags": [
+    {
+      "name": "Shell"
+    },
+    {
+      "name": "Identity"
+    },
+    {
+      "name": "CM"
+    },
+    {
+      "name": "WiFi"
+    },
+    {
+      "name": "LAN"
+    },
+    {
+      "name": "MoCA"
+    },
+    {
+      "name": "Firewall"
+    },
+    {
+      "name": "Voice"
+    },
+    {
+      "name": "Diagnostics"
+    },
+    {
+      "name": "Spectrum"
+    },
+    {
+      "name": "System"
+    },
+    {
+      "name": "Telemetry"
+    },
+    {
+      "name": "Write"
+    }
+  ],
+  "paths": {
+    "/1/Device/Menu/Main": {
+      "get": {
+        "operationId": "menu_main",
+        "summary": "Main menu tree (session-shaped)",
+        "tags": [
+          "Shell"
+        ],
+        "x-hitron": {
+          "requires": [],
+          "state": "ok",
+          "httpStatus": 200,
+          "verifiedOn": "8.7.1.0.1b4",
+          "destructive": false,
+          "models": []
+        },
+        "x-hitron-destructive": false,
+        "responses": {
+          "200": {
+            "description": "Envelope with errCode/errMsg plus the payload."
+          }
+        }
+      }
+    },
+    "/1/Device/Menu/Sub": {
+      "get": {
+        "operationId": "menu_sub",
+        "summary": "Submenu for the selected main menu",
+        "tags": [
+          "Shell"
+        ],
+        "x-hitron": {
+          "requires": [],
+          "state": "ok",
+          "httpStatus": 200,
+          "verifiedOn": "8.7.1.0.1b4",
+          "destructive": false,
+          "models": []
+        },
+        "x-hitron-destructive": false,
+        "responses": {
+          "200": {
+            "description": "Envelope with errCode/errMsg plus the payload."
+          }
+        }
+      }
+    },
+    "/1/Device/Users": {
+      "get": {
+        "operationId": "users_list",
+        "summary": "Local account list",
+        "tags": [
+          "Shell"
+        ],
+        "x-hitron": {
+          "requires": [],
+          "state": "php8",
+          "httpStatus": 500,
+          "verifiedOn": "8.7.1.0.1b4",
+          "destructive": false,
+          "models": []
+        },
+        "x-hitron-destructive": false,
+        "description": "Undefined array key 'action'",
+        "responses": {
+          "200": {
+            "description": "Envelope with errCode/errMsg plus the payload."
+          },
+          "500": {
+            "description": "PHP 8 fatal in the shipped controller on 8.7.1.0.1b4. Undefined array key 'action'"
+          }
+        }
+      }
+    },
+    "/deviceinfo": {
+      "get": {
+        "operationId": "deviceinfo",
+        "summary": "Telemetry identity: hw_model, hardware_version, software_version, serial",
+        "tags": [
+          "Identity"
+        ],
+        "x-hitron": {
+          "requires": [],
+          "state": "ok",
+          "httpStatus": 200,
+          "verifiedOn": "8.7.1.0.1b4",
+          "destructive": false,
+          "models": []
+        },
+        "x-hitron-destructive": false,
+        "description": "Root route (/@info=TelemetryAssist), not under /1/Device. The only place hw_model is populated on this build; TR-181 DeviceInfo.ModelName is null.",
+        "responses": {
+          "200": {
+            "description": "Envelope with errCode/errMsg plus the payload.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceInfo"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/1/Device/CM/Version": {
+      "get": {
+        "operationId": "cm_version",
+        "summary": "CM version screen",
+        "tags": [
+          "Identity"
+        ],
+        "x-hitron": {
+          "requires": [],
+          "state": "ok",
+          "httpStatus": 200,
+          "verifiedOn": "8.7.1.0.1b4",
+          "destructive": false,
+          "models": []
+        },
+        "x-hitron-destructive": false,
+        "description": "Unauthenticated.",
+        "responses": {
+          "200": {
+            "description": "Envelope with errCode/errMsg plus the payload."
+          }
+        }
+      }
+    },
+    "/1/Device/CM/SysInfo": {
+      "get": {
+        "operationId": "cm_sysinfo",
+        "summary": "CM IP/subnet/gateway, lease and provisioned config name",
+        "tags": [
+          "Identity"
+        ],
+        "x-hitron": {
+          "requires": [],
+          "state": "ok",
+          "httpStatus": 200,
+          "verifiedOn": "8.7.1.0.1b4",
+          "destructive": false,
+          "models": []
+        },
+        "x-hitron-destructive": false,
+        "responses": {
+          "200": {
+            "description": "Envelope with errCode/errMsg plus the payload."
+          }
+        }
+      }
+    },
+    "/1/Device/Router/SysInfo": {
+      "get": {
+        "operationId": "router_sysinfo",
+        "summary": "hw/sw version, serial, rfMac, uptime",
+        "tags": [
+          "Identity"
+        ],
+        "x-hitron": {
+          "requires": [],
+          "state": "ok",
+          "httpStatus": 200,
+          "verifiedOn": "8.7.1.0.1b4",
+          "destructive": false,
+          "models": []
+        },
+        "x-hitron-destructive": false,
+        "description": "modelName/vendorName/deploymentName are null on 8.7.1.0.1b4.",
+        "responses": {
+          "200": {
+            "description": "Envelope with errCode/errMsg plus the payload."
+          }
+        }
+      }
+    },
+    "/1/Device/CM/DocsisProvision": {
+      "get": {
+        "operationId": "cm_provision",
+        "summary": "DOCSIS provisioning state machine",
+        "tags": [
+          "CM"
+        ],
+        "x-hitron": {
+          "requires": [],
+          "state": "ok",
+          "httpStatus": 200,
+          "verifiedOn": "8.7.1.0.1b4",
+          "destructive": false,
+          "models": []
+        },
+        "x-hitron-destructive": false,
+        "responses": {
+          "200": {
+            "description": "Envelope with errCode/errMsg plus the payload."
+          }
+        }
+      }
+    },
+    "/1/Device/CM/DsInfo": {
+      "get": {
+        "operationId": "cm_ds",
+        "summary": "Downstream SC-QAM channels",
+        "tags": [
+          "CM"
+        ],
+        "x-hitron": {
+          "requires": [],
+          "state": "ok",
+          "httpStatus": 200,
+          "verifiedOn": "8.7.1.0.1b4",
+          "destructive": false,
+          "models": []
+        },
+        "x-hitron-destructive": false,
+        "responses": {
+          "200": {
+            "description": "Envelope with errCode/errMsg plus the payload.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocsisDs"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/1/Device/CM/UsInfo": {
+      "get": {
+        "operationId": "cm_us",
+        "summary": "Upstream SC-QAM channels",
+        "tags": [
+          "CM"
+        ],
+        "x-hitron": {
+          "requires": [],
+          "state": "ok",
+          "httpStatus": 200,
+          "verifiedOn": "8.7.1.0.1b4",
+          "destructive": false,
+          "models": []
+        },
+        "x-hitron-destructive": false,
+        "responses": {
+          "200": {
+            "description": "Envelope with errCode/errMsg plus the payload.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocsisUs"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/1/Device/CM/DsOfdm": {
+      "get": {
+        "operationId": "cm_ds_ofdm",
+        "summary": "Downstream OFDM channels",
+        "tags": [
+          "CM"
+        ],
+        "x-hitron": {
+          "requires": [
+            "docsis31"
+          ],
+          "state": "ok",
+          "httpStatus": 200,
+          "verifiedOn": "8.7.1.0.1b4",
+          "destructive": false,
+          "models": []
+        },
+        "x-hitron-destructive": false,
+        "responses": {
+          "200": {
+            "description": "Envelope with errCode/errMsg plus the payload.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocsisDsOfdm"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/1/Device/CM/UsOfdm": {
+      "get": {
+        "operationId": "cm_us_ofdm",
+        "summary": "Upstream OFDMA channels",
+        "tags": [
+          "CM"
+        ],
+        "x-hitron": {
+          "requires": [
+            "docsis31"
+          ],
+          "state": "ok",
+          "httpStatus": 200,
+          "verifiedOn": "8.7.1.0.1b4",
+          "destructive": false,
+          "models": []
+        },
+        "x-hitron-destructive": false,
+        "responses": {
+          "200": {
+            "description": "Envelope with errCode/errMsg plus the payload.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocsisUsOfdm"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/1/Device/CM/Log": {
+      "get": {
+        "operationId": "cm_log",
+        "summary": "DOCSIS event log",
+        "tags": [
+          "CM"
+        ],
+        "x-hitron": {
+          "requires": [],
+          "state": "ok",
+          "httpStatus": 200,
+          "verifiedOn": "8.7.1.0.1b4",
+          "destructive": false,
+          "models": []
+        },
+        "x-hitron-destructive": false,
+        "responses": {
+          "200": {
+            "description": "Envelope with errCode/errMsg plus the payload.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocsisLog"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/1/Device/CM/LTEBackup": {
+      "get": {
+        "operationId": "cm_lte",
+        "summary": "LTE backup-WAN status",
+        "tags": [
+          "CM"
+        ],
+        "x-hitron": {
+          "requires": [
+            "lte"
+          ],
+          "state": "php8",
+          "httpStatus": 500,
+          "verifiedOn": "8.7.1.0.1b4",
+          "destructive": false,
+          "models": []
+        },
+        "x-hitron-destructive": false,
+        "description": "Creation of dynamic property LTEBackup::$LANClient",
+        "responses": {
+          "200": {
+            "description": "Envelope with errCode/errMsg plus the payload."
+          },
+          "500": {
+            "description": "PHP 8 fatal in the shipped controller on 8.7.1.0.1b4. Creation of dynamic property LTEBackup::$LANClient"
+          }
+        }
+      }
+    },
+    "/1/Device/CM/Ready": {
+      "get": {
+        "operationId": "cm_ready",
+        "summary": "App-only CM readiness",
+        "tags": [
+          "CM"
+        ],
+        "x-hitron": {
+          "requires": [],
+          "state": "session",
+          "httpStatus": 400,
+          "verifiedOn": "8.7.1.0.1b4",
+          "destructive": false,
+          "models": []
+        },
+        "x-hitron-destructive": false,
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Envelope with errCode/errMsg plus the payload."
+          },
+          "400": {
+            "description": "errCode 001 - requires the web UI SESSION.uid cookie."
+          }
+        }
+      }
+    },
+    "/1/Device/WiFi": {
+      "get": {
+        "operationId": "wifi_root",
+        "summary": "WiFi overview",
+        "tags": [
+          "WiFi"
+        ],
+        "x-hitron": {
+          "requires": [
+            "wifi"
+          ],
+          "state": "php8",
+          "httpStatus": 500,
+          "verifiedOn": "8.7.1.0.1b4",
+          "destructive": false,
+          "models": []
+        },
+        "x-hitron-destructive": false,
+        "description": "Undefined array key 'info'",
+        "responses": {
+          "200": {
+            "description": "Envelope with errCode/errMsg plus the payload."
+          },
+          "500": {
+            "description": "PHP 8 fatal in the shipped controller on 8.7.1.0.1b4. Undefined array key 'info'"
+          }
+        }
+      }
+    },
+    "/1/Device/WiFi/BandSteering": {
+      "get": {
+        "operationId": "wifi_bandsteering",
+        "summary": "Band-steering state",
+        "tags": [
+          "WiFi"
+        ],
+        "x-hitron": {
+          "requires": [
+            "wifi"
+          ],
+          "state": "ok",
+          "httpStatus": 200,
+          "verifiedOn": "8.7.1.0.1b4",
+          "destructive": false,
+          "models": []
+        },
+        "x-hitron-destructive": false,
+        "responses": {
+          "200": {
+            "description": "Envelope with errCode/errMsg plus the payload."
+          }
+        }
+      }
+    },
+    "/1/Device/WiFi/GuestSSID": {
+      "get": {
+        "operationId": "wifi_guestssid",
+        "summary": "Guest + primary SSID summary",
+        "tags": [
+          "WiFi"
+        ],
+        "x-hitron": {
+          "requires": [
+            "wifi"
+          ],
+          "state": "ok",
+          "httpStatus": 200,
+          "verifiedOn": "8.7.1.0.1b4",
+          "destructive": false,
+          "models": []
+        },
+        "x-hitron-destructive": false,
+        "description": "Answers 200 even on a unit with no radios; all fields are empty strings.",
+        "responses": {
+          "200": {
+            "description": "Envelope with errCode/errMsg plus the payload."
+          }
+        }
+      }
+    },
+    "/1/Device/WiFi/WPS": {
+      "get": {
+        "operationId": "wifi_wps",
+        "summary": "WPS state per band",
+        "tags": [
+          "WiFi"
+        ],
+        "x-hitron": {
+          "requires": [
+            "wifi"
+          ],
+          "state": "ok",
+          "httpStatus": 200,
+          "verifiedOn": "8.7.1.0.1b4",
+          "destructive": false,
+          "models": []
+        },
+        "x-hitron-destructive": false,
+        "description": "Same stub caveat: 200 does not prove a radio exists.",
+        "responses": {
+          "200": {
+            "description": "Envelope with errCode/errMsg plus the payload."
+          }
+        }
+      }
+    },
+    "/1/Device/WiFi/Radios": {
+      "get": {
+        "operationId": "wifi_radios",
+        "summary": "All radios",
+        "tags": [
+          "WiFi"
+        ],
+        "x-hitron": {
+          "requires": [
+            "wifi"
+          ],
+          "state": "php8",
+          "httpStatus": 500,
+          "verifiedOn": "8.7.1.0.1b4",
+          "destructive": false,
+          "models": []
+        },
+        "x-hitron-destructive": false,
+        "description": "Fatal at class load: optional parameter $radio declared before required $f3.",
+        "responses": {
+          "200": {
+            "description": "Envelope with errCode/errMsg plus the payload."
+          },
+          "500": {
+            "description": "PHP 8 fatal in the shipped controller on 8.7.1.0.1b4. Fatal at class load: optional parameter $radio declared before required $f3."
+          }
+        }
+      }
+    },
+    "/1/Device/WiFi/Radios/Survey": {
+      "get": {
+        "operationId": "wifi_radios_survey",
+        "summary": "Neighbour scan / ACS input",
+        "tags": [
+          "WiFi"
+        ],
+        "x-hitron": {
+          "requires": [
+            "wifi"
+          ],
+          "state": "php8",
+          "httpStatus": 500,
+          "verifiedOn": "8.7.1.0.1b4",
+          "destructive": false,
+          "models": []
+        },
+        "x-hitron-destructive": false,
+        "responses": {
+          "200": {
+            "description": "Envelope with errCode/errMsg plus the payload."
+          },
+          "500": {
+            "description": "PHP 8 fatal in the shipped controller on 8.7.1.0.1b4."
+          }
+        }
+      }
+    },
+    "/1/Device/WiFi/Radios/ATF": {
+      "get": {
+        "operationId": "wifi_radios_atf",
+        "summary": "Airtime fairness config",
+        "tags": [
+          "WiFi"
+        ],
+        "x-hitron": {
+          "requires": [
+            "wifi"
+          ],
+          "state": "php8",
+          "httpStatus": 500,
+          "verifiedOn": "8.7.1.0.1b4",
+          "destructive": false,
+          "models": []
+        },
+        "x-hitron-destructive": false,
+        "responses": {
+          "200": {
+            "description": "Envelope with errCode/errMsg plus the payload."
+          },
+          "500": {
+            "description": "PHP 8 fatal in the shipped controller on 8.7.1.0.1b4."
+          }
+        }
+      }
+    },
+    "/1/Device/WiFi/Radios/ATFSSID": {
+      "get": {
+        "operationId": "wifi_radios_atfssid",
+        "summary": "Per-SSID ATF policy",
+        "tags": [
+          "WiFi"
+        ],
+        "x-hitron": {
+          "requires": [
+            "wifi"
+          ],
+          "state": "php8",
+          "httpStatus": 500,
+          "verifiedOn": "8.7.1.0.1b4",
+          "destructive": false,
+          "models": []
+        },
+        "x-hitron-destructive": false,
+        "responses": {
+          "200": {
+            "description": "Envelope with errCode/errMsg plus the payload."
+          },
+          "500": {
+            "description": "PHP 8 fatal in the shipped controller on 8.7.1.0.1b4."
+          }
+        }
+      }
+    },
+    "/1/Device/WiFi/Radios/ATFSTATION": {
+      "get": {
+        "operationId": "wifi_radios_atfstation",
+        "summary": "Per-station ATF state",
+        "tags": [
+          "WiFi"
+        ],
+        "x-hitron": {
+          "requires": [
+            "wifi"
+          ],
+          "state": "php8",
+          "httpStatus": 500,
+          "verifiedOn": "8.7.1.0.1b4",
+          "destructive": false,
+          "models": []
+        },
+        "x-hitron-destructive": false,
+        "responses": {
+          "200": {
+            "description": "Envelope with errCode/errMsg plus the payload."
+          },
+          "500": {
+            "description": "PHP 8 fatal in the shipped controller on 8.7.1.0.1b4."
+          }
+        }
+      }
+    },
+    "/1/Device/WiFi/Radios/Advanced": {
+      "get": {
+        "operationId": "wifi_radios_advanced",
+        "summary": "Per-radio advanced settings",
+        "tags": [
+          "WiFi"
+        ],
+        "x-hitron": {
+          "requires": [
+            "wifi"
+          ],
+          "state": "php8",
+          "httpStatus": 500,
+          "verifiedOn": "8.7.1.0.1b4",
+          "destructive": false,
+          "models": []
+        },
+        "x-hitron-destructive": false,
+        "responses": {
+          "200": {
+            "description": "Envelope with errCode/errMsg plus the payload."
+          },
+          "500": {
+            "description": "PHP 8 fatal in the shipped controller on 8.7.1.0.1b4."
+          }
+        }
+      }
+    },
+    "/1/Device/WiFi/SSIDs": {
+      "get": {
+        "operationId": "wifi_ssids",
+        "summary": "All SSIDs",
+        "tags": [
+          "WiFi"
+        ],
+        "x-hitron": {
+          "requires": [
+            "wifi"
+          ],
+          "state": "php8",
+          "httpStatus": 500,
+          "verifiedOn": "8.7.1.0.1b4",
+          "destructive": false,
+          "models": []
+        },
+        "x-hitron-destructive": false,
+        "description": "Undefined array key 'info'",
+        "responses": {
+          "200": {
+            "description": "Envelope with errCode/errMsg plus the payload."
+          },
+          "500": {
+            "description": "PHP 8 fatal in the shipped controller on 8.7.1.0.1b4. Undefined array key 'info'"
+          }
+        }
+      }
+    },
+    "/1/Device/WiFi/SSIDs/{ifname}/version": {
+      "get": {
+        "operationId": "wifi_ssids_one",
+        "summary": "One SSID by interface name",
+        "tags": [
+          "WiFi"
+        ],
+        "x-hitron": {
+          "requires": [
+            "wifi"
+          ],
+          "state": "php8",
+          "httpStatus": 500,
+          "verifiedOn": "8.7.1.0.1b4",
+          "destructive": false,
+          "models": []
+        },
+        "x-hitron-destructive": false,
+        "description": "Needs both @ifname and @info; checkValidIfName() itself is broken on PHP 8.",
+        "responses": {
+          "200": {
+            "description": "Envelope with errCode/errMsg plus the payload."
+          },
+          "500": {
+            "description": "PHP 8 fatal in the shipped controller on 8.7.1.0.1b4. Needs both @ifname and @info; checkValidIfName() itself is broken on PHP 8."
+          }
+        },
+        "parameters": [
+          {
+            "name": "ifname",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "ath0"
+            }
+          }
+        ]
+      }
+    },
+    "/1/Device/WiFi/Client": {
+      "get": {
+        "operationId": "wifi_client",
+        "summary": "Associated WiFi clients",
+        "tags": [
+          "WiFi"
+        ],
+        "x-hitron": {
+          "requires": [
+            "wifi"
+          ],
+          "state": "php8",
+          "httpStatus": 500,
+          "verifiedOn": "8.7.1.0.1b4",
+          "destructive": false,
+          "models": []
+        },
+        "x-hitron-destructive": false,
+        "responses": {
+          "200": {
+            "description": "Envelope with errCode/errMsg plus the payload."
+          },
+          "500": {
+            "description": "PHP 8 fatal in the shipped controller on 8.7.1.0.1b4."
+          }
+        }
+      }
+    },
+    "/1/Device/WiFi/Stations/{ifname}": {
+      "get": {
+        "operationId": "wifi_client_ssids",
+        "summary": "Clients per radio",
+        "tags": [
+          "WiFi"
+        ],
+        "x-hitron": {
+          "requires": [
+            "wifi"
+          ],
+          "state": "php8",
+          "httpStatus": 500,
+          "verifiedOn": "8.7.1.0.1b4",
+          "destructive": false,
+          "models": []
+        },
+        "x-hitron-destructive": false,
+        "responses": {
+          "200": {
+            "description": "Envelope with errCode/errMsg plus the payload."
+          },
+          "500": {
+            "description": "PHP 8 fatal in the shipped controller on 8.7.1.0.1b4."
+          }
+        },
+        "parameters": [
+          {
+            "name": "ifname",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "ath0"
+            }
+          }
+        ]
+      }
+    },
+    "/1/Device/WiFi/Client/SSIDs": {
+      "get": {
+        "operationId": "wifi_client_ssids_alias",
+        "summary": "Clients per radio (alias route)",
+        "tags": [
+          "WiFi"
+        ],
+        "x-hitron": {
+          "requires": [
+            "wifi"
+          ],
+          "state": "php8",
+          "httpStatus": 500,
+          "verifiedOn": "8.7.1.0.1b4",
+          "destructive": false,
+          "models": []
+        },
+        "x-hitron-destructive": false,
+        "description": "Same data as /WiFi/Stations/{ifname}; this shape omits the @ifname the handler reads.",
+        "responses": {
+          "200": {
+            "description": "Envelope with errCode/errMsg plus the payload."
+          },
+          "500": {
+            "description": "PHP 8 fatal in the shipped controller on 8.7.1.0.1b4. Same data as /WiFi/Stations/{ifname}; this shape omits the @ifname the handler reads."
+          }
+        }
+      }
+    },
+    "/1/Device/WiFi/AccessControl": {
+      "get": {
+        "operationId": "wifi_accesscontrol",
+        "summary": "MAC allow/deny list",
+        "tags": [
+          "WiFi"
+        ],
+        "x-hitron": {
+          "requires": [
+            "wifi"
+          ],
+          "state": "php8",
+          "httpStatus": 500,
+          "verifiedOn": "8.7.1.0.1b4",
+          "destructive": false,
+          "models": []
+        },
+        "x-hitron-destructive": false,
+        "responses": {
+          "200": {
+            "description": "Envelope with errCode/errMsg plus the payload."
+          },
+          "500": {
+            "description": "PHP 8 fatal in the shipped controller on 8.7.1.0.1b4."
+          }
+        }
+      }
+    },
+    "/1/Device/WiFi/AccessControl/Macs": {
+      "get": {
+        "operationId": "wifi_accesscontrol_macs",
+        "summary": "Access-control entries",
+        "tags": [
+          "WiFi"
+        ],
+        "x-hitron": {
+          "requires": [
+            "wifi"
+          ],
+          "state": "php8",
+          "httpStatus": 500,
+          "verifiedOn": "8.7.1.0.1b4",
+          "destructive": false,
+          "models": []
+        },
+        "x-hitron-destructive": false,
+        "description": "Undefined function getInstanceIDs() (platform defines getInstanceIDs).",
+        "responses": {
+          "200": {
+            "description": "Envelope with errCode/errMsg plus the payload."
+          },
+          "500": {
+            "description": "PHP 8 fatal in the shipped controller on 8.7.1.0.1b4. Undefined function getInstanceIDs() (platform defines getInstanceIDs)."
+          }
+        }
+      }
+    },
+    "/1/Device/WiFi/AccessControl/Mode": {
+      "get": {
+        "operationId": "wifi_accesscontrol_mode",
+        "summary": "Allow/deny mode",
+        "tags": [
+          "WiFi"
+        ],
+        "x-hitron": {
+          "requires": [
+            "wifi"
+          ],
+          "state": "ok",
+          "httpStatus": 200,
+          "verifiedOn": "8.7.1.0.1b4",
+          "destructive": false,
+          "models": []
+        },
+        "x-hitron-destructive": false,
+        "responses": {
+          "200": {
+            "description": "Envelope with errCode/errMsg plus the payload."
+          }
+        }
+      }
+    },
+    "/1/Device/WiFi/AccessControl/Status": {
+      "get": {
+        "operationId": "wifi_accesscontrol_status",
+        "summary": "Access-control enabled",
+        "tags": [
+          "WiFi"
+        ],
+        "x-hitron": {
+          "requires": [
+            "wifi"
+          ],
+          "state": "ok",
+          "httpStatus": 200,
+          "verifiedOn": "8.7.1.0.1b4",
+          "destructive": false,
+          "models": []
+        },
+        "x-hitron-destructive": false,
+        "responses": {
+          "200": {
+            "description": "Envelope with errCode/errMsg plus the payload."
+          }
+        }
+      }
+    },
+    "/1/Device/WiFi/Hotspot": {
+      "get": {
+        "operationId": "wifi_hotspot",
+        "summary": "Hotspot / community WiFi",
+        "tags": [
+          "WiFi"
+        ],
+        "x-hitron": {
+          "requires": [
+            "wifi"
+          ],
+          "state": "php8",
+          "httpStatus": 500,
+          "verifiedOn": "8.7.1.0.1b4",
+          "destructive": false,
+          "models": []
+        },
+        "x-hitron-destructive": false,
+        "description": "Undefined variable $rootObjName",
+        "responses": {
+          "200": {
+            "description": "Envelope with errCode/errMsg plus the payload."
+          },
+          "500": {
+            "description": "PHP 8 fatal in the shipped controller on 8.7.1.0.1b4. Undefined variable $rootObjName"
+          }
+        }
+      }
+    },
+    "/1/Device/WiFi/RSSIs": {
+      "get": {
+        "operationId": "wifi_rssis",
+        "summary": "Per-client RSSI",
+        "tags": [
+          "WiFi"
+        ],
+        "x-hitron": {
+          "requires": [
+            "wifi"
+          ],
+          "state": "session",
+          "httpStatus": 400,
+          "verifiedOn": "8.7.1.0.1b4",
+          "destructive": false,
+          "models": []
+        },
+        "x-hitron-destructive": false,
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Envelope with errCode/errMsg plus the payload."
+          },
+          "400": {
+            "description": "errCode 001 - requires the web UI SESSION.uid cookie."
+          }
+        }
+      }
+    },
+    "/1/Device/Router/PortForward": {
+      "get": {
+        "operationId": "router_portforward",
+        "summary": "Port-forward rules",
+        "tags": [
+          "LAN"
+        ],
+        "x-hitron": {
+          "requires": [
+            "router"
+          ],
+          "state": "php8",
+          "httpStatus": 500,
+          "verifiedOn": "8.7.1.0.1b4",
+          "destructive": false,
+          "models": []
+        },
+        "x-hitron-destructive": false,
+        "responses": {
+          "200": {
+            "description": "Envelope with errCode/errMsg plus the payload."
+          },
+          "500": {
+            "description": "PHP 8 fatal in the shipped controller on 8.7.1.0.1b4."
+          }
+        }
+      }
+    },
+    "/1/Device/Router/PortForward/Status": {
+      "get": {
+        "operationId": "router_portforward_status",
+        "summary": "Port-forward enabled",
+        "tags": [
+          "LAN"
+        ],
+        "x-hitron": {
+          "requires": [
+            "router"
+          ],
+          "state": "ok",
+          "httpStatus": 200,
+          "verifiedOn": "8.7.1.0.1b4",
+          "destructive": false,
+          "models": []
+        },
+        "x-hitron-destructive": false,
+        "responses": {
+          "200": {
+            "description": "Envelope with errCode/errMsg plus the payload."
+          }
+        }
+      }
+    },
+    "/1/Device/Router/PortTrigger": {
+      "get": {
+        "operationId": "router_porttrigger",
+        "summary": "Port-trigger rules",
+        "tags": [
+          "LAN"
+        ],
+        "x-hitron": {
+          "requires": [
+            "router"
+          ],
+          "state": "php8",
+          "httpStatus": 500,
+          "verifiedOn": "8.7.1.0.1b4",
+          "destructive": false,
+          "models": []
+        },
+        "x-hitron-destructive": false,
+        "responses": {
+          "200": {
+            "description": "Envelope with errCode/errMsg plus the payload."
+          },
+          "500": {
+            "description": "PHP 8 fatal in the shipped controller on 8.7.1.0.1b4."
+          }
+        }
+      }
+    },
+    "/1/Device/Router/PortTrigger/Status": {
+      "get": {
+        "operationId": "router_porttrigger_status",
+        "summary": "Port-trigger enabled",
+        "tags": [
+          "LAN"
+        ],
+        "x-hitron": {
+          "requires": [
+            "router"
+          ],
+          "state": "ok",
+          "httpStatus": 200,
+          "verifiedOn": "8.7.1.0.1b4",
+          "destructive": false,
+          "models": []
+        },
+        "x-hitron-destructive": false,
+        "responses": {
+          "200": {
+            "description": "Envelope with errCode/errMsg plus the payload."
+          }
+        }
+      }
+    },
+    "/1/Device/Hosts": {
+      "get": {
+        "operationId": "hosts",
+        "summary": "Connected LAN hosts",
+        "tags": [
+          "LAN"
+        ],
+        "x-hitron": {
+          "requires": [
+            "router"
+          ],
+          "state": "php8",
+          "httpStatus": 500,
+          "verifiedOn": "8.7.1.0.1b4",
+          "destructive": false,
+          "models": []
+        },
+        "x-hitron-destructive": false,
+        "responses": {
+          "200": {
+            "description": "Envelope with errCode/errMsg plus the payload."
+          },
+          "500": {
+            "description": "PHP 8 fatal in the shipped controller on 8.7.1.0.1b4."
+          }
+        }
+      }
+    },
+    "/1/Device/Hosts/DefFwLevel": {
+      "get": {
+        "operationId": "hosts_deffw",
+        "summary": "Default firmware level per host",
+        "tags": [
+          "LAN"
+        ],
+        "x-hitron": {
+          "requires": [
+            "router"
+          ],
+          "state": "session",
+          "httpStatus": 400,
+          "verifiedOn": "8.7.1.0.1b4",
+          "destructive": false,
+          "models": []
+        },
+        "x-hitron-destructive": false,
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Envelope with errCode/errMsg plus the payload."
+          },
+          "400": {
+            "description": "errCode 001 - requires the web UI SESSION.uid cookie."
+          }
+        }
+      }
+    },
+    "/1/Device/DHCP": {
+      "get": {
+        "operationId": "dhcp",
+        "summary": "DHCP server config/leases",
+        "tags": [
+          "LAN"
+        ],
+        "x-hitron": {
+          "requires": [
+            "router"
+          ],
+          "state": "php8",
+          "httpStatus": 500,
+          "verifiedOn": "8.7.1.0.1b4",
+          "destructive": false,
+          "models": []
+        },
+        "x-hitron-destructive": false,
+        "responses": {
+          "200": {
+            "description": "Envelope with errCode/errMsg plus the payload."
+          },
+          "500": {
+            "description": "PHP 8 fatal in the shipped controller on 8.7.1.0.1b4."
+          }
+        }
+      }
+    },
+    "/1/Device/DHCP/Lan": {
+      "get": {
+        "operationId": "dhcp_lan",
+        "summary": "LAN DHCP settings",
+        "tags": [
+          "LAN"
+        ],
+        "x-hitron": {
+          "requires": [
+            "router"
+          ],
+          "state": "php8",
+          "httpStatus": 500,
+          "verifiedOn": "8.7.1.0.1b4",
+          "destructive": false,
+          "models": []
+        },
+        "x-hitron-destructive": false,
+        "description": "Creation of dynamic property DHCP::$bSomeItemsReadOnly",
+        "responses": {
+          "200": {
+            "description": "Envelope with errCode/errMsg plus the payload."
+          },
+          "500": {
+            "description": "PHP 8 fatal in the shipped controller on 8.7.1.0.1b4. Creation of dynamic property DHCP::$bSomeItemsReadOnly"
+          }
+        }
+      }
+    },
+    "/1/Device/DHCP/Reservation": {
+      "get": {
+        "operationId": "dhcp_reservation",
+        "summary": "Static reservations",
+        "tags": [
+          "LAN"
+        ],
+        "x-hitron": {
+          "requires": [
+            "router"
+          ],
+          "state": "php8",
+          "httpStatus": 500,
+          "verifiedOn": "8.7.1.0.1b4",
+          "destructive": false,
+          "models": []
+        },
+        "x-hitron-destructive": false,
+        "responses": {
+          "200": {
+            "description": "Envelope with errCode/errMsg plus the payload."
+          },
+          "500": {
+            "description": "PHP 8 fatal in the shipped controller on 8.7.1.0.1b4."
+          }
+        }
+      }
+    },
+    "/1/Device/WAN": {
+      "get": {
+        "operationId": "wan",
+        "summary": "WAN config/status",
+        "tags": [
+          "LAN"
+        ],
+        "x-hitron": {
+          "requires": [
+            "router"
+          ],
+          "state": "php8",
+          "httpStatus": 500,
+          "verifiedOn": "8.7.1.0.1b4",
+          "destructive": false,
+          "models": []
+        },
+        "x-hitron-destructive": false,
+        "responses": {
+          "200": {
+            "description": "Envelope with errCode/errMsg plus the payload."
+          },
+          "500": {
+            "description": "PHP 8 fatal in the shipped controller on 8.7.1.0.1b4."
+          }
+        }
+      }
+    },
+    "/1/Device/DNS": {
+      "get": {
+        "operationId": "dns",
+        "summary": "DNS config",
+        "tags": [
+          "LAN"
+        ],
+        "x-hitron": {
+          "requires": [
+            "router"
+          ],
+          "state": "php8",
+          "httpStatus": 500,
+          "verifiedOn": "8.7.1.0.1b4",
+          "destructive": false,
+          "models": []
+        },
+        "x-hitron-destructive": false,
+        "responses": {
+          "200": {
+            "description": "Envelope with errCode/errMsg plus the payload."
+          },
+          "500": {
+            "description": "PHP 8 fatal in the shipped controller on 8.7.1.0.1b4."
+          }
+        }
+      }
+    },
+    "/1/Device/DDNS": {
+      "get": {
+        "operationId": "ddns",
+        "summary": "Dynamic DNS config",
+        "tags": [
+          "LAN"
+        ],
+        "x-hitron": {
+          "requires": [
+            "router"
+          ],
+          "state": "php8",
+          "httpStatus": 500,
+          "verifiedOn": "8.7.1.0.1b4",
+          "destructive": false,
+          "models": []
+        },
+        "x-hitron-destructive": false,
+        "responses": {
+          "200": {
+            "description": "Envelope with errCode/errMsg plus the payload."
+          },
+          "500": {
+            "description": "PHP 8 fatal in the shipped controller on 8.7.1.0.1b4."
+          }
+        }
+      }
+    },
+    "/1/Device/DDNS/Status": {
+      "get": {
+        "operationId": "ddns_status",
+        "summary": "Dynamic DNS state",
+        "tags": [
+          "LAN"
+        ],
+        "x-hitron": {
+          "requires": [
+            "router"
+          ],
+          "state": "ok",
+          "httpStatus": 200,
+          "verifiedOn": "8.7.1.0.1b4",
+          "destructive": false,
+          "models": []
+        },
+        "x-hitron-destructive": false,
+        "responses": {
+          "200": {
+            "description": "Envelope with errCode/errMsg plus the payload."
+          }
+        }
+      }
+    },
+    "/1/Device/IpMappingInfo": {
+      "get": {
+        "operationId": "ipmapping",
+        "summary": "1:1 NAT / IP mapping",
+        "tags": [
+          "LAN"
+        ],
+        "x-hitron": {
+          "requires": [
+            "router"
+          ],
+          "state": "php8",
+          "httpStatus": 500,
+          "verifiedOn": "8.7.1.0.1b4",
+          "destructive": false,
+          "models": []
+        },
+        "x-hitron-destructive": false,
+        "responses": {
+          "200": {
+            "description": "Envelope with errCode/errMsg plus the payload."
+          },
+          "500": {
+            "description": "PHP 8 fatal in the shipped controller on 8.7.1.0.1b4."
+          }
+        }
+      }
+    },
+    "/1/Device/IpMappingInfo/Status": {
+      "get": {
+        "operationId": "ipmapping_status",
+        "summary": "IP mapping enabled",
+        "tags": [
+          "LAN"
+        ],
+        "x-hitron": {
+          "requires": [
+            "router"
+          ],
+          "state": "ok",
+          "httpStatus": 200,
+          "verifiedOn": "8.7.1.0.1b4",
+          "destructive": false,
+          "models": []
+        },
+        "x-hitron-destructive": false,
+        "responses": {
+          "200": {
+            "description": "Envelope with errCode/errMsg plus the payload."
+          }
+        }
+      }
+    },
+    "/1/Device/IpPass": {
+      "get": {
+        "operationId": "ippass",
+        "summary": "IP passthrough",
+        "tags": [
+          "LAN"
+        ],
+        "x-hitron": {
+          "requires": [
+            "router"
+          ],
+          "state": "php8",
+          "httpStatus": 500,
+          "verifiedOn": "8.7.1.0.1b4",
+          "destructive": false,
+          "models": []
+        },
+        "x-hitron-destructive": false,
+        "responses": {
+          "200": {
+            "description": "Envelope with errCode/errMsg plus the payload."
+          },
+          "500": {
+            "description": "PHP 8 fatal in the shipped controller on 8.7.1.0.1b4."
+          }
+        }
+      }
+    },
+    "/1/Device/GRE": {
+      "get": {
+        "operationId": "gre",
+        "summary": "GRE tunnels",
+        "tags": [
+          "LAN"
+        ],
+        "x-hitron": {
+          "requires": [
+            "router"
+          ],
+          "state": "php8",
+          "httpStatus": 500,
+          "verifiedOn": "8.7.1.0.1b4",
+          "destructive": false,
+          "models": []
+        },
+        "x-hitron-destructive": false,
+        "responses": {
+          "200": {
+            "description": "Envelope with errCode/errMsg plus the payload."
+          },
+          "500": {
+            "description": "PHP 8 fatal in the shipped controller on 8.7.1.0.1b4."
+          }
+        }
+      }
+    },
+    "/1/Device/RipInfo": {
+      "get": {
+        "operationId": "ripinfo",
+        "summary": "RIP routing",
+        "tags": [
+          "LAN"
+        ],
+        "x-hitron": {
+          "requires": [
+            "router"
+          ],
+          "state": "php8",
+          "httpStatus": 500,
+          "verifiedOn": "8.7.1.0.1b4",
+          "destructive": false,
+          "models": []
+        },
+        "x-hitron-destructive": false,
+        "responses": {
+          "200": {
+            "description": "Envelope with errCode/errMsg plus the payload."
+          },
+          "500": {
+            "description": "PHP 8 fatal in the shipped controller on 8.7.1.0.1b4."
+          }
+        }
+      }
+    },
+    "/1/Device/StaticRouteInfo": {
+      "get": {
+        "operationId": "staticrouteinfo",
+        "summary": "Static routes",
+        "tags": [
+          "LAN"
+        ],
+        "x-hitron": {
+          "requires": [
+            "router"
+          ],
+          "state": "php8",
+          "httpStatus": 500,
+          "verifiedOn": "8.7.1.0.1b4",
+          "destructive": false,
+          "models": []
+        },
+        "x-hitron-destructive": false,
+        "responses": {
+          "200": {
+            "description": "Envelope with errCode/errMsg plus the payload."
+          },
+          "500": {
+            "description": "PHP 8 fatal in the shipped controller on 8.7.1.0.1b4."
+          }
+        }
+      }
+    },
+    "/1/Device/Ether/VLAN": {
+      "get": {
+        "operationId": "ether_vlan",
+        "summary": "Ethernet port VLAN state",
+        "tags": [
+          "LAN"
+        ],
+        "x-hitron": {
+          "requires": [],
+          "state": "ok",
+          "httpStatus": 200,
+          "verifiedOn": "8.7.1.0.1b4",
+          "destructive": false,
+          "models": []
+        },
+        "x-hitron-destructive": false,
+        "description": "ethPort1..4 are fixed schema fields, not a port count; on the live CODA60 all four are 0 while AdvancedSwitch reports one port.",
+        "responses": {
+          "200": {
+            "description": "Envelope with errCode/errMsg plus the payload."
+          }
+        }
+      }
+    },
+    "/1/Device/Advanced/AdvancedSwitch": {
+      "get": {
+        "operationId": "advanced_switch",
+        "summary": "On-board Ethernet switch ports",
+        "tags": [
+          "LAN"
+        ],
+        "x-hitron": {
+          "requires": [],
+          "state": "ok",
+          "httpStatus": 200,
+          "verifiedOn": "8.7.1.0.1b4",
+          "destructive": false,
+          "models": []
+        },
+        "x-hitron-destructive": false,
+        "responses": {
+          "200": {
+            "description": "Envelope with errCode/errMsg plus the payload.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdvancedSwitchPort"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/1/Device/MoCA": {
+      "get": {
+        "operationId": "moca",
+        "summary": "MoCA interface status/config",
+        "tags": [
+          "MoCA"
+        ],
+        "x-hitron": {
+          "requires": [
+            "moca"
+          ],
+          "state": "php8",
+          "httpStatus": 500,
+          "verifiedOn": "8.7.1.0.1b4",
+          "destructive": false,
+          "models": []
+        },
+        "x-hitron-destructive": false,
+        "description": "Undefined array key 'info'",
+        "responses": {
+          "200": {
+            "description": "Envelope with errCode/errMsg plus the payload.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MoCA"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "PHP 8 fatal in the shipped controller on 8.7.1.0.1b4. Undefined array key 'info'"
+          }
+        }
+      }
+    },
+    "/1/Device/Firewall/Level": {
+      "get": {
+        "operationId": "firewall_level",
+        "summary": "Firewall level",
+        "tags": [
+          "Firewall"
+        ],
+        "x-hitron": {
+          "requires": [
+            "router"
+          ],
+          "state": "ok",
+          "httpStatus": 200,
+          "verifiedOn": "8.7.1.0.1b4",
+          "destructive": false,
+          "models": []
+        },
+        "x-hitron-destructive": false,
+        "responses": {
+          "200": {
+            "description": "Envelope with errCode/errMsg plus the payload."
+          }
+        }
+      }
+    },
+    "/1/Device/Firewall/Levels": {
+      "get": {
+        "operationId": "firewall_levels",
+        "summary": "Firewall level list",
+        "tags": [
+          "Firewall"
+        ],
+        "x-hitron": {
+          "requires": [
+            "router"
+          ],
+          "state": "session",
+          "httpStatus": 400,
+          "verifiedOn": "8.7.1.0.1b4",
+          "destructive": false,
+          "models": []
+        },
+        "x-hitron-destructive": false,
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Envelope with errCode/errMsg plus the payload."
+          },
+          "400": {
+            "description": "errCode 001 - requires the web UI SESSION.uid cookie."
+          }
+        }
+      }
+    },
+    "/1/Device/Firewall/Logs": {
+      "get": {
+        "operationId": "firewall_logs",
+        "summary": "Firewall log",
+        "tags": [
+          "Firewall"
+        ],
+        "x-hitron": {
+          "requires": [
+            "router"
+          ],
+          "state": "ok",
+          "httpStatus": 200,
+          "verifiedOn": "8.7.1.0.1b4",
+          "destructive": false,
+          "models": []
+        },
+        "x-hitron-destructive": false,
+        "responses": {
+          "200": {
+            "description": "Envelope with errCode/errMsg plus the payload."
+          }
+        }
+      }
+    },
+    "/1/Device/Firewall/VPN": {
+      "get": {
+        "operationId": "firewall_vpn",
+        "summary": "VPN passthrough state",
+        "tags": [
+          "Firewall"
+        ],
+        "x-hitron": {
+          "requires": [
+            "router"
+          ],
+          "state": "ok",
+          "httpStatus": 200,
+          "verifiedOn": "8.7.1.0.1b4",
+          "destructive": false,
+          "models": []
+        },
+        "x-hitron-destructive": false,
+        "responses": {
+          "200": {
+            "description": "Envelope with errCode/errMsg plus the payload."
+          }
+        }
+      }
+    },
+    "/1/Device/Firewall/Inbound": {
+      "get": {
+        "operationId": "firewall_inbound",
+        "summary": "Inbound rule set",
+        "tags": [
+          "Firewall"
+        ],
+        "x-hitron": {
+          "requires": [
+            "router"
+          ],
+          "state": "php8",
+          "httpStatus": 500,
+          "verifiedOn": "8.7.1.0.1b4",
+          "destructive": false,
+          "models": []
+        },
+        "x-hitron-destructive": false,
+        "responses": {
+          "200": {
+            "description": "Envelope with errCode/errMsg plus the payload."
+          },
+          "500": {
+            "description": "PHP 8 fatal in the shipped controller on 8.7.1.0.1b4."
+          }
+        }
+      }
+    },
+    "/1/Device/Firewall/Inbound/Rules": {
+      "get": {
+        "operationId": "firewall_inbound_rules",
+        "summary": "Inbound rules",
+        "tags": [
+          "Firewall"
+        ],
+        "x-hitron": {
+          "requires": [
+            "router"
+          ],
+          "state": "ok",
+          "httpStatus": 200,
+          "verifiedOn": "8.7.1.0.1b4",
+          "destructive": false,
+          "models": []
+        },
+        "x-hitron-destructive": false,
+        "responses": {
+          "200": {
+            "description": "Envelope with errCode/errMsg plus the payload."
+          }
+        }
+      }
+    },
+    "/1/Device/Firewall/Inbound/Status": {
+      "get": {
+        "operationId": "firewall_inbound_status",
+        "summary": "Inbound filter enabled",
+        "tags": [
+          "Firewall"
+        ],
+        "x-hitron": {
+          "requires": [
+            "router"
+          ],
+          "state": "ok",
+          "httpStatus": 200,
+          "verifiedOn": "8.7.1.0.1b4",
+          "destructive": false,
+          "models": []
+        },
+        "x-hitron-destructive": false,
+        "responses": {
+          "200": {
+            "description": "Envelope with errCode/errMsg plus the payload."
+          }
+        }
+      }
+    },
+    "/1/Device/Firewall/ServiceFilter": {
+      "get": {
+        "operationId": "firewall_servicefilter",
+        "summary": "Service filter set",
+        "tags": [
+          "Firewall"
+        ],
+        "x-hitron": {
+          "requires": [
+            "router"
+          ],
+          "state": "php8",
+          "httpStatus": 500,
+          "verifiedOn": "8.7.1.0.1b4",
+          "destructive": false,
+          "models": []
+        },
+        "x-hitron-destructive": false,
+        "responses": {
+          "200": {
+            "description": "Envelope with errCode/errMsg plus the payload."
+          },
+          "500": {
+            "description": "PHP 8 fatal in the shipped controller on 8.7.1.0.1b4."
+          }
+        }
+      }
+    },
+    "/1/Device/Firewall/ServiceFilter/Rules": {
+      "get": {
+        "operationId": "firewall_servicefilter_rules",
+        "summary": "Service filter rules",
+        "tags": [
+          "Firewall"
+        ],
+        "x-hitron": {
+          "requires": [
+            "router"
+          ],
+          "state": "php8",
+          "httpStatus": 500,
+          "verifiedOn": "8.7.1.0.1b4",
+          "destructive": false,
+          "models": []
+        },
+        "x-hitron-destructive": false,
+        "description": "Undefined function getInstanceIDs().",
+        "responses": {
+          "200": {
+            "description": "Envelope with errCode/errMsg plus the payload."
+          },
+          "500": {
+            "description": "PHP 8 fatal in the shipped controller on 8.7.1.0.1b4. Undefined function getInstanceIDs()."
+          }
+        }
+      }
+    },
+    "/1/Device/Firewall/ServiceFilter/Status": {
+      "get": {
+        "operationId": "firewall_servicefilter_status",
+        "summary": "Service filter enabled",
+        "tags": [
+          "Firewall"
+        ],
+        "x-hitron": {
+          "requires": [
+            "router"
+          ],
+          "state": "ok",
+          "httpStatus": 200,
+          "verifiedOn": "8.7.1.0.1b4",
+          "destructive": false,
+          "models": []
+        },
+        "x-hitron-destructive": false,
+        "responses": {
+          "200": {
+            "description": "Envelope with errCode/errMsg plus the payload."
+          }
+        }
+      }
+    },
+    "/1/Device/Firewall/ServiceFilter/TrustRules": {
+      "get": {
+        "operationId": "firewall_servicefilter_trust",
+        "summary": "Service filter trust rules",
+        "tags": [
+          "Firewall"
+        ],
+        "x-hitron": {
+          "requires": [
+            "router"
+          ],
+          "state": "php8",
+          "httpStatus": 500,
+          "verifiedOn": "8.7.1.0.1b4",
+          "destructive": false,
+          "models": []
+        },
+        "x-hitron-destructive": false,
+        "responses": {
+          "200": {
+            "description": "Envelope with errCode/errMsg plus the payload."
+          },
+          "500": {
+            "description": "PHP 8 fatal in the shipped controller on 8.7.1.0.1b4."
+          }
+        }
+      }
+    },
+    "/1/Device/Firewall/DeviceFilter": {
+      "get": {
+        "operationId": "firewall_devicefilter",
+        "summary": "Device filter set",
+        "tags": [
+          "Firewall"
+        ],
+        "x-hitron": {
+          "requires": [
+            "router"
+          ],
+          "state": "php8",
+          "httpStatus": 500,
+          "verifiedOn": "8.7.1.0.1b4",
+          "destructive": false,
+          "models": []
+        },
+        "x-hitron-destructive": false,
+        "responses": {
+          "200": {
+            "description": "Envelope with errCode/errMsg plus the payload."
+          },
+          "500": {
+            "description": "PHP 8 fatal in the shipped controller on 8.7.1.0.1b4."
+          }
+        }
+      }
+    },
+    "/1/Device/Firewall/DeviceFilter/Rules": {
+      "get": {
+        "operationId": "firewall_devicefilter_rules",
+        "summary": "Device filter rules",
+        "tags": [
+          "Firewall"
+        ],
+        "x-hitron": {
+          "requires": [
+            "router"
+          ],
+          "state": "php8",
+          "httpStatus": 500,
+          "verifiedOn": "8.7.1.0.1b4",
+          "destructive": false,
+          "models": []
+        },
+        "x-hitron-destructive": false,
+        "responses": {
+          "200": {
+            "description": "Envelope with errCode/errMsg plus the payload."
+          },
+          "500": {
+            "description": "PHP 8 fatal in the shipped controller on 8.7.1.0.1b4."
+          }
+        }
+      }
+    },
+    "/1/Device/Firewall/DeviceFilter/Type": {
+      "get": {
+        "operationId": "firewall_devicefilter_type",
+        "summary": "Device filter allow/deny type",
+        "tags": [
+          "Firewall"
+        ],
+        "x-hitron": {
+          "requires": [
+            "router"
+          ],
+          "state": "ok",
+          "httpStatus": 200,
+          "verifiedOn": "8.7.1.0.1b4",
+          "destructive": false,
+          "models": []
+        },
+        "x-hitron-destructive": false,
+        "responses": {
+          "200": {
+            "description": "Envelope with errCode/errMsg plus the payload."
+          }
+        }
+      }
+    },
+    "/1/Device/Firewall/KeywordFilter": {
+      "get": {
+        "operationId": "firewall_keywordfilter",
+        "summary": "Keyword filter set",
+        "tags": [
+          "Firewall"
+        ],
+        "x-hitron": {
+          "requires": [
+            "router"
+          ],
+          "state": "php8",
+          "httpStatus": 500,
+          "verifiedOn": "8.7.1.0.1b4",
+          "destructive": false,
+          "models": []
+        },
+        "x-hitron-destructive": false,
+        "responses": {
+          "200": {
+            "description": "Envelope with errCode/errMsg plus the payload."
+          },
+          "500": {
+            "description": "PHP 8 fatal in the shipped controller on 8.7.1.0.1b4."
+          }
+        }
+      }
+    },
+    "/1/Device/Firewall/KeywordFilter/Rules": {
+      "get": {
+        "operationId": "firewall_keywordfilter_rules",
+        "summary": "Keyword filter rules",
+        "tags": [
+          "Firewall"
+        ],
+        "x-hitron": {
+          "requires": [
+            "router"
+          ],
+          "state": "php8",
+          "httpStatus": 500,
+          "verifiedOn": "8.7.1.0.1b4",
+          "destructive": false,
+          "models": []
+        },
+        "x-hitron-destructive": false,
+        "responses": {
+          "200": {
+            "description": "Envelope with errCode/errMsg plus the payload."
+          },
+          "500": {
+            "description": "PHP 8 fatal in the shipped controller on 8.7.1.0.1b4."
+          }
+        }
+      }
+    },
+    "/1/Device/Firewall/KeywordFilter/Status": {
+      "get": {
+        "operationId": "firewall_keywordfilter_status",
+        "summary": "Keyword filter enabled",
+        "tags": [
+          "Firewall"
+        ],
+        "x-hitron": {
+          "requires": [
+            "router"
+          ],
+          "state": "ok",
+          "httpStatus": 200,
+          "verifiedOn": "8.7.1.0.1b4",
+          "destructive": false,
+          "models": []
+        },
+        "x-hitron-destructive": false,
+        "responses": {
+          "200": {
+            "description": "Envelope with errCode/errMsg plus the payload."
+          }
+        }
+      }
+    },
+    "/1/Device/Firewall/KeywordFilter/TrustRules": {
+      "get": {
+        "operationId": "firewall_keywordfilter_trust",
+        "summary": "Keyword filter trust rules",
+        "tags": [
+          "Firewall"
+        ],
+        "x-hitron": {
+          "requires": [
+            "router"
+          ],
+          "state": "php8",
+          "httpStatus": 500,
+          "verifiedOn": "8.7.1.0.1b4",
+          "destructive": false,
+          "models": []
+        },
+        "x-hitron-destructive": false,
+        "responses": {
+          "200": {
+            "description": "Envelope with errCode/errMsg plus the payload."
+          },
+          "500": {
+            "description": "PHP 8 fatal in the shipped controller on 8.7.1.0.1b4."
+          }
+        }
+      }
+    },
+    "/1/Device/Firewall/TimeFilter": {
+      "get": {
+        "operationId": "firewall_timefilter",
+        "summary": "Time-based access filter",
+        "tags": [
+          "Firewall"
+        ],
+        "x-hitron": {
+          "requires": [
+            "router"
+          ],
+          "state": "php8",
+          "httpStatus": 500,
+          "verifiedOn": "8.7.1.0.1b4",
+          "destructive": false,
+          "models": []
+        },
+        "x-hitron-destructive": false,
+        "responses": {
+          "200": {
+            "description": "Envelope with errCode/errMsg plus the payload."
+          },
+          "500": {
+            "description": "PHP 8 fatal in the shipped controller on 8.7.1.0.1b4."
+          }
+        }
+      }
+    },
+    "/1/Device/Firewall/KwdFilter/{info}": {
+      "get": {
+        "operationId": "firewall_kwdfilter_app",
+        "summary": "App-only keyword filter",
+        "tags": [
+          "Firewall"
+        ],
+        "x-hitron": {
+          "requires": [
+            "router"
+          ],
+          "state": "untested",
+          "httpStatus": null,
+          "verifiedOn": null,
+          "destructive": false,
+          "models": []
+        },
+        "x-hitron-destructive": false,
+        "responses": {
+          "200": {
+            "description": "Envelope with errCode/errMsg plus the payload."
+          }
+        },
+        "parameters": [
+          {
+            "name": "info",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/1/Device/Firewall/SrvFilter/{info}": {
+      "get": {
+        "operationId": "firewall_srvfilter_app",
+        "summary": "App-only service filter",
+        "tags": [
+          "Firewall"
+        ],
+        "x-hitron": {
+          "requires": [
+            "router"
+          ],
+          "state": "untested",
+          "httpStatus": null,
+          "verifiedOn": null,
+          "destructive": false,
+          "models": []
+        },
+        "x-hitron-destructive": false,
+        "responses": {
+          "200": {
+            "description": "Envelope with errCode/errMsg plus the payload."
+          }
+        },
+        "parameters": [
+          {
+            "name": "info",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/1/Device/MTA/StatusInfo": {
+      "get": {
+        "operationId": "mta_status",
+        "summary": "EMTA line registration + call state",
+        "tags": [
+          "Voice"
+        ],
+        "x-hitron": {
+          "requires": [
+            "voice"
+          ],
+          "state": "ok",
+          "httpStatus": 200,
+          "verifiedOn": "8.7.1.0.1b4",
+          "destructive": false,
+          "models": []
+        },
+        "x-hitron-destructive": false,
+        "description": "Answers 200 even with no SLIC; NumberOfSLIC is null and all LineNRegState are null.",
+        "responses": {
+          "200": {
+            "description": "Envelope with errCode/errMsg plus the payload.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MtaStatus"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/1/Device/MTA/StatusInfo/DhcpInfo": {
+      "get": {
+        "operationId": "mta_dhcp",
+        "summary": "EMTA DHCP state",
+        "tags": [
+          "Voice"
+        ],
+        "x-hitron": {
+          "requires": [
+            "voice"
+          ],
+          "state": "ok",
+          "httpStatus": 200,
+          "verifiedOn": "8.7.1.0.1b4",
+          "destructive": false,
+          "models": []
+        },
+        "x-hitron-destructive": false,
+        "responses": {
+          "200": {
+            "description": "Envelope with errCode/errMsg plus the payload."
+          }
+        }
+      }
+    },
+    "/1/Device/MTA/StatusInfo/Log": {
+      "get": {
+        "operationId": "mta_log",
+        "summary": "EMTA event log",
+        "tags": [
+          "Voice"
+        ],
+        "x-hitron": {
+          "requires": [
+            "voice"
+          ],
+          "state": "ok",
+          "httpStatus": 200,
+          "verifiedOn": "8.7.1.0.1b4",
+          "destructive": false,
+          "models": []
+        },
+        "x-hitron-destructive": false,
+        "responses": {
+          "200": {
+            "description": "Envelope with errCode/errMsg plus the payload."
+          }
+        }
+      }
+    },
+    "/1/Device/MTA/StatusInfo/QualityMetric": {
+      "get": {
+        "operationId": "mta_quality",
+        "summary": "Voice quality metrics",
+        "tags": [
+          "Voice"
+        ],
+        "x-hitron": {
+          "requires": [
+            "voice"
+          ],
+          "state": "ok",
+          "httpStatus": 200,
+          "verifiedOn": "8.7.1.0.1b4",
+          "destructive": false,
+          "models": []
+        },
+        "x-hitron-destructive": false,
+        "responses": {
+          "200": {
+            "description": "Envelope with errCode/errMsg plus the payload."
+          }
+        }
+      }
+    },
+    "/1/Device/BBU": {
+      "get": {
+        "operationId": "bbu",
+        "summary": "Battery backup unit",
+        "tags": [
+          "Voice"
+        ],
+        "x-hitron": {
+          "requires": [
+            "battery"
+          ],
+          "state": "php8",
+          "httpStatus": 500,
+          "verifiedOn": "8.7.1.0.1b4",
+          "destructive": false,
+          "models": []
+        },
+        "x-hitron-destructive": false,
+        "responses": {
+          "200": {
+            "description": "Envelope with errCode/errMsg plus the payload."
+          },
+          "500": {
+            "description": "PHP 8 fatal in the shipped controller on 8.7.1.0.1b4."
+          }
+        }
+      }
+    },
+    "/1/Device/Diagnostics": {
+      "get": {
+        "operationId": "diagnostics_root",
+        "summary": "Diagnostics controller root",
+        "tags": [
+          "Diagnostics"
+        ],
+        "x-hitron": {
+          "requires": [],
+          "state": "php8",
+          "httpStatus": 500,
+          "verifiedOn": "8.7.1.0.1b4",
+          "destructive": false,
+          "models": []
+        },
+        "x-hitron-destructive": false,
+        "description": "Requires an @info branch; the bare controller root reads $args['info'] and fatals.",
+        "responses": {
+          "200": {
+            "description": "Envelope with errCode/errMsg plus the payload."
+          },
+          "500": {
+            "description": "PHP 8 fatal in the shipped controller on 8.7.1.0.1b4. Requires an @info branch; the bare controller root reads $args['info'] and fatals."
+          }
+        }
+      }
+    },
+    "/1/Device/Diagnostics/Input": {
+      "get": {
+        "operationId": "diag_input",
+        "summary": "Stored diagnostic target",
+        "tags": [
+          "Diagnostics"
+        ],
+        "x-hitron": {
+          "requires": [],
+          "state": "ok",
+          "httpStatus": 200,
+          "verifiedOn": "8.7.1.0.1b4",
+          "destructive": false,
+          "models": []
+        },
+        "x-hitron-destructive": false,
+        "responses": {
+          "200": {
+            "description": "Envelope with errCode/errMsg plus the payload."
+          }
+        }
+      }
+    },
+    "/1/Device/Diagnostics/Ping": {
+      "get": {
+        "operationId": "diag_ping",
+        "summary": "Last ping result",
+        "tags": [
+          "Diagnostics"
+        ],
+        "x-hitron": {
+          "requires": [],
+          "state": "ok",
+          "httpStatus": 200,
+          "verifiedOn": "8.7.1.0.1b4",
+          "destructive": false,
+          "models": []
+        },
+        "x-hitron-destructive": false,
+        "responses": {
+          "200": {
+            "description": "Envelope with errCode/errMsg plus the payload."
+          }
+        }
+      }
+    },
+    "/1/Device/Diagnostics/TraceRoute": {
+      "get": {
+        "operationId": "diag_traceroute",
+        "summary": "Last traceroute result",
+        "tags": [
+          "Diagnostics"
+        ],
+        "x-hitron": {
+          "requires": [],
+          "state": "ok",
+          "httpStatus": 200,
+          "verifiedOn": "8.7.1.0.1b4",
+          "destructive": false,
+          "models": []
+        },
+        "x-hitron-destructive": false,
+        "responses": {
+          "200": {
+            "description": "Envelope with errCode/errMsg plus the payload."
+          }
+        }
+      }
+    },
+    "/1/Device/Spectrum": {
+      "get": {
+        "operationId": "spectrum",
+        "summary": "Spectrum analyzer source address",
+        "tags": [
+          "Spectrum"
+        ],
+        "x-hitron": {
+          "requires": [
+            "spectrum"
+          ],
+          "state": "ok",
+          "httpStatus": 200,
+          "verifiedOn": "8.7.1.0.1b4",
+          "destructive": false,
+          "models": []
+        },
+        "x-hitron-destructive": false,
+        "responses": {
+          "200": {
+            "description": "Envelope with errCode/errMsg plus the payload."
+          }
+        }
+      }
+    },
+    "/1/Device/Spectrum/FreqList": {
+      "get": {
+        "operationId": "spectrum_freqlist",
+        "summary": "Analyzer frequency list",
+        "tags": [
+          "Spectrum"
+        ],
+        "x-hitron": {
+          "requires": [
+            "spectrum"
+          ],
+          "state": "ok",
+          "httpStatus": 200,
+          "verifiedOn": "8.7.1.0.1b4",
+          "destructive": false,
+          "models": []
+        },
+        "x-hitron-destructive": false,
+        "responses": {
+          "200": {
+            "description": "Envelope with errCode/errMsg plus the payload."
+          }
+        }
+      }
+    },
+    "/1/Device/Spectrum/RTData": {
+      "get": {
+        "operationId": "spectrum_rtdata",
+        "summary": "Real-time spectrum trace",
+        "tags": [
+          "Spectrum"
+        ],
+        "x-hitron": {
+          "requires": [
+            "spectrum"
+          ],
+          "state": "ok",
+          "httpStatus": 200,
+          "verifiedOn": "8.7.1.0.1b4",
+          "destructive": false,
+          "models": []
+        },
+        "x-hitron-destructive": false,
+        "responses": {
+          "200": {
+            "description": "Envelope with errCode/errMsg plus the payload."
+          }
+        }
+      }
+    },
+    "/1/Device/Spectrum/Constellation": {
+      "get": {
+        "operationId": "spectrum_constellation",
+        "summary": "Constellation points for one downstream port",
+        "tags": [
+          "Spectrum"
+        ],
+        "x-hitron": {
+          "requires": [
+            "spectrum"
+          ],
+          "state": "php8",
+          "httpStatus": 500,
+          "verifiedOn": "8.7.1.0.1b4",
+          "destructive": false,
+          "models": []
+        },
+        "x-hitron-destructive": false,
+        "description": "Handler reads $args['query'], which the route never supplies.",
+        "parameters": [
+          {
+            "name": "portId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 31,
+              "default": 24
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Envelope with errCode/errMsg plus the payload."
+          },
+          "500": {
+            "description": "PHP 8 fatal in the shipped controller on 8.7.1.0.1b4. Handler reads $args['query'], which the route never supplies."
+          }
+        }
+      }
+    },
+    "/1/Device/Spectrum/FreqPower": {
+      "get": {
+        "operationId": "spectrum_freqpower",
+        "summary": "Power sweep over a frequency range",
+        "tags": [
+          "Spectrum"
+        ],
+        "x-hitron": {
+          "requires": [
+            "spectrum"
+          ],
+          "state": "php8",
+          "httpStatus": 500,
+          "verifiedOn": "8.7.1.0.1b4",
+          "destructive": false,
+          "models": []
+        },
+        "x-hitron-destructive": false,
+        "description": "Same $args['query'] defect as Constellation.",
+        "parameters": [
+          {
+            "name": "centFreq",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "number",
+              "minimum": 49,
+              "maximum": 1788,
+              "default": 645
+            }
+          },
+          {
+            "name": "fromFreq",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "number",
+              "minimum": 43,
+              "maximum": 1794,
+              "default": 637.5
+            }
+          },
+          {
+            "name": "toFreq",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "number",
+              "minimum": 43,
+              "maximum": 1794,
+              "default": 643.5
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Envelope with errCode/errMsg plus the payload."
+          },
+          "500": {
+            "description": "PHP 8 fatal in the shipped controller on 8.7.1.0.1b4. Same $args['query'] defect as Constellation."
+          }
+        }
+      }
+    },
+    "/1/Device/Time": {
+      "get": {
+        "operationId": "time",
+        "summary": "NTP/time configuration",
+        "tags": [
+          "System"
+        ],
+        "x-hitron": {
+          "requires": [],
+          "state": "php8",
+          "httpStatus": 500,
+          "verifiedOn": "8.7.1.0.1b4",
+          "destructive": false,
+          "models": []
+        },
+        "x-hitron-destructive": false,
+        "responses": {
+          "200": {
+            "description": "Envelope with errCode/errMsg plus the payload."
+          },
+          "500": {
+            "description": "PHP 8 fatal in the shipped controller on 8.7.1.0.1b4."
+          }
+        }
+      }
+    },
+    "/1/Device/Advanced": {
+      "get": {
+        "operationId": "advanced_root",
+        "summary": "Advanced controller root",
+        "tags": [
+          "System"
+        ],
+        "x-hitron": {
+          "requires": [],
+          "state": "php8",
+          "httpStatus": 500,
+          "verifiedOn": "8.7.1.0.1b4",
+          "destructive": false,
+          "models": []
+        },
+        "x-hitron-destructive": false,
+        "description": "Requires an @info branch.",
+        "responses": {
+          "200": {
+            "description": "Envelope with errCode/errMsg plus the payload."
+          },
+          "500": {
+            "description": "PHP 8 fatal in the shipped controller on 8.7.1.0.1b4. Requires an @info branch."
+          }
+        }
+      }
+    },
+    "/1/Device/USB": {
+      "get": {
+        "operationId": "usb_root",
+        "summary": "USB controller root",
+        "tags": [
+          "System"
+        ],
+        "x-hitron": {
+          "requires": [],
+          "state": "php8",
+          "httpStatus": 500,
+          "verifiedOn": "8.7.1.0.1b4",
+          "destructive": false,
+          "models": []
+        },
+        "x-hitron-destructive": false,
+        "description": "Requires an @info branch.",
+        "responses": {
+          "200": {
+            "description": "Envelope with errCode/errMsg plus the payload."
+          },
+          "500": {
+            "description": "PHP 8 fatal in the shipped controller on 8.7.1.0.1b4. Requires an @info branch."
+          }
+        }
+      }
+    },
+    "/1/Device/AdminRemoteManagement": {
+      "get": {
+        "operationId": "adminremote_root",
+        "summary": "Remote-management controller root",
+        "tags": [
+          "System"
+        ],
+        "x-hitron": {
+          "requires": [],
+          "state": "php8",
+          "httpStatus": 500,
+          "verifiedOn": "8.7.1.0.1b4",
+          "destructive": false,
+          "models": []
+        },
+        "x-hitron-destructive": false,
+        "description": "Requires an @info branch.",
+        "responses": {
+          "200": {
+            "description": "Envelope with errCode/errMsg plus the payload."
+          },
+          "500": {
+            "description": "PHP 8 fatal in the shipped controller on 8.7.1.0.1b4. Requires an @info branch."
+          }
+        }
+      }
+    },
+    "/1/Device/USB/DeviceList": {
+      "get": {
+        "operationId": "usb_devices",
+        "summary": "Attached USB devices",
+        "tags": [
+          "System"
+        ],
+        "x-hitron": {
+          "requires": [
+            "usb"
+          ],
+          "state": "ok",
+          "httpStatus": 200,
+          "verifiedOn": "8.7.1.0.1b4",
+          "destructive": false,
+          "models": []
+        },
+        "x-hitron-destructive": false,
+        "description": "0 entries proves an empty port, not an absent one; only the catalog can say a SKU has no USB.",
+        "responses": {
+          "200": {
+            "description": "Envelope with errCode/errMsg plus the payload."
+          }
+        }
+      }
+    },
+    "/1/Device/AdminRemoteManagement/Status": {
+      "get": {
+        "operationId": "adminremote_status",
+        "summary": "WAN-side admin access state",
+        "tags": [
+          "System"
+        ],
+        "x-hitron": {
+          "requires": [],
+          "state": "ok",
+          "httpStatus": 200,
+          "verifiedOn": "8.7.1.0.1b4",
+          "destructive": false,
+          "models": []
+        },
+        "x-hitron-destructive": false,
+        "responses": {
+          "200": {
+            "description": "Envelope with errCode/errMsg plus the payload."
+          }
+        }
+      }
+    },
+    "/1/Device/AdminRemoteManagement/AcList": {
+      "get": {
+        "operationId": "adminremote_aclist",
+        "summary": "Remote-management allow list",
+        "tags": [
+          "System"
+        ],
+        "x-hitron": {
+          "requires": [],
+          "state": "php8",
+          "httpStatus": 500,
+          "verifiedOn": "8.7.1.0.1b4",
+          "destructive": false,
+          "models": []
+        },
+        "x-hitron-destructive": false,
+        "description": "count() on a RemoteAccess object",
+        "responses": {
+          "200": {
+            "description": "Envelope with errCode/errMsg plus the payload."
+          },
+          "500": {
+            "description": "PHP 8 fatal in the shipped controller on 8.7.1.0.1b4. count() on a RemoteAccess object"
+          }
+        }
+      }
+    },
+    "/1/Device/AdminRemoteManagement/RList": {
+      "get": {
+        "operationId": "adminremote_rlist",
+        "summary": "Remote-management rule list",
+        "tags": [
+          "System"
+        ],
+        "x-hitron": {
+          "requires": [],
+          "state": "php8",
+          "httpStatus": 500,
+          "verifiedOn": "8.7.1.0.1b4",
+          "destructive": false,
+          "models": []
+        },
+        "x-hitron-destructive": false,
+        "description": "Undefined function getInstanceIDs().",
+        "responses": {
+          "200": {
+            "description": "Envelope with errCode/errMsg plus the payload."
+          },
+          "500": {
+            "description": "PHP 8 fatal in the shipped controller on 8.7.1.0.1b4. Undefined function getInstanceIDs()."
+          }
+        }
+      },
+      "post": {
+        "operationId": "adminremote_rlist_write_post",
+        "summary": "Add/remove remote-management rules",
+        "tags": [
+          "Write"
+        ],
+        "x-hitron": {
+          "requires": [],
+          "state": "untested",
+          "httpStatus": null,
+          "verifiedOn": null,
+          "destructive": true,
+          "models": []
+        },
+        "x-hitron-destructive": true,
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Envelope with errCode/errMsg plus the payload."
+          }
+        }
+      },
+      "put": {
+        "operationId": "adminremote_rlist_write_put",
+        "summary": "Add/remove remote-management rules",
+        "tags": [
+          "Write"
+        ],
+        "x-hitron": {
+          "requires": [],
+          "state": "untested",
+          "httpStatus": null,
+          "verifiedOn": null,
+          "destructive": true,
+          "models": []
+        },
+        "x-hitron-destructive": true,
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Envelope with errCode/errMsg plus the payload."
+          }
+        }
+      }
+    },
+    "/1/Device/AdminRemoteManagement/Backup": {
+      "get": {
+        "operationId": "adminremote_backup",
+        "summary": "Download the running config",
+        "tags": [
+          "System"
+        ],
+        "x-hitron": {
+          "requires": [],
+          "state": "php8",
+          "httpStatus": 500,
+          "verifiedOn": "8.7.1.0.1b4",
+          "destructive": true,
+          "models": []
+        },
+        "x-hitron-destructive": true,
+        "description": "Saves to /tmp/basic.cfg then readfile()s it; confPhp never produces the file on this build.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Envelope with errCode/errMsg plus the payload."
+          },
+          "500": {
+            "description": "PHP 8 fatal in the shipped controller on 8.7.1.0.1b4. Saves to /tmp/basic.cfg then readfile()s it; confPhp never produces the file on this build."
+          }
+        }
+      }
+    },
+    "/1/Device/Health": {
+      "get": {
+        "operationId": "health_root",
+        "summary": "App health summary",
+        "tags": [
+          "System"
+        ],
+        "x-hitron": {
+          "requires": [],
+          "state": "php8",
+          "httpStatus": 500,
+          "verifiedOn": "8.7.1.0.1b4",
+          "destructive": false,
+          "models": []
+        },
+        "x-hitron-destructive": false,
+        "responses": {
+          "200": {
+            "description": "Envelope with errCode/errMsg plus the payload."
+          },
+          "500": {
+            "description": "PHP 8 fatal in the shipped controller on 8.7.1.0.1b4."
+          }
+        }
+      }
+    },
+    "/1/Device/Health/Settings": {
+      "get": {
+        "operationId": "health_settings",
+        "summary": "App health thresholds",
+        "tags": [
+          "System"
+        ],
+        "x-hitron": {
+          "requires": [],
+          "state": "session",
+          "httpStatus": 400,
+          "verifiedOn": "8.7.1.0.1b4",
+          "destructive": false,
+          "models": []
+        },
+        "x-hitron-destructive": false,
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Envelope with errCode/errMsg plus the payload."
+          },
+          "400": {
+            "description": "errCode 001 - requires the web UI SESSION.uid cookie."
+          }
+        }
+      }
+    },
+    "/1/Device/TempAccess/Status": {
+      "get": {
+        "operationId": "tempaccess_status",
+        "summary": "Temporary access window",
+        "tags": [
+          "System"
+        ],
+        "x-hitron": {
+          "requires": [],
+          "state": "verb",
+          "httpStatus": 400,
+          "verifiedOn": "8.7.1.0.1b4",
+          "destructive": false,
+          "models": []
+        },
+        "x-hitron-destructive": false,
+        "responses": {
+          "200": {
+            "description": "Envelope with errCode/errMsg plus the payload."
+          },
+          "400": {
+            "description": "errCode 005 - GET is not supported for this model."
+          }
+        }
+      }
+    },
+    "/1/Device/Addons/AssiaAgent": {
+      "get": {
+        "operationId": "addons_assia",
+        "summary": "Assia agent state",
+        "tags": [
+          "System"
+        ],
+        "x-hitron": {
+          "requires": [],
+          "state": "ok",
+          "httpStatus": 200,
+          "verifiedOn": "8.7.1.0.1b4",
+          "destructive": false,
+          "models": []
+        },
+        "x-hitron-destructive": false,
+        "responses": {
+          "200": {
+            "description": "Envelope with errCode/errMsg plus the payload."
+          }
+        }
+      }
+    },
+    "/1/Device/Manage": {
+      "get": {
+        "operationId": "manage_root",
+        "summary": "Admin account screen",
+        "tags": [
+          "System"
+        ],
+        "x-hitron": {
+          "requires": [],
+          "state": "ok",
+          "httpStatus": 200,
+          "verifiedOn": "8.7.1.0.1b4",
+          "destructive": false,
+          "models": []
+        },
+        "x-hitron-destructive": false,
+        "description": "Returns the literal text 'cusadmin,false' (current admin username + a flag), not JSON, to an unauthenticated GET on 8.7.1.0.1b4.",
+        "responses": {
+          "200": {
+            "description": "Envelope with errCode/errMsg plus the payload."
+          }
+        }
+      }
+    },
+    "/1/Device/Upload": {
+      "post": {
+        "operationId": "upload_root",
+        "summary": "Config upload handler",
+        "tags": [
+          "System"
+        ],
+        "x-hitron": {
+          "requires": [],
+          "state": "ok",
+          "httpStatus": 200,
+          "verifiedOn": "8.7.1.0.1b4",
+          "destructive": true,
+          "models": []
+        },
+        "x-hitron-destructive": true,
+        "description": "Unauthenticated .cfg upload into /var/tmp on this build; GET renders the form, POST accepts it.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Envelope with errCode/errMsg plus the payload."
+          }
+        }
+      }
+    },
+    "/rfmetrics": {
+      "get": {
+        "operationId": "telemetry_rfmetrics",
+        "summary": "RF metrics bundle",
+        "tags": [
+          "Telemetry"
+        ],
+        "x-hitron": {
+          "requires": [],
+          "state": "ok",
+          "httpStatus": 200,
+          "verifiedOn": "8.7.1.0.1b4",
+          "destructive": false,
+          "models": []
+        },
+        "x-hitron-destructive": false,
+        "responses": {
+          "200": {
+            "description": "Envelope with errCode/errMsg plus the payload."
+          }
+        }
+      }
+    },
+    "/pnm": {
+      "get": {
+        "operationId": "telemetry_pnm",
+        "summary": "PNM bundle (rxmer etc.)",
+        "tags": [
+          "Telemetry"
+        ],
+        "x-hitron": {
+          "requires": [],
+          "state": "ok",
+          "httpStatus": 200,
+          "verifiedOn": "8.7.1.0.1b4",
+          "destructive": false,
+          "models": []
+        },
+        "x-hitron-destructive": false,
+        "responses": {
+          "200": {
+            "description": "Envelope with errCode/errMsg plus the payload.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PnmBundle"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/pnm/rxmer": {
+      "get": {
+        "operationId": "telemetry_pnm_rxmer",
+        "summary": "Downstream RxMER per subcarrier",
+        "tags": [
+          "Telemetry"
+        ],
+        "x-hitron": {
+          "requires": [],
+          "state": "ok",
+          "httpStatus": 200,
+          "verifiedOn": "8.7.1.0.1b4",
+          "destructive": false,
+          "models": []
+        },
+        "x-hitron-destructive": false,
+        "responses": {
+          "200": {
+            "description": "Envelope with errCode/errMsg plus the payload.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PnmBundle"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/pnm/ch_est_coef": {
+      "get": {
+        "operationId": "telemetry_pnm_ch_est_coef",
+        "summary": "Channel estimate coefficients",
+        "tags": [
+          "Telemetry"
+        ],
+        "x-hitron": {
+          "requires": [],
+          "state": "untested",
+          "httpStatus": null,
+          "verifiedOn": null,
+          "destructive": false,
+          "models": []
+        },
+        "x-hitron-destructive": false,
+        "responses": {
+          "200": {
+            "description": "Envelope with errCode/errMsg plus the payload.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PnmBundle"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/pnm/us_pre_eq": {
+      "get": {
+        "operationId": "telemetry_pnm_us_pre_eq",
+        "summary": "Upstream pre-equaliser coefficients",
+        "tags": [
+          "Telemetry"
+        ],
+        "x-hitron": {
+          "requires": [],
+          "state": "ok",
+          "httpStatus": 200,
+          "verifiedOn": "8.7.1.0.1b4",
+          "destructive": false,
+          "models": []
+        },
+        "x-hitron-destructive": false,
+        "responses": {
+          "200": {
+            "description": "Envelope with errCode/errMsg plus the payload.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PnmBundle"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/pnm/mod_prof": {
+      "get": {
+        "operationId": "telemetry_pnm_mod_prof",
+        "summary": "Modulation profiles",
+        "tags": [
+          "Telemetry"
+        ],
+        "x-hitron": {
+          "requires": [],
+          "state": "ok",
+          "httpStatus": 200,
+          "verifiedOn": "8.7.1.0.1b4",
+          "destructive": false,
+          "models": []
+        },
+        "x-hitron-destructive": false,
+        "responses": {
+          "200": {
+            "description": "Envelope with errCode/errMsg plus the payload.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PnmBundle"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/1/Device/CM/Reboot": {
+      "post": {
+        "operationId": "cm_reboot",
+        "summary": "Reboot / factory-reset flag",
+        "tags": [
+          "Write"
+        ],
+        "x-hitron": {
+          "requires": [],
+          "state": "untested",
+          "httpStatus": null,
+          "verifiedOn": null,
+          "destructive": true,
+          "models": []
+        },
+        "x-hitron-destructive": true,
+        "description": "Body {reboot:1}, {factoryReset:1} or {restoreReset:1}; the last one execs reboot directly.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Envelope with errCode/errMsg plus the payload."
+          }
+        }
+      }
+    },
+    "/1/Device/AdminRemoteManagement/Manage": {
+      "post": {
+        "operationId": "adminremote_manage",
+        "summary": "Enable/disable WAN admin",
+        "tags": [
+          "Write"
+        ],
+        "x-hitron": {
+          "requires": [],
+          "state": "untested",
+          "httpStatus": null,
+          "verifiedOn": null,
+          "destructive": true,
+          "models": []
+        },
+        "x-hitron-destructive": true,
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Envelope with errCode/errMsg plus the payload."
+          }
+        }
+      }
+    },
+    "/1/Device/AdminRemoteManagement/Restore": {
+      "post": {
+        "operationId": "adminremote_restore",
+        "summary": "Restore config from an uploaded file",
+        "tags": [
+          "Write"
+        ],
+        "x-hitron": {
+          "requires": [],
+          "state": "untested",
+          "httpStatus": null,
+          "verifiedOn": null,
+          "destructive": true,
+          "models": []
+        },
+        "x-hitron-destructive": true,
+        "description": "Builds exec('confPhp restore '.$target) from an unvalidated filename.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Envelope with errCode/errMsg plus the payload."
+          }
+        }
+      }
+    },
+    "/1/Device/Manage/Password": {
+      "post": {
+        "operationId": "manage_password",
+        "summary": "Change admin password",
+        "tags": [
+          "Write"
+        ],
+        "x-hitron": {
+          "requires": [],
+          "state": "untested",
+          "httpStatus": null,
+          "verifiedOn": null,
+          "destructive": true,
+          "models": []
+        },
+        "x-hitron-destructive": true,
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Envelope with errCode/errMsg plus the payload."
+          }
+        }
+      }
+    },
+    "/1/Device/Manage/Username": {
+      "post": {
+        "operationId": "manage_username",
+        "summary": "Change admin username",
+        "tags": [
+          "Write"
+        ],
+        "x-hitron": {
+          "requires": [],
+          "state": "untested",
+          "httpStatus": null,
+          "verifiedOn": null,
+          "destructive": true,
+          "models": []
+        },
+        "x-hitron-destructive": true,
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Envelope with errCode/errMsg plus the payload."
+          }
+        }
+      }
+    },
+    "/1/Device/Users/Login": {
+      "post": {
+        "operationId": "users_login",
+        "summary": "Browser session login",
+        "tags": [
+          "Write"
+        ],
+        "x-hitron": {
+          "requires": [],
+          "state": "untested",
+          "httpStatus": null,
+          "verifiedOn": null,
+          "destructive": true,
+          "models": []
+        },
+        "x-hitron-destructive": true,
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Envelope with errCode/errMsg plus the payload."
+          }
+        }
+      }
+    },
+    "/1/Device/Users/Logout": {
+      "post": {
+        "operationId": "users_logout",
+        "summary": "Browser session logout",
+        "tags": [
+          "Write"
+        ],
+        "x-hitron": {
+          "requires": [],
+          "state": "untested",
+          "httpStatus": null,
+          "verifiedOn": null,
+          "destructive": true,
+          "models": []
+        },
+        "x-hitron-destructive": true,
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Envelope with errCode/errMsg plus the payload."
+          }
+        }
+      }
+    },
+    "/1/Device/API/Register": {
+      "post": {
+        "operationId": "api_register",
+        "summary": "Vendor-app JWT registration",
+        "tags": [
+          "Write"
+        ],
+        "x-hitron": {
+          "requires": [],
+          "state": "verb",
+          "httpStatus": 400,
+          "verifiedOn": "8.7.1.0.1b4",
+          "destructive": true,
+          "models": []
+        },
+        "x-hitron-destructive": true,
+        "description": "GET returns errCode 005; POST expects {appid, seckey}.",
+        "security": [
+          {
+            "appTokenAuth": []
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Envelope with errCode/errMsg plus the payload.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegisterRequest"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "errCode 005 - GET is not supported for this model."
+          }
+        }
+      }
+    },
+    "/1/Device/WiFi/Radios/{index}": {
+      "put": {
+        "operationId": "wifi_radio_write_put",
+        "summary": "Update one radio",
+        "tags": [
+          "Write"
+        ],
+        "x-hitron": {
+          "requires": [
+            "wifi"
+          ],
+          "state": "untested",
+          "httpStatus": null,
+          "verifiedOn": null,
+          "destructive": true,
+          "models": []
+        },
+        "x-hitron-destructive": true,
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Envelope with errCode/errMsg plus the payload."
+          }
+        },
+        "parameters": [
+          {
+            "name": "index",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ]
+      },
+      "patch": {
+        "operationId": "wifi_radio_write_patch",
+        "summary": "Update one radio",
+        "tags": [
+          "Write"
+        ],
+        "x-hitron": {
+          "requires": [
+            "wifi"
+          ],
+          "state": "untested",
+          "httpStatus": null,
+          "verifiedOn": null,
+          "destructive": true,
+          "models": []
+        },
+        "x-hitron-destructive": true,
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Envelope with errCode/errMsg plus the payload."
+          }
+        },
+        "parameters": [
+          {
+            "name": "index",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ]
+      }
+    }
+  }
+}

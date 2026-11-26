@@ -1,273 +1,470 @@
-"""
-Unified Prometheus exporter for every Hitron device this project knows about:
-any number of HT-EM5 MoCA bridges, a CODA6X gateway (REST API), and/or a
-CODA-57 (legacy .asp API). One process, one `/metrics` port.
+"""Unified exporter for every Hitron device this project knows about.
 
-Metric names for the CODA6X/CODA-57 downstream/upstream series intentionally
-match `~/Documents/hitron-client/CODA_60_rpt.py`'s existing `modem_*` names
-(the ones `aggregator/prometheus.yml`'s `hitron_modem` job - port 9877 -
-already scrapes), so swapping this exporter in for that script needs no
-Prometheus config change. New series (MoCA, per-device labeling) use a
-`hitron_` prefix.
+One process can poll any number of HT-EM5 MoCA bridges, CODA6X gateways, and
+CODA-57 legacy gateways, then expose the result as:
 
-Usage:
+* Prometheus text on ``/metrics`` (default),
+* Influx line protocol for Telegraf (``--once --format telegraf``),
+* OTLP/HTTP JSON pushed to an OpenTelemetry Collector
+  (``--otlp-endpoint http://collector:4318/v1/metrics``),
+* plain JSON for debugging (``--once --format json``).
+
+It also serves ``/healthz``, ``/api/v1/samples``, and ``/api/v1/logs`` so a
+static dashboard or a human can see what the last scrape did without a
+Prometheus round-trip.
+
+Usage::
+
     hitron-exporter --port 9877 \\
-        --ht-em5 192.168.0.212 --ht-em5 192.168.0.241 --ht-em5 192.168.0.60 \\
-        --coda60 192.168.100.1
+        --ht-em5 192.168.0.212 --ht-em5 192.168.0.241 \\
+        --coda60 192.168.100.1 \\
+        --coda57 192.168.100.2
 
-Or purely env-driven (handy under systemd/Docker) - see README.md.
+    hitron-exporter --coda60 192.168.100.1 --once --format telegraf
+
+Targets accept ``name=host`` when the label should not be the raw address::
+
+    --coda60 edge=192.168.100.1
 """
 
 from __future__ import annotations
 
 import argparse
 import asyncio
+import json
 import logging
 import os
-import re
+import threading
+import time
+from collections import deque
+from dataclasses import dataclass, field
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from typing import Any
 
-from prometheus_client import Gauge, start_http_server
+import aiohttp
 
 from .coda57 import Coda57Client
 from .coda60 import Coda60Client
+from .formats import (
+    render_influx,
+    render_json,
+    render_otlp_json,
+    render_prometheus,
+    render_telegraf,
+)
+from .grafana import write_bundle
 from .ht_em5 import HitronMocaClient
+from .metrics import Sample, SpecRange, coda57_samples, coda60_samples, dedupe, ht_em5_samples
 from .models import ModelProfile, get_profile
 
 log = logging.getLogger("hitron.exporter")
+VERSION = "0.3.0"
 
 # Per-host capability profile, resolved once and reused for every scrape.
+# Detection costs ~10 GETs and only changes which endpoints are polled, so
+# caching it for the process lifetime is safe; a restart re-detects.
 _CODA60_PROFILES: dict[str, ModelProfile] = {}
 
-# ---------------------------------------------------------------------------
-# CODA6X / CODA-57 gauges - names match CODA_60_rpt.py exactly where that
-# script already defines the series, so existing dashboards keep working.
-# ---------------------------------------------------------------------------
-
-modem_uptime_seconds = Gauge("modem_system_uptime_seconds", "Modem system uptime", ["source"])
-ds_signal = Gauge("modem_downstream_signal_strength_dbmv", "Downstream signal strength", ["source", "channel_id"])
-ds_snr = Gauge("modem_downstream_snr_db", "Downstream SNR", ["source", "channel_id"])
-ds_corrected = Gauge("modem_downstream_corrected_total", "Downstream corrected codewords", ["source", "channel_id"])
-ds_uncorrectable = Gauge("modem_downstream_uncorrectable_total", "Downstream uncorrectable codewords", ["source", "channel_id"])
-us_signal = Gauge("modem_upstream_signal_strength_dbmv", "Upstream signal strength", ["source", "channel_id"])
-ds_ofdm_snr = Gauge("modem_downstream_ofdm_snr_db", "OFDM downstream SNR", ["source", "index"])
-ds_ofdm_plc_locked = Gauge("modem_downstream_ofdm_plc_locked", "OFDM PLC lock status (1=locked)", ["source", "index"])
-ds_ofdm_plc_power = Gauge("modem_downstream_ofdm_plc_power_dbmv", "OFDM PLC power", ["source", "index"])
-ds_ofdm_corrected = Gauge("modem_downstream_ofdm_corrected_total", "OFDM corrected codewords", ["source", "index"])
-ds_ofdm_uncorrectable = Gauge("modem_downstream_ofdm_uncorrectable_total", "OFDM uncorrectable codewords", ["source", "index"])
-us_ofdm_power = Gauge("modem_upstream_ofdm_reported_power_dbmv", "OFDMA reported power", ["source", "uschindex"])
-us_ofdm_power_1_6 = Gauge("modem_upstream_ofdm_reported_power_1_6_dbmv", "OFDMA reported power, 1.6MHz-equivalent", ["source", "uschindex"])
-us_ofdm_state = Gauge("modem_upstream_ofdm_operating", "OFDMA channel operating (1=OPERATE)", ["source", "uschindex"])
-provisioning_step = Gauge("modem_docsis_provisioning_step_success", "1 if provisioning step succeeded", ["source", "step"])
-spec_in_range = Gauge("modem_power_in_spec", "1 if live DS/US power is inside the carrier's stated spec (CODA-57 legacy source only)", ["source", "direction"])
 
 # ---------------------------------------------------------------------------
-# HT-EM5 / MoCA gauges - new series, hitron_ prefix.
+# recent-log ring, exposed over /api/v1/logs
 # ---------------------------------------------------------------------------
 
-moca_link_up = Gauge("hitron_moca_link_up", "1 if this bridge reports its MoCA link up", ["host"])
-moca_node_count = Gauge("hitron_moca_node_count", "Number of MoCA nodes this bridge currently sees on the coax", ["host"])
-moca_eth_frames = Gauge("hitron_moca_ethernet_frames_total", "Ethernet frame counters on the bridge's LAN side", ["host", "direction", "outcome"])
-moca_tx_power_index = Gauge("hitron_moca_tx_power_index", "Configured TX power index", ["host"])
-moca_beacon_power_index = Gauge("hitron_moca_beacon_power_index", "Configured beacon power level index", ["host"])
-moca_node_present = Gauge("hitron_moca_node_present", "1 for each node id this bridge currently sees (is_self/is_nc as labels)", ["host", "node_id", "mac_address", "is_self", "is_network_coordinator"])
+
+class RingHandler(logging.Handler):
+    def __init__(self, ring: deque[dict[str, Any]], capacity: int = 500):
+        super().__init__()
+        self.ring = ring
+        self.setFormatter(logging.Formatter("%(message)s"))
+
+    def emit(self, record: logging.LogRecord) -> None:
+        try:
+            self.ring.append(
+                {
+                    "ts": record.created,
+                    "time": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(record.created)),
+                    "level": record.levelname,
+                    "logger": record.name,
+                    "message": self.format(record),
+                }
+            )
+        except Exception:  # noqa: BLE001 - logging must never break polling
+            pass
 
 
-def _step_ok(value: str | None) -> int:
-    return 1 if (value or "").strip().lower() == "success" else 0
+# ---------------------------------------------------------------------------
+# collection
+# ---------------------------------------------------------------------------
 
 
-async def poll_coda60(client: Coda60Client, source: str, model: str | None = None) -> None:
-    # Model detection costs ~10 GETs, so do it once per host, not per scrape.
-    # A wrong capability profile only changes which endpoints are polled, so
-    # caching it for the process lifetime is safe; a restart re-detects.
-    cached = _CODA60_PROFILES.get(client.host)
-    if cached is None:
-        match = await client.detect_profile(model)
-        _CODA60_PROFILES[client.host] = match.profile
-        log.info("coda60 %s: model profile %s (matched by %s)", client.host, match.profile.id, match.matched_by)
-        profile = match.profile
-    else:
-        profile = cached
-    data = (await client.get_all(profile=profile))["metrics"]
-
-    sysinfo = data.get("router_sysinfo", {})
-    # parse "123h:45m:06s"-shaped uptime if present, else leave unset
-    m = re.match(r"(\d+)h:(\d+)m:(\d+)s", sysinfo.get("systemUptime") or "")
-    if m:
-        h, mnt, sec = (int(x) for x in m.groups())
-        modem_uptime_seconds.labels(source=source).set(h * 3600 + mnt * 60 + sec)
-
-    prov = data.get("cm_docsisprovision", {})
-    for step in ("hwInit", "findDownstream", "ranging", "dhcp", "timeOfday", "downloadCfg", "registration"):
-        if step in prov:
-            provisioning_step.labels(source=source, step=step).set(_step_ok(prov.get(step)))
-
-    for ch in data.get("cm_dsinfo", {}).get("Freq_List", []):
-        cid = ch.get("channelId")
-        if cid is None:
-            continue
-        if (v := _f(ch.get("signalStrength"))) is not None:
-            ds_signal.labels(source=source, channel_id=cid).set(v)
-        if (v := _f(ch.get("snr"))) is not None:
-            ds_snr.labels(source=source, channel_id=cid).set(v)
-        if (v := _f(ch.get("correcteds"))) is not None:
-            ds_corrected.labels(source=source, channel_id=cid).set(v)
-        if (v := _f(ch.get("uncorrect"))) is not None:
-            ds_uncorrectable.labels(source=source, channel_id=cid).set(v)
-
-    for ch in data.get("cm_usinfo", {}).get("Freq_List", []):
-        cid = ch.get("channelId")
-        if cid is not None and (v := _f(ch.get("signalStrength"))) is not None:
-            us_signal.labels(source=source, channel_id=cid).set(v)
-
-    for ch in data.get("cm_dsofdm", {}).get("Freq_List", []):
-        idx = ch.get("index")
-        if idx is None:
-            continue
-        if (v := _f(ch.get("SNR"))) is not None:
-            ds_ofdm_snr.labels(source=source, index=idx).set(v)
-        if (v := _f(ch.get("plcpower"))) is not None:
-            ds_ofdm_plc_power.labels(source=source, index=idx).set(v)
-        ds_ofdm_plc_locked.labels(source=source, index=idx).set(1 if ch.get("plclock") == "YES" else 0)
-        if (v := _f(ch.get("correcteds"))) is not None:
-            ds_ofdm_corrected.labels(source=source, index=idx).set(v)
-        if (v := _f(ch.get("uncorrect"))) is not None:
-            ds_ofdm_uncorrectable.labels(source=source, index=idx).set(v)
-
-    for ch in data.get("cm_usofdm", {}).get("Freq_List", []):
-        idx = ch.get("uschindex")
-        if idx is None:
-            continue
-        if (v := _f(ch.get("repPower"))) is not None:
-            us_ofdm_power.labels(source=source, uschindex=idx).set(v)
-        if (v := _f(ch.get("repPower1_6"))) is not None:
-            us_ofdm_power_1_6.labels(source=source, uschindex=idx).set(v)
-        us_ofdm_state.labels(source=source, uschindex=idx).set(1 if ch.get("state") == "OPERATE" else 0)
+@dataclass
+class Target:
+    name: str
+    host: str
 
 
-async def poll_coda57(client: Coda57Client, source: str) -> None:
-    data = await client.get_all()
-
-    for ch in data.get("dsinfo", []) or []:
-        cid = ch.get("channelId")
-        if cid is None:
-            continue
-        if (v := _f(ch.get("signalStrength"))) is not None:
-            ds_signal.labels(source=source, channel_id=cid).set(v)
-        if (v := _f(ch.get("snr"))) is not None:
-            ds_snr.labels(source=source, channel_id=cid).set(v)
-
-    for ch in data.get("usinfo", []) or []:
-        cid = ch.get("channelId")
-        if cid is not None and (v := _f(ch.get("signalStrength"))) is not None:
-            us_signal.labels(source=source, channel_id=cid).set(v)
-
-    for ch in data.get("dsofdminfo", []) or []:
-        idx = ch.get("index") or "0"
-        if (v := _f(ch.get("SNR"))) is not None:
-            ds_ofdm_snr.labels(source=source, index=idx).set(v)
-        if (v := _f(ch.get("plcpower"))) is not None:
-            ds_ofdm_plc_power.labels(source=source, index=idx).set(v)
-
-    for ch in data.get("usofdminfo", []) or []:
-        idx = ch.get("uschindex")
-        if idx is None:
-            continue
-        if (v := _f(ch.get("repPower1_6"))) is not None:
-            us_ofdm_power_1_6.labels(source=source, uschindex=idx).set(v)
-
-    spec = Coda57Client.check_midco_spec(data)
-    spec_in_range.labels(source=source, direction="downstream").set(1 if spec["ds_in_spec"] else 0)
-    spec_in_range.labels(source=source, direction="upstream").set(1 if spec["us_in_spec"] else 0)
+def parse_target(value: str) -> Target:
+    """Accept ``host`` or ``name=host``."""
+    if "=" in value:
+        name, host = value.split("=", 1)
+        if name and host:
+            return Target(name=name.strip(), host=host.strip())
+    return Target(name=value.strip(), host=value.strip())
 
 
-async def poll_ht_em5(client: HitronMocaClient) -> None:
-    host = client.host
-    async with client:
-        snapshot = await client.get_all()
-
-    status = snapshot.get("status", {})
-    moca_link_up.labels(host=host).set(1 if status.get("link_status") == "Up" else 0)
-    moca_tx_power_index.labels(host=host).set(_f(snapshot.get("moca", {}).get("tx_power_index")) or 0)
-    moca_beacon_power_index.labels(host=host).set(_f(snapshot.get("moca", {}).get("beacon_power_level_index")) or 0)
-
-    for direction, counters in (("tx", status.get("ethernet_tx", {})), ("rx", status.get("ethernet_rx", {}))):
-        for outcome, value in counters.items():
-            if (v := _f(value)) is not None:
-                moca_eth_frames.labels(host=host, direction=direction, outcome=outcome).set(v)
-
-    nodes = snapshot.get("nodes", [])
-    moca_node_count.labels(host=host).set(len(nodes))
-    for node in nodes:
-        moca_node_present.labels(
-            host=host,
-            node_id=str(node["node_id"]),
-            mac_address=node["mac_address"],
-            is_self=str(node["is_self"]),
-            is_network_coordinator=str(node["is_network_coordinator"]),
-        ).set(1)
+@dataclass
+class Config:
+    ht_em5: list[Target] = field(default_factory=list)
+    coda60: list[Target] = field(default_factory=list)
+    coda57: list[Target] = field(default_factory=list)
+    interval: float = 30.0
+    phy_rates: bool = False
+    spec: SpecRange = field(default_factory=SpecRange)
+    coda60_model: str | None = None
 
 
-def _f(x) -> float | None:
+@dataclass
+class Snapshot:
+    samples: list[Sample] = field(default_factory=list)
+    errors: list[dict[str, str]] = field(default_factory=list)
+    sources: dict[str, dict[str, Any]] = field(default_factory=dict)
+    generated_at: float = 0.0
+    duration: float = 0.0
+
+
+class Collector:
+    def __init__(self, config: Config):
+        self.config = config
+
+    async def collect(self) -> Snapshot:
+        started = time.monotonic()
+        tasks: list[asyncio.Task] = []
+        keys: list[tuple[str, str]] = []
+
+        for target in self.config.coda60:
+            tasks.append(asyncio.create_task(self._coda60(target)))
+            keys.append(("coda60", target.name))
+        for target in self.config.coda57:
+            tasks.append(asyncio.create_task(self._coda57(target)))
+            keys.append(("coda57", target.name))
+        for target in self.config.ht_em5:
+            tasks.append(asyncio.create_task(self._ht_em5(target)))
+            keys.append(("ht-em5", target.name))
+
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        samples: list[Sample] = []
+        errors: list[dict[str, str]] = []
+        sources: dict[str, dict[str, Any]] = {}
+
+        for (kind, name), result in zip(keys, results):
+            if isinstance(result, BaseException):
+                errors.append({"source": name, "kind": kind, "error": str(result)})
+                sources[name] = {"kind": kind, "up": False, "samples": 0, "error": str(result)}
+                log.warning("poll of %s (%s) failed: %s", name, kind, result)
+                continue
+            device_samples, error = result
+            if error:
+                errors.append({"source": name, "kind": kind, "error": error})
+                sources[name] = {"kind": kind, "up": False, "samples": 0, "error": error}
+                log.warning("poll of %s (%s) failed: %s", name, kind, error)
+                continue
+            samples.extend(device_samples)
+            sources[name] = {"kind": kind, "up": True, "samples": len(device_samples), "error": ""}
+
+        duration = time.monotonic() - started
+        generated = time.time()
+        samples = dedupe(samples)
+        samples.extend(self._health_samples(sources, duration, generated))
+        return Snapshot(samples=samples, errors=errors, sources=sources, generated_at=generated, duration=duration)
+
+    def _health_samples(self, sources: dict[str, dict[str, Any]], duration: float, generated: float) -> list[Sample]:
+        out = [Sample("hitron_exporter_info", 1.0, {"version": VERSION}, "Exporter build information")]
+        out.append(Sample("hitron_exporter_last_scrape_duration_seconds", duration, {}, "Duration of the whole collection cycle", unit="s"))
+        out.append(Sample("hitron_exporter_last_scrape_timestamp_seconds", generated, {}, "Unix time of the last completed collection", unit="s"))
+        for name, info in sources.items():
+            labels = {"source": name, "kind": info["kind"]}
+            out.append(Sample("hitron_exporter_up", 1.0 if info["up"] else 0.0, labels, "1 when the source was polled successfully"))
+            out.append(Sample("hitron_exporter_scrape_duration_seconds", duration, labels, "Collection duration for this source", unit="s"))
+            out.append(Sample("hitron_exporter_samples", float(info["samples"]), labels, "Samples produced by this source"))
+            out.append(Sample("hitron_exporter_last_scrape_timestamp_seconds", generated, labels, "Unix time of the last successful poll", unit="s"))
+            if info.get("error"):
+                out.append(Sample("hitron_exporter_scrape_error_info", 1.0, {**labels, "error": info["error"][:200]}, "Present only while a source is failing"))
+        return out
+
+    async def _coda60(self, target: Target) -> tuple[list[Sample], str]:
+        try:
+            client = Coda60Client(target.host)
+            profile = _CODA60_PROFILES.get(target.host)
+            if profile is None:
+                if self.config.coda60_model:
+                    profile = get_profile(self.config.coda60_model)
+                    if profile is None:
+                        raise ValueError(f"unknown coda60 model profile {self.config.coda60_model!r}")
+                    _CODA60_PROFILES[target.host] = profile
+                else:
+                    match = await client.detect_profile()
+                    profile = match.profile
+                    _CODA60_PROFILES[target.host] = profile
+                    log.info(
+                        "coda60 %s: model profile %s (matched by %s)",
+                        target.name, profile.id, match.matched_by,
+                    )
+            snapshot = await client.get_all(profile=profile)
+            return coda60_samples(snapshot, source=target.name), ""
+        except Exception as exc:  # noqa: BLE001 - one bad device must not stop the rest
+            return [], str(exc)
+
+    async def _coda57(self, target: Target) -> tuple[list[Sample], str]:
+        try:
+            data = await Coda57Client(target.host).get_all()
+            return coda57_samples(data, source=target.name, spec=self.config.spec), ""
+        except Exception as exc:  # noqa: BLE001
+            return [], str(exc)
+
+    async def _ht_em5(self, target: Target) -> tuple[list[Sample], str]:
+        try:
+            client = HitronMocaClient(target.host)
+            async with client:
+                snapshot = await client.get_all()
+                phy = await client.get_phy_rates() if self.config.phy_rates else None
+            return ht_em5_samples(snapshot, host=target.name, phy_rates=phy), ""
+        except Exception as exc:  # noqa: BLE001
+            return [], str(exc)
+
+
+# ---------------------------------------------------------------------------
+# HTTP surface
+# ---------------------------------------------------------------------------
+
+
+class ExporterState:
+    def __init__(self) -> None:
+        self.lock = threading.Lock()
+        self.snapshot = Snapshot()
+        self.logs: deque[dict[str, Any]] = deque(maxlen=500)
+
+    def set(self, snapshot: Snapshot) -> None:
+        with self.lock:
+            self.snapshot = snapshot
+
+    def get(self) -> Snapshot:
+        with self.lock:
+            return self.snapshot
+
+    def log_items(self, limit: int = 200) -> list[dict[str, Any]]:
+        with self.lock:
+            return list(self.logs)[-limit:]
+
+
+def _handler_factory(state: ExporterState):
+    class Handler(BaseHTTPRequestHandler):
+        server_version = f"hitron-exporter/{VERSION}"
+
+        def log_message(self, fmt: str, *args: Any) -> None:  # noqa: A003 - stdlib signature
+            log.debug("%s - %s", self.address_string(), fmt % args)
+
+        def _send(self, code: int, body: bytes, content_type: str) -> None:
+            self.send_response(code)
+            self.send_header("Content-Type", content_type)
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            self.wfile.write(body)
+
+        def do_OPTIONS(self) -> None:  # noqa: N802
+            self.send_response(204)
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Access-Control-Allow-Methods", "GET, OPTIONS")
+            self.send_header("Access-Control-Allow-Headers", "*")
+            self.end_headers()
+
+        def do_GET(self) -> None:  # noqa: N802
+            snapshot = state.get()
+            path = self.path.split("?", 1)[0]
+            if path == "/metrics":
+                body = render_prometheus(snapshot.samples, int(snapshot.generated_at * 1000) if snapshot.generated_at else None)
+                self._send(200, body.encode(), "text/plain; version=0.0.4; charset=utf-8")
+            elif path == "/healthz":
+                payload = {
+                    "status": "ok" if snapshot.generated_at and all(s.get("up") for s in snapshot.sources.values()) else "degraded",
+                    "version": VERSION,
+                    "generated_at": snapshot.generated_at,
+                    "duration_seconds": snapshot.duration,
+                    "samples": len(snapshot.samples),
+                    "sources": snapshot.sources,
+                    "errors": snapshot.errors,
+                }
+                self._send(200, json.dumps(payload, indent=2).encode(), "application/json")
+            elif path == "/api/v1/samples":
+                self._send(200, render_json(snapshot.samples).encode(), "application/json")
+            elif path == "/api/v1/logs":
+                self._send(200, json.dumps(state.log_items(), indent=2).encode(), "application/json")
+            elif path in ("/", "/index.html"):
+                body = (
+                    "<!doctype html><meta charset=utf-8><title>hitron-exporter</title>"
+                    "<style>body{font:16px system-ui;max-width:44rem;margin:3rem auto;padding:0 1rem}"
+                    "code{background:#eee;padding:.1rem .3rem;border-radius:3px}</style>"
+                    f"<h1>hitron-exporter {VERSION}</h1>"
+                    "<p>Endpoints: <code>/metrics</code>, <code>/healthz</code>, "
+                    "<code>/api/v1/samples</code>, <code>/api/v1/logs</code>.</p>"
+                    f"<p>{len(snapshot.samples)} samples from {len(snapshot.sources)} source(s), "
+                    f"last completed {time.strftime('%Y-%m-%d %H:%M:%SZ', time.gmtime(snapshot.generated_at)) if snapshot.generated_at else 'never'}.</p>"
+                )
+                self._send(200, body.encode(), "text/html; charset=utf-8")
+            else:
+                self._send(404, b'{"error":"not found"}\n', "application/json")
+
+    return Handler
+
+
+def start_server(state: ExporterState, listen: str, port: int) -> ThreadingHTTPServer:
+    server = ThreadingHTTPServer((listen, port), _handler_factory(state))
+    thread = threading.Thread(target=server.serve_forever, name="hitron-http", daemon=True)
+    thread.start()
+    return server
+
+
+# ---------------------------------------------------------------------------
+# OTLP push
+# ---------------------------------------------------------------------------
+
+
+def _parse_headers(values: list[str]) -> dict[str, str]:
+    headers = {"Content-Type": "application/json"}
+    for value in values:
+        if "=" in value:
+            key, val = value.split("=", 1)
+            headers[key.strip()] = val.strip()
+    return headers
+
+
+async def push_otlp(endpoint: str, samples: list[Sample], headers: dict[str, str]) -> None:
+    payload = render_otlp_json(samples, service_version=VERSION)
     try:
-        return float(x)
-    except (TypeError, ValueError):
-        return None
+        async with aiohttp.ClientSession() as session:
+            async with session.post(endpoint, data=payload, headers=headers, timeout=aiohttp.ClientTimeout(total=15)) as resp:
+                if resp.status >= 300:
+                    body = (await resp.text())[:300]
+                    log.warning("OTLP push to %s returned %s: %s", endpoint, resp.status, body)
+                else:
+                    log.debug("OTLP push to %s accepted %d samples", endpoint, len(samples))
+    except Exception as exc:  # noqa: BLE001 - telemetry export failure must not stop Prometheus
+        log.warning("OTLP push to %s failed: %s", endpoint, exc)
 
 
-async def poll_once(
-    ht_em5_hosts: list[str],
-    coda60_host: str | None,
-    coda57_host: str | None,
-    coda60_model: str | None = None,
-) -> None:
-    jobs = [poll_ht_em5(HitronMocaClient(host)) for host in ht_em5_hosts]
-    if coda60_host:
-        jobs.append(poll_coda60(Coda60Client(coda60_host), source="coda60", model=coda60_model))
-    if coda57_host:
-        jobs.append(poll_coda57(Coda57Client(coda57_host), source="coda57"))
-    results = await asyncio.gather(*jobs, return_exceptions=True)
-    for host, result in zip(ht_em5_hosts + (["coda60"] if coda60_host else []) + (["coda57"] if coda57_host else []), results):
-        if isinstance(result, Exception):
-            log.warning("poll of %s failed: %s", host, result)
+# ---------------------------------------------------------------------------
+# CLI
+# ---------------------------------------------------------------------------
 
 
-async def poll_loop(
-    ht_em5_hosts: list[str],
-    coda60_host: str | None,
-    coda57_host: str | None,
-    interval: float,
-    coda60_model: str | None = None,
-) -> None:
+def _split_env(name: str) -> list[str]:
+    return [item for item in os.environ.get(name, "").split(",") if item.strip()]
+
+
+def build_config(args: argparse.Namespace) -> Config:
+    ht = args.ht_em5 or _split_env("HITRON_HT_EM5_HOSTS")
+    c60 = args.coda60 or _split_env("HITRON_CODA60_HOSTS") or _split_env("HITRON_CODA60_HOST")
+    c57 = args.coda57 or _split_env("HITRON_CODA57_HOSTS") or _split_env("HITRON_CODA57_HOST")
+    return Config(
+        ht_em5=[parse_target(x) for x in ht],
+        coda60=[parse_target(x) for x in c60],
+        coda57=[parse_target(x) for x in c57],
+        interval=args.interval,
+        phy_rates=args.phy_rates,
+        spec=SpecRange(args.ds_spec_min, args.ds_spec_max, args.us_spec_min, args.us_spec_max),
+        coda60_model=args.coda60_model,
+    )
+
+
+async def run(config: Config, args: argparse.Namespace, state: ExporterState) -> None:
+    collector = Collector(config)
+    otlp_headers = _parse_headers(args.otlp_header)
     while True:
-        await poll_once(ht_em5_hosts, coda60_host, coda57_host, coda60_model)
-        await asyncio.sleep(interval)
+        started = time.monotonic()
+        snapshot = await collector.collect()
+        state.set(snapshot)
+        log.info(
+            "collected %d samples from %d source(s) in %.2fs (%d error(s))",
+            len(snapshot.samples), len(snapshot.sources), snapshot.duration, len(snapshot.errors),
+        )
+        if args.otlp_endpoint:
+            await push_otlp(args.otlp_endpoint, snapshot.samples, otlp_headers)
+        await asyncio.sleep(max(0.5, config.interval - (time.monotonic() - started)))
 
 
-def main() -> None:
+def _render_once(snapshot: Snapshot, fmt: str) -> str:
+    if fmt in ("telegraf", "influx"):
+        return render_telegraf(snapshot.samples)
+    if fmt == "json":
+        return render_json(snapshot.samples)
+    if fmt == "otlp":
+        return render_otlp_json(snapshot.samples, service_version=VERSION)
+    return render_prometheus(snapshot.samples, int(snapshot.generated_at * 1000))
+
+
+def main(argv: list[str] | None = None) -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
-    ap = argparse.ArgumentParser(description=__doc__)
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--port", type=int, default=int(os.environ.get("HITRON_EXPORTER_PORT", "9877")))
+    ap.add_argument("--listen", default=os.environ.get("HITRON_EXPORTER_LISTEN", "0.0.0.0"))
     ap.add_argument("--interval", type=float, default=float(os.environ.get("HITRON_EXPORTER_INTERVAL", "30")))
-    ap.add_argument("--ht-em5", action="append", default=[h for h in os.environ.get("HITRON_HT_EM5_HOSTS", "").split(",") if h], help="HT-EM5 bridge IP; repeatable")
-    ap.add_argument("--coda60", default=os.environ.get("HITRON_CODA60_HOST") or None, help="CODA6X gateway IP")
+    ap.add_argument("--ht-em5", action="append", default=[], metavar="[NAME=]HOST", help="HT-EM5 bridge; repeatable")
+    ap.add_argument("--coda60", action="append", default=[], metavar="[NAME=]HOST", help="CODA6X gateway; repeatable")
     ap.add_argument("--coda60-model", default=os.environ.get("HITRON_CODA60_MODEL") or None,
-                    help="force a model profile (e.g. coda6011uv) instead of detecting it")
-    ap.add_argument("--coda57", default=os.environ.get("HITRON_CODA57_HOST") or None, help="CODA-57 gateway IP (legacy .asp API)")
-    args = ap.parse_args()
+                    help="force a CODA6X model profile (e.g. coda6011uv) instead of detecting it")
+    ap.add_argument("--coda57", action="append", default=[], metavar="[NAME=]HOST", help="CODA-57 legacy gateway; repeatable")
+    ap.add_argument("--phy-rates", action="store_true", help="also collect the HT-EM5 PHY-rate matrix (slow)")
+    ap.add_argument("--ds-spec-min", type=float, default=float(os.environ.get("HITRON_DS_SPEC_MIN", "-6")))
+    ap.add_argument("--ds-spec-max", type=float, default=float(os.environ.get("HITRON_DS_SPEC_MAX", "15")))
+    ap.add_argument("--us-spec-min", type=float, default=float(os.environ.get("HITRON_US_SPEC_MIN", "35")))
+    ap.add_argument("--us-spec-max", type=float, default=float(os.environ.get("HITRON_US_SPEC_MAX", "48")))
+    ap.add_argument("--otlp-endpoint", default=os.environ.get("HITRON_OTLP_ENDPOINT") or None, help="OTLP/HTTP metrics URL, e.g. http://collector:4318/v1/metrics")
+    ap.add_argument("--otlp-header", action="append", default=_split_env("HITRON_OTLP_HEADERS"), metavar="KEY=VALUE", help="extra OTLP header; repeatable")
+    ap.add_argument("--grafana-dir", default=os.environ.get("HITRON_GRAFANA_DIR") or None, help="write the Grafana/Prometheus bundle here and continue")
+    ap.add_argument("--once", action="store_true", help="collect once, print to stdout, exit")
+    ap.add_argument("--format", choices=["prometheus", "telegraf", "influx", "otlp", "json"], default="prometheus", help="output format for --once")
+    args = ap.parse_args(argv)
 
-    if not args.ht_em5 and not args.coda60 and not args.coda57:
+    config = build_config(args)
+    if not (config.ht_em5 or config.coda60 or config.coda57):
         ap.error("give at least one of --ht-em5 / --coda60 / --coda57 (or the matching env var)")
-    if args.coda60 and args.coda60_model:
-        profile = get_profile(args.coda60_model)
-        if profile is None:
-            ap.error(f"unknown --coda60-model {args.coda60_model!r}")
-        _CODA60_PROFILES[args.coda60] = profile
 
-    log.info("serving /metrics on :%d, polling every %ss", args.port, args.interval)
-    log.info("HT-EM5: %s | CODA6X: %s | CODA-57: %s", args.ht_em5 or "(none)", args.coda60 or "(none)", args.coda57 or "(none)")
-    start_http_server(args.port)
-    asyncio.run(poll_loop(args.ht_em5, args.coda60, args.coda57, args.interval, args.coda60_model))
+    if args.grafana_dir:
+        written = write_bundle(args.grafana_dir)
+        log.info("wrote %d Grafana/Prometheus files under %s", len(written), args.grafana_dir)
+
+    state = ExporterState()
+    handler = RingHandler(state.logs, capacity=500)
+    handler.setLevel(logging.INFO)
+    logging.getLogger().addHandler(handler)
+
+    if args.once:
+        snapshot = asyncio.run(Collector(config).collect())
+        print(_render_once(snapshot, args.format), end="")
+        if snapshot.errors:
+            for error in snapshot.errors:
+                log.warning("source %s: %s", error["source"], error["error"])
+            raise SystemExit(1)
+        return
+
+    log.info("serving /metrics on %s:%d, polling every %ss", args.listen, args.port, config.interval)
+    log.info(
+        "HT-EM5: %s | CODA6X: %s | CODA-57: %s | OTLP: %s",
+        [t.name for t in config.ht_em5] or "(none)",
+        [t.name for t in config.coda60] or "(none)",
+        [t.name for t in config.coda57] or "(none)",
+        args.otlp_endpoint or "(disabled)",
+    )
+
+    server = start_server(state, args.listen, args.port)
+    try:
+        asyncio.run(run(config, args, state))
+    except KeyboardInterrupt:
+        pass
+    finally:
+        server.shutdown()
+        server.server_close()
 
 
 if __name__ == "__main__":

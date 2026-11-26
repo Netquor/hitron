@@ -1,0 +1,51 @@
+# OpenTelemetry Collector: receive OTLP/HTTP JSON from hitron-exporter and fan
+# it out. Start the exporter with:
+#
+#   hitron-exporter --coda60 192.168.100.1 \
+#     --otlp-endpoint http://127.0.0.1:4318/v1/metrics
+#
+# Run with: otelcol --config deploy/otel/collector.yaml
+
+receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: 0.0.0.0:4318
+        cors:
+          allowed_origins: ["*"]
+      grpc:
+        endpoint: 0.0.0.0:4317
+
+processors:
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 256
+  batch:
+    timeout: 10s
+    send_batch_size: 1024
+  resource:
+    attributes:
+      - key: deployment.environment
+        value: home
+        action: upsert
+
+exporters:
+  # Inspect everything in the collector log; good first step.
+  debug:
+    verbosity: basic
+  prometheus:
+    endpoint: 0.0.0.0:9464
+    namespace: hitron
+    send_timestamps: true
+  # Any OTLP backend (Grafana Cloud, Honeycomb, Tempo+Mimir, ...)
+  # otlphttp:
+  #   endpoint: https://otlp.example.com
+  #   headers:
+  #     authorization: "Bearer ${env:OTLP_TOKEN}"
+
+service:
+  pipelines:
+    metrics:
+      receivers: [otlp]
+      processors: [memory_limiter, resource, batch]
+      exporters: [debug, prometheus]

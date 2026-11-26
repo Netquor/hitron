@@ -10,6 +10,7 @@ from .adapters import ENDPOINTS, plan, summary
 from .coda57 import Coda57Client
 from .coda60 import Coda60Client
 from .ht_em5 import HitronMocaClient
+from .metrics import Sample, coda57_samples, coda60_samples, ht_em5_samples
 from .models import (
     ModelProfile,
     all_profiles,
@@ -22,6 +23,10 @@ __all__ = [
     "HitronMocaClient",
     "Coda60Client",
     "Coda57Client",
+    "Sample",
+    "coda60_samples",
+    "coda57_samples",
+    "ht_em5_samples",
     "ModelProfile",
     "ENDPOINTS",
     "all_profiles",
@@ -31,4 +36,4 @@ __all__ = [
     "summary",
     "verify",
 ]
-__version__ = "0.2.0"
+__version__ = "0.3.0"

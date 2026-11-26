@@ -1,0 +1,183 @@
+# hitron-cli (Go)
+
+A standalone terminal client for the three Hitron families this repository
+documents. It is a single static binary with no runtime, no config file, and no
+dependencies outside the Go standard library.
+
+| Device | API | Detection probe |
+| --- | --- | --- |
+| CODA6X (CODA-60) | `/1/Device/...` JSON | `GET /1/Device/CM/Version` |
+| CODA-57 | `/data/*.asp` JSON | `GET /data/getSysInfo.asp` |
+| HT-EM5 | `/ms/<type>/<reg>` MoCA RPC | `GET /index.html` + `POST /ms/1/0x302/GET` |
+
+The Python package in `src/hitron/` remains the exporter and library. This
+binary exists for the case where you want to walk up to a modem and read it
+from a laptop with nothing installed.
+
+## Build
+
+```bash
+cd cli
+go build -o hitron-cli ./cmd/hitron-cli
+./hitron-cli version
+```
+
+Go 1.22 or newer. Cross-compiling is the usual `GOOS`/`GOARCH` pair:
+
+```bash
+GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o hitron-cli-linux ./cmd/hitron-cli
+```
+
+Tagged releases (`cli/v*`) build Linux, macOS, and Windows binaries for amd64
+and arm64 in `.github/workflows/cli-release.yml`; each file ships with a
+`.sha256`.
+
+## Install from a release
+
+Download the file for your platform, then:
+
+```bash
+chmod +x hitron-cli_darwin_arm64
+sudo mv hitron-cli_darwin_arm64 /usr/local/bin/hitron-cli
+hitron-cli help
+```
+
+## Commands
+
+```text
+hitron-cli stats            one-shot report, or live TUI in a terminal (default)
+hitron-cli monitor          force the live TUI
+hitron-cli detect           identify CODA6X / CODA-57 / HT-EM5
+hitron-cli system           identity, provisioning, Ethernet ports
+hitron-cli channels         downstream and upstream RF detail
+hitron-cli logs             DOCSIS event log
+hitron-cli moca             HT-EM5 link, bands, nodes
+hitron-cli reboot           reboot (prompts, or --confirm)
+hitron-cli factory-reset    factory reset + reboot (CODA6X)
+hitron-cli hard-reset       immediate restoreReset + reboot (CODA6X)
+hitron-cli help [topic]     overview or one topic
+hitron-cli version          version
+```
+
+If the command is omitted, `stats` runs. Running `stats` in a real terminal
+opens the live view; piping it or using `--once`/`--json` prints one report and
+exits, which is what the TUI-less cases need.
+
+### Flags
+
+| Flag | Meaning |
+| --- | --- |
+| `-H`, `--host HOST` | gateway address, default `192.168.100.1` |
+| `-u`, `--user NAME` | username for authenticated reads and writes |
+| `-p`, `--password PASS` | password |
+| `--token TOKEN` | CODA6X `Ht-App-Auth` app token |
+| `--timeout 10s` | per-request timeout |
+| `--interval 5s` | live refresh interval |
+| `--limit 20` | log lines in the one-shot report |
+| `--once` | one report, never the TUI |
+| `--json` | machine-readable snapshot |
+| `--no-color` | disable ANSI color |
+| `--confirm` | skip the y/N prompt on a destructive command |
+| `--no-banner` | suppress the startup art |
+| `-h`, `--help` | help |
+| `-V`, `--version` | version |
+
+The host can also be a positional argument, a hostname, or a URL with a port:
+`hitron-cli 192.168.100.1`, `hitron-cli 127.0.0.1:8080`,
+`hitron-cli http://192.168.100.1`.
+
+### Environment
+
+| Variable | Meaning |
+| --- | --- |
+| `HITRON_HOST` / `HITRON_DEVICE` | default host |
+| `HITRON_USERNAME` | username |
+| `HITRON_PASSWORD` | password |
+| `HITRON_APP_TOKEN` | CODA6X app token |
+| `HITRON_TIMEOUT` | timeout in seconds |
+| `HITRON_INTERVAL` | refresh interval (`5s`, `500ms`, or seconds) |
+| `NO_COLOR` | disable ANSI color |
+
+Flags override the environment.
+
+## Authentication
+
+Reads answer anonymously on the analyzed CODA6X firmware and (per the captured
+unit) the CODA-57 `.asp` API. The CLI still handles the gates honestly:
+
+* **CODA6X**: writes `POST /1/Device/Users/Login` with the firmware's
+  `model={"username":...,"password":...}` form, then reuses the session cookie.
+  `--token` sends `Ht-App-Auth` instead.
+* **CODA-57**: `GET /login.html` primes a `PHPSESSID`. No credential POST has
+  been confirmed against real hardware, so the CLI does not invent one; a gated
+  device is reported, not guessed at.
+* **HT-EM5**: HTTP Basic on every request. The factory image defaults to
+  `admin`/`admin`, which the detector uses only when no credentials were
+  supplied. It fetches `/index.html` for the `csrf_token` cookie and echoes it
+  as `X-CSRF-TOKEN`.
+
+When a device asks for a login and stdin is a terminal, the CLI prompts once
+and retries. With `--json` or no terminal it exits with a clear error instead
+of hanging.
+
+## Writes
+
+Three separate verbs, each requiring credentials:
+
+| Command | CODA6X body | HT-EM5 | CODA-57 |
+| --- | --- | --- | --- |
+| `reboot` | `{"reboot":1}` to `CM/Reboot` | `POST /ms/1/0xb00/PUT {"data":[1]}` | unsupported |
+| `factory-reset` | `{"factoryReset":1}` | unsupported | unsupported |
+| `hard-reset` | `{"restoreReset":1}` | unsupported | unsupported |
+
+Every one asks:
+
+```text
+Reboot CODA-60 / CODA6X at 192.168.100.1? This acts on the real device. [y/N]
+```
+
+Only `--confirm` (or `-y`) skips that question. It never removes the
+credential requirement, and the CLI calls `Login` immediately before acting so
+the write is one traceable operation. Answering no exits 1.
+
+CODA-57 has no confirmed write path in this repository. The CLI says so and
+stops; it does not try a plausible-looking URL on a live modem.
+
+## Live view
+
+`monitor`, or `stats` in a terminal, draws a full-screen report and refreshes
+on `--interval`.
+
+| Key | Action |
+| --- | --- |
+| `q` | quit |
+| `r`, `space` | refresh now |
+| `a` | toggle automatic refresh |
+| `h`, `?` | help overlay |
+
+Destructive actions are deliberately not keys. They are separate commands with
+their own confirmation.
+
+## Exit codes
+
+| Code | Meaning |
+| --- | --- |
+| `0` | success |
+| `1` | device, network, or action error (including an aborted confirmation) |
+| `2` | usage error (bad flag, missing credentials for a write) |
+
+A single failed endpoint does not fail the run: the report prints what it got
+under **Partial data** and the JSON snapshot carries a `warnings` array.
+
+## Tests
+
+```bash
+cd cli
+go vet ./...
+go test ./...
+```
+
+The suite is offline. It uses `httptest` fixtures shaped like the captured
+CODA6X responses (null OFDM slots, `-inf` power sentinels, `"v6 / v4"` WAN
+addresses, newest-first logs) and checks detection, login, reboot bodies, and
+the parser edge cases.

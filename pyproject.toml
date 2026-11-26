@@ -1,21 +1,26 @@
 [project]
 name = "hitron"
-version = "0.2.0"
+version = "0.3.0"
 description = "Golden source for Hitron HT-EM5 / CODA60 / CODA57: client libraries, OpenAPI specs, and a unified Prometheus metrics exporter."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "Private - Netquor internal" }
 dependencies = [
     "aiohttp>=3.9",
-    "prometheus_client>=0.20",
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8", "pytest-asyncio>=0.23"]
+dev = ["pytest>=8", "pytest-asyncio>=0.23", "pyyaml>=6", "openapi-spec-validator>=0.7"]
 
 [project.scripts]
 hitron = "hitron.cli:main"
 hitron-exporter = "hitron.exporter:main"
+
+[tool.hatch.build.targets.wheel.force-include]
+# `hitron site` must work from any directory, so the wheel carries the static
+# site. Keeping it in site/ (not a copy in src/) means Pages and the package
+# are always the same files.
+"site" = "hitron/_site"
 
 [build-system]
 requires = ["hatchling"]
@@ -24,6 +29,10 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["src/hitron"]
 
+# The static site, dashboards, and deploy assets are not part of the wheel;
+# they ship in the source tree and on GitHub Pages.
+
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+filterwarnings = ["ignore::DeprecationWarning"]

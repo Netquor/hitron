@@ -231,25 +231,20 @@ components:
         telReg:
           type: string
         Line1RegState:
-          type:
-            - string
-            - "null"
+          type: string
+          nullable: true
         Line2RegState:
-          type:
-            - string
-            - "null"
+          type: string
+          nullable: true
         Line3RegState:
-          type:
-            - string
-            - "null"
+          type: string
+          nullable: true
         Line4RegState:
-          type:
-            - string
-            - "null"
+          type: string
+          nullable: true
         NumberOfSLIC:
-          type:
-            - integer
-            - "null"
+          type: integer
+          nullable: true
     MoCA:
       type: object
       description: "Field set from models/MoCA.php. password is plaintext on the device; it is deliberately not requested here."
@@ -316,6 +311,18 @@ components:
         timestamp:
           type: string
           description: "Unix seconds, device clock"
+        rxmer:
+          type: string
+          description: "base64 vendor-encoded per-subcarrier MER"
+        ch_est_coef:
+          type: string
+          description: "base64 channel-estimation coefficients"
+        us_pre_eq:
+          type: string
+          description: "base64 upstream pre-equalization"
+        mod_prof:
+          type: string
+          description: "base64 modulation profile"
       additionalProperties: true
     RegisterRequest:
       type: object
@@ -341,26 +348,26 @@ x-hitron:
     verb: 1
   note: "Paths, methods, capability tags and states come from src/hitron/adapters.py. Do not edit the paths block by hand; run tools/gen_spec.py."
 tags:
-  - name: shell
-  - name: identity
-  - name: docsis
-  - name: wifi
-  - name: lan
-  - name: moca
-  - name: firewall
-  - name: voice
-  - name: diagnostics
-  - name: spectrum
-  - name: system
-  - name: telemetry
-  - name: write
+  - name: Shell
+  - name: Identity
+  - name: CM
+  - name: WiFi
+  - name: LAN
+  - name: MoCA
+  - name: Firewall
+  - name: Voice
+  - name: Diagnostics
+  - name: Spectrum
+  - name: System
+  - name: Telemetry
+  - name: Write
 paths:
   "/1/Device/Menu/Main":
     get:
       operationId: menu_main
       summary: "Main menu tree (session-shaped)"
       tags:
-        - shell
+        - Shell
       x-hitron:
         requires: []
         state: ok
@@ -368,6 +375,7 @@ paths:
         verifiedOn: "8.7.1.0.1b4"
         destructive: false
         models: []
+      x-hitron-destructive: false
       responses:
         "200":
           description: "Envelope with errCode/errMsg plus the payload."
@@ -376,7 +384,7 @@ paths:
       operationId: menu_sub
       summary: "Submenu for the selected main menu"
       tags:
-        - shell
+        - Shell
       x-hitron:
         requires: []
         state: ok
@@ -384,6 +392,7 @@ paths:
         verifiedOn: "8.7.1.0.1b4"
         destructive: false
         models: []
+      x-hitron-destructive: false
       responses:
         "200":
           description: "Envelope with errCode/errMsg plus the payload."
@@ -392,7 +401,7 @@ paths:
       operationId: users_list
       summary: "Local account list"
       tags:
-        - shell
+        - Shell
       x-hitron:
         requires: []
         state: php8
@@ -400,6 +409,7 @@ paths:
         verifiedOn: "8.7.1.0.1b4"
         destructive: false
         models: []
+      x-hitron-destructive: false
       description: "Undefined array key 'action'"
       responses:
         "200":
@@ -411,7 +421,7 @@ paths:
       operationId: deviceinfo
       summary: "Telemetry identity: hw_model, hardware_version, software_version, serial"
       tags:
-        - identity
+        - Identity
       x-hitron:
         requires: []
         state: ok
@@ -419,6 +429,7 @@ paths:
         verifiedOn: "8.7.1.0.1b4"
         destructive: false
         models: []
+      x-hitron-destructive: false
       description: "Root route (/@info=TelemetryAssist), not under /1/Device. The only place hw_model is populated on this build; TR-181 DeviceInfo.ModelName is null."
       responses:
         "200":
@@ -432,7 +443,7 @@ paths:
       operationId: cm_version
       summary: "CM version screen"
       tags:
-        - identity
+        - Identity
       x-hitron:
         requires: []
         state: ok
@@ -440,6 +451,7 @@ paths:
         verifiedOn: "8.7.1.0.1b4"
         destructive: false
         models: []
+      x-hitron-destructive: false
       description: Unauthenticated.
       responses:
         "200":
@@ -449,7 +461,7 @@ paths:
       operationId: cm_sysinfo
       summary: "CM IP/subnet/gateway, lease and provisioned config name"
       tags:
-        - identity
+        - Identity
       x-hitron:
         requires: []
         state: ok
@@ -457,6 +469,7 @@ paths:
         verifiedOn: "8.7.1.0.1b4"
         destructive: false
         models: []
+      x-hitron-destructive: false
       responses:
         "200":
           description: "Envelope with errCode/errMsg plus the payload."
@@ -465,7 +478,7 @@ paths:
       operationId: router_sysinfo
       summary: "hw/sw version, serial, rfMac, uptime"
       tags:
-        - identity
+        - Identity
       x-hitron:
         requires: []
         state: ok
@@ -473,6 +486,7 @@ paths:
         verifiedOn: "8.7.1.0.1b4"
         destructive: false
         models: []
+      x-hitron-destructive: false
       description: "modelName/vendorName/deploymentName are null on 8.7.1.0.1b4."
       responses:
         "200":
@@ -482,7 +496,7 @@ paths:
       operationId: cm_provision
       summary: "DOCSIS provisioning state machine"
       tags:
-        - docsis
+        - CM
       x-hitron:
         requires: []
         state: ok
@@ -490,6 +504,7 @@ paths:
         verifiedOn: "8.7.1.0.1b4"
         destructive: false
         models: []
+      x-hitron-destructive: false
       responses:
         "200":
           description: "Envelope with errCode/errMsg plus the payload."
@@ -498,7 +513,7 @@ paths:
       operationId: cm_ds
       summary: "Downstream SC-QAM channels"
       tags:
-        - docsis
+        - CM
       x-hitron:
         requires: []
         state: ok
@@ -506,6 +521,7 @@ paths:
         verifiedOn: "8.7.1.0.1b4"
         destructive: false
         models: []
+      x-hitron-destructive: false
       responses:
         "200":
           description: "Envelope with errCode/errMsg plus the payload."
@@ -518,7 +534,7 @@ paths:
       operationId: cm_us
       summary: "Upstream SC-QAM channels"
       tags:
-        - docsis
+        - CM
       x-hitron:
         requires: []
         state: ok
@@ -526,6 +542,7 @@ paths:
         verifiedOn: "8.7.1.0.1b4"
         destructive: false
         models: []
+      x-hitron-destructive: false
       responses:
         "200":
           description: "Envelope with errCode/errMsg plus the payload."
@@ -538,7 +555,7 @@ paths:
       operationId: cm_ds_ofdm
       summary: "Downstream OFDM channels"
       tags:
-        - docsis
+        - CM
       x-hitron:
         requires:
           - docsis31
@@ -547,6 +564,7 @@ paths:
         verifiedOn: "8.7.1.0.1b4"
         destructive: false
         models: []
+      x-hitron-destructive: false
       responses:
         "200":
           description: "Envelope with errCode/errMsg plus the payload."
@@ -559,7 +577,7 @@ paths:
       operationId: cm_us_ofdm
       summary: "Upstream OFDMA channels"
       tags:
-        - docsis
+        - CM
       x-hitron:
         requires:
           - docsis31
@@ -568,6 +586,7 @@ paths:
         verifiedOn: "8.7.1.0.1b4"
         destructive: false
         models: []
+      x-hitron-destructive: false
       responses:
         "200":
           description: "Envelope with errCode/errMsg plus the payload."
@@ -580,7 +599,7 @@ paths:
       operationId: cm_log
       summary: "DOCSIS event log"
       tags:
-        - docsis
+        - CM
       x-hitron:
         requires: []
         state: ok
@@ -588,6 +607,7 @@ paths:
         verifiedOn: "8.7.1.0.1b4"
         destructive: false
         models: []
+      x-hitron-destructive: false
       responses:
         "200":
           description: "Envelope with errCode/errMsg plus the payload."
@@ -600,7 +620,7 @@ paths:
       operationId: cm_lte
       summary: "LTE backup-WAN status"
       tags:
-        - docsis
+        - CM
       x-hitron:
         requires:
           - lte
@@ -609,6 +629,7 @@ paths:
         verifiedOn: "8.7.1.0.1b4"
         destructive: false
         models: []
+      x-hitron-destructive: false
       description: "Creation of dynamic property LTEBackup::$LANClient"
       responses:
         "200":
@@ -620,7 +641,7 @@ paths:
       operationId: cm_ready
       summary: "App-only CM readiness"
       tags:
-        - docsis
+        - CM
       x-hitron:
         requires: []
         state: session
@@ -628,6 +649,7 @@ paths:
         verifiedOn: "8.7.1.0.1b4"
         destructive: false
         models: []
+      x-hitron-destructive: false
       security:
         - cookieAuth: []
       responses:
@@ -640,7 +662,7 @@ paths:
       operationId: wifi_root
       summary: "WiFi overview"
       tags:
-        - wifi
+        - WiFi
       x-hitron:
         requires:
           - wifi
@@ -649,6 +671,7 @@ paths:
         verifiedOn: "8.7.1.0.1b4"
         destructive: false
         models: []
+      x-hitron-destructive: false
       description: "Undefined array key 'info'"
       responses:
         "200":
@@ -660,7 +683,7 @@ paths:
       operationId: wifi_bandsteering
       summary: "Band-steering state"
       tags:
-        - wifi
+        - WiFi
       x-hitron:
         requires:
           - wifi
@@ -669,6 +692,7 @@ paths:
         verifiedOn: "8.7.1.0.1b4"
         destructive: false
         models: []
+      x-hitron-destructive: false
       responses:
         "200":
           description: "Envelope with errCode/errMsg plus the payload."
@@ -677,7 +701,7 @@ paths:
       operationId: wifi_guestssid
       summary: "Guest + primary SSID summary"
       tags:
-        - wifi
+        - WiFi
       x-hitron:
         requires:
           - wifi
@@ -686,6 +710,7 @@ paths:
         verifiedOn: "8.7.1.0.1b4"
         destructive: false
         models: []
+      x-hitron-destructive: false
       description: "Answers 200 even on a unit with no radios; all fields are empty strings."
       responses:
         "200":
@@ -695,7 +720,7 @@ paths:
       operationId: wifi_wps
       summary: "WPS state per band"
       tags:
-        - wifi
+        - WiFi
       x-hitron:
         requires:
           - wifi
@@ -704,6 +729,7 @@ paths:
         verifiedOn: "8.7.1.0.1b4"
         destructive: false
         models: []
+      x-hitron-destructive: false
       description: "Same stub caveat: 200 does not prove a radio exists."
       responses:
         "200":
@@ -713,7 +739,7 @@ paths:
       operationId: wifi_radios
       summary: "All radios"
       tags:
-        - wifi
+        - WiFi
       x-hitron:
         requires:
           - wifi
@@ -722,6 +748,7 @@ paths:
         verifiedOn: "8.7.1.0.1b4"
         destructive: false
         models: []
+      x-hitron-destructive: false
       description: "Fatal at class load: optional parameter $radio declared before required $f3."
       responses:
         "200":
@@ -733,7 +760,7 @@ paths:
       operationId: wifi_radios_survey
       summary: "Neighbour scan / ACS input"
       tags:
-        - wifi
+        - WiFi
       x-hitron:
         requires:
           - wifi
@@ -742,6 +769,7 @@ paths:
         verifiedOn: "8.7.1.0.1b4"
         destructive: false
         models: []
+      x-hitron-destructive: false
       responses:
         "200":
           description: "Envelope with errCode/errMsg plus the payload."
@@ -752,7 +780,7 @@ paths:
       operationId: wifi_radios_atf
       summary: "Airtime fairness config"
       tags:
-        - wifi
+        - WiFi
       x-hitron:
         requires:
           - wifi
@@ -761,6 +789,7 @@ paths:
         verifiedOn: "8.7.1.0.1b4"
         destructive: false
         models: []
+      x-hitron-destructive: false
       responses:
         "200":
           description: "Envelope with errCode/errMsg plus the payload."
@@ -771,7 +800,7 @@ paths:
       operationId: wifi_radios_atfssid
       summary: "Per-SSID ATF policy"
       tags:
-        - wifi
+        - WiFi
       x-hitron:
         requires:
           - wifi
@@ -780,6 +809,7 @@ paths:
         verifiedOn: "8.7.1.0.1b4"
         destructive: false
         models: []
+      x-hitron-destructive: false
       responses:
         "200":
           description: "Envelope with errCode/errMsg plus the payload."
@@ -790,7 +820,7 @@ paths:
       operationId: wifi_radios_atfstation
       summary: "Per-station ATF state"
       tags:
-        - wifi
+        - WiFi
       x-hitron:
         requires:
           - wifi
@@ -799,6 +829,7 @@ paths:
         verifiedOn: "8.7.1.0.1b4"
         destructive: false
         models: []
+      x-hitron-destructive: false
       responses:
         "200":
           description: "Envelope with errCode/errMsg plus the payload."
@@ -809,7 +840,7 @@ paths:
       operationId: wifi_radios_advanced
       summary: "Per-radio advanced settings"
       tags:
-        - wifi
+        - WiFi
       x-hitron:
         requires:
           - wifi
@@ -818,6 +849,7 @@ paths:
         verifiedOn: "8.7.1.0.1b4"
         destructive: false
         models: []
+      x-hitron-destructive: false
       responses:
         "200":
           description: "Envelope with errCode/errMsg plus the payload."
@@ -828,7 +860,7 @@ paths:
       operationId: wifi_ssids
       summary: "All SSIDs"
       tags:
-        - wifi
+        - WiFi
       x-hitron:
         requires:
           - wifi
@@ -837,6 +869,7 @@ paths:
         verifiedOn: "8.7.1.0.1b4"
         destructive: false
         models: []
+      x-hitron-destructive: false
       description: "Undefined array key 'info'"
       responses:
         "200":
@@ -848,7 +881,7 @@ paths:
       operationId: wifi_ssids_one
       summary: "One SSID by interface name"
       tags:
-        - wifi
+        - WiFi
       x-hitron:
         requires:
           - wifi
@@ -857,6 +890,7 @@ paths:
         verifiedOn: "8.7.1.0.1b4"
         destructive: false
         models: []
+      x-hitron-destructive: false
       description: "Needs both @ifname and @info; checkValidIfName() itself is broken on PHP 8."
       responses:
         "200":
@@ -875,7 +909,7 @@ paths:
       operationId: wifi_client
       summary: "Associated WiFi clients"
       tags:
-        - wifi
+        - WiFi
       x-hitron:
         requires:
           - wifi
@@ -884,6 +918,7 @@ paths:
         verifiedOn: "8.7.1.0.1b4"
         destructive: false
         models: []
+      x-hitron-destructive: false
       responses:
         "200":
           description: "Envelope with errCode/errMsg plus the payload."
@@ -894,7 +929,7 @@ paths:
       operationId: wifi_client_ssids
       summary: "Clients per radio"
       tags:
-        - wifi
+        - WiFi
       x-hitron:
         requires:
           - wifi
@@ -903,6 +938,7 @@ paths:
         verifiedOn: "8.7.1.0.1b4"
         destructive: false
         models: []
+      x-hitron-destructive: false
       responses:
         "200":
           description: "Envelope with errCode/errMsg plus the payload."
@@ -920,7 +956,7 @@ paths:
       operationId: wifi_client_ssids_alias
       summary: "Clients per radio (alias route)"
       tags:
-        - wifi
+        - WiFi
       x-hitron:
         requires:
           - wifi
@@ -929,6 +965,7 @@ paths:
         verifiedOn: "8.7.1.0.1b4"
         destructive: false
         models: []
+      x-hitron-destructive: false
       description: "Same data as /WiFi/Stations/{ifname}; this shape omits the @ifname the handler reads."
       responses:
         "200":
@@ -940,7 +977,7 @@ paths:
       operationId: wifi_accesscontrol
       summary: "MAC allow/deny list"
       tags:
-        - wifi
+        - WiFi
       x-hitron:
         requires:
           - wifi
@@ -949,6 +986,7 @@ paths:
         verifiedOn: "8.7.1.0.1b4"
         destructive: false
         models: []
+      x-hitron-destructive: false
       responses:
         "200":
           description: "Envelope with errCode/errMsg plus the payload."
@@ -959,7 +997,7 @@ paths:
       operationId: wifi_accesscontrol_macs
       summary: "Access-control entries"
       tags:
-        - wifi
+        - WiFi
       x-hitron:
         requires:
           - wifi
@@ -968,6 +1006,7 @@ paths:
         verifiedOn: "8.7.1.0.1b4"
         destructive: false
         models: []
+      x-hitron-destructive: false
       description: "Undefined function getInstanceIDs() (platform defines getInstanceIDs)."
       responses:
         "200":
@@ -979,7 +1018,7 @@ paths:
       operationId: wifi_accesscontrol_mode
       summary: "Allow/deny mode"
       tags:
-        - wifi
+        - WiFi
       x-hitron:
         requires:
           - wifi
@@ -988,6 +1027,7 @@ paths:
         verifiedOn: "8.7.1.0.1b4"
         destructive: false
         models: []
+      x-hitron-destructive: false
       responses:
         "200":
           description: "Envelope with errCode/errMsg plus the payload."
@@ -996,7 +1036,7 @@ paths:
       operationId: wifi_accesscontrol_status
       summary: "Access-control enabled"
       tags:
-        - wifi
+        - WiFi
       x-hitron:
         requires:
           - wifi
@@ -1005,6 +1045,7 @@ paths:
         verifiedOn: "8.7.1.0.1b4"
         destructive: false
         models: []
+      x-hitron-destructive: false
       responses:
         "200":
           description: "Envelope with errCode/errMsg plus the payload."
@@ -1013,7 +1054,7 @@ paths:
       operationId: wifi_hotspot
       summary: "Hotspot / community WiFi"
       tags:
-        - wifi
+        - WiFi
       x-hitron:
         requires:
           - wifi
@@ -1022,6 +1063,7 @@ paths:
         verifiedOn: "8.7.1.0.1b4"
         destructive: false
         models: []
+      x-hitron-destructive: false
       description: "Undefined variable $rootObjName"
       responses:
         "200":
@@ -1033,7 +1075,7 @@ paths:
       operationId: wifi_rssis
       summary: "Per-client RSSI"
       tags:
-        - wifi
+        - WiFi
       x-hitron:
         requires:
           - wifi
@@ -1042,6 +1084,7 @@ paths:
         verifiedOn: "8.7.1.0.1b4"
         destructive: false
         models: []
+      x-hitron-destructive: false
       security:
         - cookieAuth: []
       responses:
@@ -1054,7 +1097,7 @@ paths:
       operationId: router_portforward
       summary: "Port-forward rules"
       tags:
-        - lan
+        - LAN
       x-hitron:
         requires:
           - router
@@ -1063,6 +1106,7 @@ paths:
         verifiedOn: "8.7.1.0.1b4"
         destructive: false
         models: []
+      x-hitron-destructive: false
       responses:
         "200":
           description: "Envelope with errCode/errMsg plus the payload."
@@ -1073,7 +1117,7 @@ paths:
       operationId: router_portforward_status
       summary: "Port-forward enabled"
       tags:
-        - lan
+        - LAN
       x-hitron:
         requires:
           - router
@@ -1082,6 +1126,7 @@ paths:
         verifiedOn: "8.7.1.0.1b4"
         destructive: false
         models: []
+      x-hitron-destructive: false
       responses:
         "200":
           description: "Envelope with errCode/errMsg plus the payload."
@@ -1090,7 +1135,7 @@ paths:
       operationId: router_porttrigger
       summary: "Port-trigger rules"
       tags:
-        - lan
+        - LAN
       x-hitron:
         requires:
           - router
@@ -1099,6 +1144,7 @@ paths:
         verifiedOn: "8.7.1.0.1b4"
         destructive: false
         models: []
+      x-hitron-destructive: false
       responses:
         "200":
           description: "Envelope with errCode/errMsg plus the payload."
@@ -1109,7 +1155,7 @@ paths:
       operationId: router_porttrigger_status
       summary: "Port-trigger enabled"
       tags:
-        - lan
+        - LAN
       x-hitron:
         requires:
           - router
@@ -1118,6 +1164,7 @@ paths:
         verifiedOn: "8.7.1.0.1b4"
         destructive: false
         models: []
+      x-hitron-destructive: false
       responses:
         "200":
           description: "Envelope with errCode/errMsg plus the payload."
@@ -1126,7 +1173,7 @@ paths:
       operationId: hosts
       summary: "Connected LAN hosts"
       tags:
-        - lan
+        - LAN
       x-hitron:
         requires:
           - router
@@ -1135,6 +1182,7 @@ paths:
         verifiedOn: "8.7.1.0.1b4"
         destructive: false
         models: []
+      x-hitron-destructive: false
       responses:
         "200":
           description: "Envelope with errCode/errMsg plus the payload."
@@ -1145,7 +1193,7 @@ paths:
       operationId: hosts_deffw
       summary: "Default firmware level per host"
       tags:
-        - lan
+        - LAN
       x-hitron:
         requires:
           - router
@@ -1154,6 +1202,7 @@ paths:
         verifiedOn: "8.7.1.0.1b4"
         destructive: false
         models: []
+      x-hitron-destructive: false
       security:
         - cookieAuth: []
       responses:
@@ -1166,7 +1215,7 @@ paths:
       operationId: dhcp
       summary: "DHCP server config/leases"
       tags:
-        - lan
+        - LAN
       x-hitron:
         requires:
           - router
@@ -1175,6 +1224,7 @@ paths:
         verifiedOn: "8.7.1.0.1b4"
         destructive: false
         models: []
+      x-hitron-destructive: false
       responses:
         "200":
           description: "Envelope with errCode/errMsg plus the payload."
@@ -1185,7 +1235,7 @@ paths:
       operationId: dhcp_lan
       summary: "LAN DHCP settings"
       tags:
-        - lan
+        - LAN
       x-hitron:
         requires:
           - router
@@ -1194,6 +1244,7 @@ paths:
         verifiedOn: "8.7.1.0.1b4"
         destructive: false
         models: []
+      x-hitron-destructive: false
       description: "Creation of dynamic property DHCP::$bSomeItemsReadOnly"
       responses:
         "200":
@@ -1205,7 +1256,7 @@ paths:
       operationId: dhcp_reservation
       summary: "Static reservations"
       tags:
-        - lan
+        - LAN
       x-hitron:
         requires:
           - router
@@ -1214,6 +1265,7 @@ paths:
         verifiedOn: "8.7.1.0.1b4"
         destructive: false
         models: []
+      x-hitron-destructive: false
       responses:
         "200":
           description: "Envelope with errCode/errMsg plus the payload."
@@ -1224,7 +1276,7 @@ paths:
       operationId: wan
       summary: "WAN config/status"
       tags:
-        - lan
+        - LAN
       x-hitron:
         requires:
           - router
@@ -1233,6 +1285,7 @@ paths:
         verifiedOn: "8.7.1.0.1b4"
         destructive: false
         models: []
+      x-hitron-destructive: false
       responses:
         "200":
           description: "Envelope with errCode/errMsg plus the payload."
@@ -1243,7 +1296,7 @@ paths:
       operationId: dns
       summary: "DNS config"
       tags:
-        - lan
+        - LAN
       x-hitron:
         requires:
           - router
@@ -1252,6 +1305,7 @@ paths:
         verifiedOn: "8.7.1.0.1b4"
         destructive: false
         models: []
+      x-hitron-destructive: false
       responses:
         "200":
           description: "Envelope with errCode/errMsg plus the payload."
@@ -1262,7 +1316,7 @@ paths:
       operationId: ddns
       summary: "Dynamic DNS config"
       tags:
-        - lan
+        - LAN
       x-hitron:
         requires:
           - router
@@ -1271,6 +1325,7 @@ paths:
         verifiedOn: "8.7.1.0.1b4"
         destructive: false
         models: []
+      x-hitron-destructive: false
       responses:
         "200":
           description: "Envelope with errCode/errMsg plus the payload."
@@ -1281,7 +1336,7 @@ paths:
       operationId: ddns_status
       summary: "Dynamic DNS state"
       tags:
-        - lan
+        - LAN
       x-hitron:
         requires:
           - router
@@ -1290,6 +1345,7 @@ paths:
         verifiedOn: "8.7.1.0.1b4"
         destructive: false
         models: []
+      x-hitron-destructive: false
       responses:
         "200":
           description: "Envelope with errCode/errMsg plus the payload."
@@ -1298,7 +1354,7 @@ paths:
       operationId: ipmapping
       summary: "1:1 NAT / IP mapping"
       tags:
-        - lan
+        - LAN
       x-hitron:
         requires:
           - router
@@ -1307,6 +1363,7 @@ paths:
         verifiedOn: "8.7.1.0.1b4"
         destructive: false
         models: []
+      x-hitron-destructive: false
       responses:
         "200":
           description: "Envelope with errCode/errMsg plus the payload."
@@ -1317,7 +1374,7 @@ paths:
       operationId: ipmapping_status
       summary: "IP mapping enabled"
       tags:
-        - lan
+        - LAN
       x-hitron:
         requires:
           - router
@@ -1326,6 +1383,7 @@ paths:
         verifiedOn: "8.7.1.0.1b4"
         destructive: false
         models: []
+      x-hitron-destructive: false
       responses:
         "200":
           description: "Envelope with errCode/errMsg plus the payload."
@@ -1334,7 +1392,7 @@ paths:
       operationId: ippass
       summary: "IP passthrough"
       tags:
-        - lan
+        - LAN
       x-hitron:
         requires:
           - router
@@ -1343,6 +1401,7 @@ paths:
         verifiedOn: "8.7.1.0.1b4"
         destructive: false
         models: []
+      x-hitron-destructive: false
       responses:
         "200":
           description: "Envelope with errCode/errMsg plus the payload."
@@ -1353,7 +1412,7 @@ paths:
       operationId: gre
       summary: "GRE tunnels"
       tags:
-        - lan
+        - LAN
       x-hitron:
         requires:
           - router
@@ -1362,6 +1421,7 @@ paths:
         verifiedOn: "8.7.1.0.1b4"
         destructive: false
         models: []
+      x-hitron-destructive: false
       responses:
         "200":
           description: "Envelope with errCode/errMsg plus the payload."
@@ -1372,7 +1432,7 @@ paths:
       operationId: ripinfo
       summary: "RIP routing"
       tags:
-        - lan
+        - LAN
       x-hitron:
         requires:
           - router
@@ -1381,6 +1441,7 @@ paths:
         verifiedOn: "8.7.1.0.1b4"
         destructive: false
         models: []
+      x-hitron-destructive: false
       responses:
         "200":
           description: "Envelope with errCode/errMsg plus the payload."
@@ -1391,7 +1452,7 @@ paths:
       operationId: staticrouteinfo
       summary: "Static routes"
       tags:
-        - lan
+        - LAN
       x-hitron:
         requires:
           - router
@@ -1400,6 +1461,7 @@ paths:
         verifiedOn: "8.7.1.0.1b4"
         destructive: false
         models: []
+      x-hitron-destructive: false
       responses:
         "200":
           description: "Envelope with errCode/errMsg plus the payload."
@@ -1410,7 +1472,7 @@ paths:
       operationId: ether_vlan
       summary: "Ethernet port VLAN state"
       tags:
-        - lan
+        - LAN
       x-hitron:
         requires: []
         state: ok
@@ -1418,6 +1480,7 @@ paths:
         verifiedOn: "8.7.1.0.1b4"
         destructive: false
         models: []
+      x-hitron-destructive: false
       description: "ethPort1..4 are fixed schema fields, not a port count; on the live CODA60 all four are 0 while AdvancedSwitch reports one port."
       responses:
         "200":
@@ -1427,7 +1490,7 @@ paths:
       operationId: advanced_switch
       summary: "On-board Ethernet switch ports"
       tags:
-        - lan
+        - LAN
       x-hitron:
         requires: []
         state: ok
@@ -1435,6 +1498,7 @@ paths:
         verifiedOn: "8.7.1.0.1b4"
         destructive: false
         models: []
+      x-hitron-destructive: false
       responses:
         "200":
           description: "Envelope with errCode/errMsg plus the payload."
@@ -1447,7 +1511,7 @@ paths:
       operationId: moca
       summary: "MoCA interface status/config"
       tags:
-        - moca
+        - MoCA
       x-hitron:
         requires:
           - moca
@@ -1456,6 +1520,7 @@ paths:
         verifiedOn: "8.7.1.0.1b4"
         destructive: false
         models: []
+      x-hitron-destructive: false
       description: "Undefined array key 'info'"
       responses:
         "200":
@@ -1471,7 +1536,7 @@ paths:
       operationId: firewall_level
       summary: "Firewall level"
       tags:
-        - firewall
+        - Firewall
       x-hitron:
         requires:
           - router
@@ -1480,6 +1545,7 @@ paths:
         verifiedOn: "8.7.1.0.1b4"
         destructive: false
         models: []
+      x-hitron-destructive: false
       responses:
         "200":
           description: "Envelope with errCode/errMsg plus the payload."
@@ -1488,7 +1554,7 @@ paths:
       operationId: firewall_levels
       summary: "Firewall level list"
       tags:
-        - firewall
+        - Firewall
       x-hitron:
         requires:
           - router
@@ -1497,6 +1563,7 @@ paths:
         verifiedOn: "8.7.1.0.1b4"
         destructive: false
         models: []
+      x-hitron-destructive: false
       security:
         - cookieAuth: []
       responses:
@@ -1509,7 +1576,7 @@ paths:
       operationId: firewall_logs
       summary: "Firewall log"
       tags:
-        - firewall
+        - Firewall
       x-hitron:
         requires:
           - router
@@ -1518,6 +1585,7 @@ paths:
         verifiedOn: "8.7.1.0.1b4"
         destructive: false
         models: []
+      x-hitron-destructive: false
       responses:
         "200":
           description: "Envelope with errCode/errMsg plus the payload."
@@ -1526,7 +1594,7 @@ paths:
       operationId: firewall_vpn
       summary: "VPN passthrough state"
       tags:
-        - firewall
+        - Firewall
       x-hitron:
         requires:
           - router
@@ -1535,6 +1603,7 @@ paths:
         verifiedOn: "8.7.1.0.1b4"
         destructive: false
         models: []
+      x-hitron-destructive: false
       responses:
         "200":
           description: "Envelope with errCode/errMsg plus the payload."
@@ -1543,7 +1612,7 @@ paths:
       operationId: firewall_inbound
       summary: "Inbound rule set"
       tags:
-        - firewall
+        - Firewall
       x-hitron:
         requires:
           - router
@@ -1552,6 +1621,7 @@ paths:
         verifiedOn: "8.7.1.0.1b4"
         destructive: false
         models: []
+      x-hitron-destructive: false
       responses:
         "200":
           description: "Envelope with errCode/errMsg plus the payload."
@@ -1562,7 +1632,7 @@ paths:
       operationId: firewall_inbound_rules
       summary: "Inbound rules"
       tags:
-        - firewall
+        - Firewall
       x-hitron:
         requires:
           - router
@@ -1571,6 +1641,7 @@ paths:
         verifiedOn: "8.7.1.0.1b4"
         destructive: false
         models: []
+      x-hitron-destructive: false
       responses:
         "200":
           description: "Envelope with errCode/errMsg plus the payload."
@@ -1579,7 +1650,7 @@ paths:
       operationId: firewall_inbound_status
       summary: "Inbound filter enabled"
       tags:
-        - firewall
+        - Firewall
       x-hitron:
         requires:
           - router
@@ -1588,6 +1659,7 @@ paths:
         verifiedOn: "8.7.1.0.1b4"
         destructive: false
         models: []
+      x-hitron-destructive: false
       responses:
         "200":
           description: "Envelope with errCode/errMsg plus the payload."
@@ -1596,7 +1668,7 @@ paths:
       operationId: firewall_servicefilter
       summary: "Service filter set"
       tags:
-        - firewall
+        - Firewall
       x-hitron:
         requires:
           - router
@@ -1605,6 +1677,7 @@ paths:
         verifiedOn: "8.7.1.0.1b4"
         destructive: false
         models: []
+      x-hitron-destructive: false
       responses:
         "200":
           description: "Envelope with errCode/errMsg plus the payload."
@@ -1615,7 +1688,7 @@ paths:
       operationId: firewall_servicefilter_rules
       summary: "Service filter rules"
       tags:
-        - firewall
+        - Firewall
       x-hitron:
         requires:
           - router
@@ -1624,6 +1697,7 @@ paths:
         verifiedOn: "8.7.1.0.1b4"
         destructive: false
         models: []
+      x-hitron-destructive: false
       description: "Undefined function getInstanceIDs()."
       responses:
         "200":
@@ -1635,7 +1709,7 @@ paths:
       operationId: firewall_servicefilter_status
       summary: "Service filter enabled"
       tags:
-        - firewall
+        - Firewall
       x-hitron:
         requires:
           - router
@@ -1644,6 +1718,7 @@ paths:
         verifiedOn: "8.7.1.0.1b4"
         destructive: false
         models: []
+      x-hitron-destructive: false
       responses:
         "200":
           description: "Envelope with errCode/errMsg plus the payload."
@@ -1652,7 +1727,7 @@ paths:
       operationId: firewall_servicefilter_trust
       summary: "Service filter trust rules"
       tags:
-        - firewall
+        - Firewall
       x-hitron:
         requires:
           - router
@@ -1661,6 +1736,7 @@ paths:
         verifiedOn: "8.7.1.0.1b4"
         destructive: false
         models: []
+      x-hitron-destructive: false
       responses:
         "200":
           description: "Envelope with errCode/errMsg plus the payload."
@@ -1671,7 +1747,7 @@ paths:
       operationId: firewall_devicefilter
       summary: "Device filter set"
       tags:
-        - firewall
+        - Firewall
       x-hitron:
         requires:
           - router
@@ -1680,6 +1756,7 @@ paths:
         verifiedOn: "8.7.1.0.1b4"
         destructive: false
         models: []
+      x-hitron-destructive: false
       responses:
         "200":
           description: "Envelope with errCode/errMsg plus the payload."
@@ -1690,7 +1767,7 @@ paths:
       operationId: firewall_devicefilter_rules
       summary: "Device filter rules"
       tags:
-        - firewall
+        - Firewall
       x-hitron:
         requires:
           - router
@@ -1699,6 +1776,7 @@ paths:
         verifiedOn: "8.7.1.0.1b4"
         destructive: false
         models: []
+      x-hitron-destructive: false
       responses:
         "200":
           description: "Envelope with errCode/errMsg plus the payload."
@@ -1709,7 +1787,7 @@ paths:
       operationId: firewall_devicefilter_type
       summary: "Device filter allow/deny type"
       tags:
-        - firewall
+        - Firewall
       x-hitron:
         requires:
           - router
@@ -1718,6 +1796,7 @@ paths:
         verifiedOn: "8.7.1.0.1b4"
         destructive: false
         models: []
+      x-hitron-destructive: false
       responses:
         "200":
           description: "Envelope with errCode/errMsg plus the payload."
@@ -1726,7 +1805,7 @@ paths:
       operationId: firewall_keywordfilter
       summary: "Keyword filter set"
       tags:
-        - firewall
+        - Firewall
       x-hitron:
         requires:
           - router
@@ -1735,6 +1814,7 @@ paths:
         verifiedOn: "8.7.1.0.1b4"
         destructive: false
         models: []
+      x-hitron-destructive: false
       responses:
         "200":
           description: "Envelope with errCode/errMsg plus the payload."
@@ -1745,7 +1825,7 @@ paths:
       operationId: firewall_keywordfilter_rules
       summary: "Keyword filter rules"
       tags:
-        - firewall
+        - Firewall
       x-hitron:
         requires:
           - router
@@ -1754,6 +1834,7 @@ paths:
         verifiedOn: "8.7.1.0.1b4"
         destructive: false
         models: []
+      x-hitron-destructive: false
       responses:
         "200":
           description: "Envelope with errCode/errMsg plus the payload."
@@ -1764,7 +1845,7 @@ paths:
       operationId: firewall_keywordfilter_status
       summary: "Keyword filter enabled"
       tags:
-        - firewall
+        - Firewall
       x-hitron:
         requires:
           - router
@@ -1773,6 +1854,7 @@ paths:
         verifiedOn: "8.7.1.0.1b4"
         destructive: false
         models: []
+      x-hitron-destructive: false
       responses:
         "200":
           description: "Envelope with errCode/errMsg plus the payload."
@@ -1781,7 +1863,7 @@ paths:
       operationId: firewall_keywordfilter_trust
       summary: "Keyword filter trust rules"
       tags:
-        - firewall
+        - Firewall
       x-hitron:
         requires:
           - router
@@ -1790,6 +1872,7 @@ paths:
         verifiedOn: "8.7.1.0.1b4"
         destructive: false
         models: []
+      x-hitron-destructive: false
       responses:
         "200":
           description: "Envelope with errCode/errMsg plus the payload."
@@ -1800,7 +1883,7 @@ paths:
       operationId: firewall_timefilter
       summary: "Time-based access filter"
       tags:
-        - firewall
+        - Firewall
       x-hitron:
         requires:
           - router
@@ -1809,6 +1892,7 @@ paths:
         verifiedOn: "8.7.1.0.1b4"
         destructive: false
         models: []
+      x-hitron-destructive: false
       responses:
         "200":
           description: "Envelope with errCode/errMsg plus the payload."
@@ -1819,7 +1903,7 @@ paths:
       operationId: firewall_kwdfilter_app
       summary: "App-only keyword filter"
       tags:
-        - firewall
+        - Firewall
       x-hitron:
         requires:
           - router
@@ -1828,6 +1912,7 @@ paths:
         verifiedOn: null
         destructive: false
         models: []
+      x-hitron-destructive: false
       responses:
         "200":
           description: "Envelope with errCode/errMsg plus the payload."
@@ -1842,7 +1927,7 @@ paths:
       operationId: firewall_srvfilter_app
       summary: "App-only service filter"
       tags:
-        - firewall
+        - Firewall
       x-hitron:
         requires:
           - router
@@ -1851,6 +1936,7 @@ paths:
         verifiedOn: null
         destructive: false
         models: []
+      x-hitron-destructive: false
       responses:
         "200":
           description: "Envelope with errCode/errMsg plus the payload."
@@ -1865,7 +1951,7 @@ paths:
       operationId: mta_status
       summary: "EMTA line registration + call state"
       tags:
-        - voice
+        - Voice
       x-hitron:
         requires:
           - voice
@@ -1874,6 +1960,7 @@ paths:
         verifiedOn: "8.7.1.0.1b4"
         destructive: false
         models: []
+      x-hitron-destructive: false
       description: "Answers 200 even with no SLIC; NumberOfSLIC is null and all LineNRegState are null."
       responses:
         "200":
@@ -1887,7 +1974,7 @@ paths:
       operationId: mta_dhcp
       summary: "EMTA DHCP state"
       tags:
-        - voice
+        - Voice
       x-hitron:
         requires:
           - voice
@@ -1896,6 +1983,7 @@ paths:
         verifiedOn: "8.7.1.0.1b4"
         destructive: false
         models: []
+      x-hitron-destructive: false
       responses:
         "200":
           description: "Envelope with errCode/errMsg plus the payload."
@@ -1904,7 +1992,7 @@ paths:
       operationId: mta_log
       summary: "EMTA event log"
       tags:
-        - voice
+        - Voice
       x-hitron:
         requires:
           - voice
@@ -1913,6 +2001,7 @@ paths:
         verifiedOn: "8.7.1.0.1b4"
         destructive: false
         models: []
+      x-hitron-destructive: false
       responses:
         "200":
           description: "Envelope with errCode/errMsg plus the payload."
@@ -1921,7 +2010,7 @@ paths:
       operationId: mta_quality
       summary: "Voice quality metrics"
       tags:
-        - voice
+        - Voice
       x-hitron:
         requires:
           - voice
@@ -1930,6 +2019,7 @@ paths:
         verifiedOn: "8.7.1.0.1b4"
         destructive: false
         models: []
+      x-hitron-destructive: false
       responses:
         "200":
           description: "Envelope with errCode/errMsg plus the payload."
@@ -1938,7 +2028,7 @@ paths:
       operationId: bbu
       summary: "Battery backup unit"
       tags:
-        - voice
+        - Voice
       x-hitron:
         requires:
           - battery
@@ -1947,6 +2037,7 @@ paths:
         verifiedOn: "8.7.1.0.1b4"
         destructive: false
         models: []
+      x-hitron-destructive: false
       responses:
         "200":
           description: "Envelope with errCode/errMsg plus the payload."
@@ -1957,7 +2048,7 @@ paths:
       operationId: diagnostics_root
       summary: "Diagnostics controller root"
       tags:
-        - diagnostics
+        - Diagnostics
       x-hitron:
         requires: []
         state: php8
@@ -1965,6 +2056,7 @@ paths:
         verifiedOn: "8.7.1.0.1b4"
         destructive: false
         models: []
+      x-hitron-destructive: false
       description: "Requires an @info branch; the bare controller root reads $args['info'] and fatals."
       responses:
         "200":
@@ -1976,7 +2068,7 @@ paths:
       operationId: diag_input
       summary: "Stored diagnostic target"
       tags:
-        - diagnostics
+        - Diagnostics
       x-hitron:
         requires: []
         state: ok
@@ -1984,6 +2076,7 @@ paths:
         verifiedOn: "8.7.1.0.1b4"
         destructive: false
         models: []
+      x-hitron-destructive: false
       responses:
         "200":
           description: "Envelope with errCode/errMsg plus the payload."
@@ -1992,7 +2085,7 @@ paths:
       operationId: diag_ping
       summary: "Last ping result"
       tags:
-        - diagnostics
+        - Diagnostics
       x-hitron:
         requires: []
         state: ok
@@ -2000,6 +2093,7 @@ paths:
         verifiedOn: "8.7.1.0.1b4"
         destructive: false
         models: []
+      x-hitron-destructive: false
       responses:
         "200":
           description: "Envelope with errCode/errMsg plus the payload."
@@ -2008,7 +2102,7 @@ paths:
       operationId: diag_traceroute
       summary: "Last traceroute result"
       tags:
-        - diagnostics
+        - Diagnostics
       x-hitron:
         requires: []
         state: ok
@@ -2016,6 +2110,7 @@ paths:
         verifiedOn: "8.7.1.0.1b4"
         destructive: false
         models: []
+      x-hitron-destructive: false
       responses:
         "200":
           description: "Envelope with errCode/errMsg plus the payload."
@@ -2024,7 +2119,7 @@ paths:
       operationId: spectrum
       summary: "Spectrum analyzer source address"
       tags:
-        - spectrum
+        - Spectrum
       x-hitron:
         requires:
           - spectrum
@@ -2033,6 +2128,7 @@ paths:
         verifiedOn: "8.7.1.0.1b4"
         destructive: false
         models: []
+      x-hitron-destructive: false
       responses:
         "200":
           description: "Envelope with errCode/errMsg plus the payload."
@@ -2041,7 +2137,7 @@ paths:
       operationId: spectrum_freqlist
       summary: "Analyzer frequency list"
       tags:
-        - spectrum
+        - Spectrum
       x-hitron:
         requires:
           - spectrum
@@ -2050,6 +2146,7 @@ paths:
         verifiedOn: "8.7.1.0.1b4"
         destructive: false
         models: []
+      x-hitron-destructive: false
       responses:
         "200":
           description: "Envelope with errCode/errMsg plus the payload."
@@ -2058,7 +2155,7 @@ paths:
       operationId: spectrum_rtdata
       summary: "Real-time spectrum trace"
       tags:
-        - spectrum
+        - Spectrum
       x-hitron:
         requires:
           - spectrum
@@ -2067,6 +2164,7 @@ paths:
         verifiedOn: "8.7.1.0.1b4"
         destructive: false
         models: []
+      x-hitron-destructive: false
       responses:
         "200":
           description: "Envelope with errCode/errMsg plus the payload."
@@ -2075,7 +2173,7 @@ paths:
       operationId: spectrum_constellation
       summary: "Constellation points for one downstream port"
       tags:
-        - spectrum
+        - Spectrum
       x-hitron:
         requires:
           - spectrum
@@ -2084,6 +2182,7 @@ paths:
         verifiedOn: "8.7.1.0.1b4"
         destructive: false
         models: []
+      x-hitron-destructive: false
       description: "Handler reads $args['query'], which the route never supplies."
       parameters:
         - name: portId
@@ -2104,7 +2203,7 @@ paths:
       operationId: spectrum_freqpower
       summary: "Power sweep over a frequency range"
       tags:
-        - spectrum
+        - Spectrum
       x-hitron:
         requires:
           - spectrum
@@ -2113,6 +2212,7 @@ paths:
         verifiedOn: "8.7.1.0.1b4"
         destructive: false
         models: []
+      x-hitron-destructive: false
       description: "Same $args['query'] defect as Constellation."
       parameters:
         - name: centFreq
@@ -2149,7 +2249,7 @@ paths:
       operationId: time
       summary: "NTP/time configuration"
       tags:
-        - system
+        - System
       x-hitron:
         requires: []
         state: php8
@@ -2157,6 +2257,7 @@ paths:
         verifiedOn: "8.7.1.0.1b4"
         destructive: false
         models: []
+      x-hitron-destructive: false
       responses:
         "200":
           description: "Envelope with errCode/errMsg plus the payload."
@@ -2167,7 +2268,7 @@ paths:
       operationId: advanced_root
       summary: "Advanced controller root"
       tags:
-        - system
+        - System
       x-hitron:
         requires: []
         state: php8
@@ -2175,6 +2276,7 @@ paths:
         verifiedOn: "8.7.1.0.1b4"
         destructive: false
         models: []
+      x-hitron-destructive: false
       description: "Requires an @info branch."
       responses:
         "200":
@@ -2186,7 +2288,7 @@ paths:
       operationId: usb_root
       summary: "USB controller root"
       tags:
-        - system
+        - System
       x-hitron:
         requires: []
         state: php8
@@ -2194,6 +2296,7 @@ paths:
         verifiedOn: "8.7.1.0.1b4"
         destructive: false
         models: []
+      x-hitron-destructive: false
       description: "Requires an @info branch."
       responses:
         "200":
@@ -2205,7 +2308,7 @@ paths:
       operationId: adminremote_root
       summary: "Remote-management controller root"
       tags:
-        - system
+        - System
       x-hitron:
         requires: []
         state: php8
@@ -2213,6 +2316,7 @@ paths:
         verifiedOn: "8.7.1.0.1b4"
         destructive: false
         models: []
+      x-hitron-destructive: false
       description: "Requires an @info branch."
       responses:
         "200":
@@ -2224,7 +2328,7 @@ paths:
       operationId: usb_devices
       summary: "Attached USB devices"
       tags:
-        - system
+        - System
       x-hitron:
         requires:
           - usb
@@ -2233,6 +2337,7 @@ paths:
         verifiedOn: "8.7.1.0.1b4"
         destructive: false
         models: []
+      x-hitron-destructive: false
       description: "0 entries proves an empty port, not an absent one; only the catalog can say a SKU has no USB."
       responses:
         "200":
@@ -2242,7 +2347,7 @@ paths:
       operationId: adminremote_status
       summary: "WAN-side admin access state"
       tags:
-        - system
+        - System
       x-hitron:
         requires: []
         state: ok
@@ -2250,6 +2355,7 @@ paths:
         verifiedOn: "8.7.1.0.1b4"
         destructive: false
         models: []
+      x-hitron-destructive: false
       responses:
         "200":
           description: "Envelope with errCode/errMsg plus the payload."
@@ -2258,7 +2364,7 @@ paths:
       operationId: adminremote_aclist
       summary: "Remote-management allow list"
       tags:
-        - system
+        - System
       x-hitron:
         requires: []
         state: php8
@@ -2266,6 +2372,7 @@ paths:
         verifiedOn: "8.7.1.0.1b4"
         destructive: false
         models: []
+      x-hitron-destructive: false
       description: "count() on a RemoteAccess object"
       responses:
         "200":
@@ -2277,7 +2384,7 @@ paths:
       operationId: adminremote_rlist
       summary: "Remote-management rule list"
       tags:
-        - system
+        - System
       x-hitron:
         requires: []
         state: php8
@@ -2285,6 +2392,7 @@ paths:
         verifiedOn: "8.7.1.0.1b4"
         destructive: false
         models: []
+      x-hitron-destructive: false
       description: "Undefined function getInstanceIDs()."
       responses:
         "200":
@@ -2292,10 +2400,10 @@ paths:
         "500":
           description: "PHP 8 fatal in the shipped controller on 8.7.1.0.1b4. Undefined function getInstanceIDs()."
     post:
-      operationId: adminremote_rlist_write
+      operationId: adminremote_rlist_write_post
       summary: "Add/remove remote-management rules"
       tags:
-        - write
+        - Write
       x-hitron:
         requires: []
         state: untested
@@ -2303,16 +2411,17 @@ paths:
         verifiedOn: null
         destructive: true
         models: []
+      x-hitron-destructive: true
       security:
         - cookieAuth: []
       responses:
         "200":
           description: "Envelope with errCode/errMsg plus the payload."
     put:
-      operationId: adminremote_rlist_write
+      operationId: adminremote_rlist_write_put
       summary: "Add/remove remote-management rules"
       tags:
-        - write
+        - Write
       x-hitron:
         requires: []
         state: untested
@@ -2320,6 +2429,7 @@ paths:
         verifiedOn: null
         destructive: true
         models: []
+      x-hitron-destructive: true
       security:
         - cookieAuth: []
       responses:
@@ -2330,7 +2440,7 @@ paths:
       operationId: adminremote_backup
       summary: "Download the running config"
       tags:
-        - system
+        - System
       x-hitron:
         requires: []
         state: php8
@@ -2338,6 +2448,7 @@ paths:
         verifiedOn: "8.7.1.0.1b4"
         destructive: true
         models: []
+      x-hitron-destructive: true
       description: "Saves to /tmp/basic.cfg then readfile()s it; confPhp never produces the file on this build."
       security:
         - cookieAuth: []
@@ -2351,7 +2462,7 @@ paths:
       operationId: health_root
       summary: "App health summary"
       tags:
-        - system
+        - System
       x-hitron:
         requires: []
         state: php8
@@ -2359,6 +2470,7 @@ paths:
         verifiedOn: "8.7.1.0.1b4"
         destructive: false
         models: []
+      x-hitron-destructive: false
       responses:
         "200":
           description: "Envelope with errCode/errMsg plus the payload."
@@ -2369,7 +2481,7 @@ paths:
       operationId: health_settings
       summary: "App health thresholds"
       tags:
-        - system
+        - System
       x-hitron:
         requires: []
         state: session
@@ -2377,6 +2489,7 @@ paths:
         verifiedOn: "8.7.1.0.1b4"
         destructive: false
         models: []
+      x-hitron-destructive: false
       security:
         - cookieAuth: []
       responses:
@@ -2389,7 +2502,7 @@ paths:
       operationId: tempaccess_status
       summary: "Temporary access window"
       tags:
-        - system
+        - System
       x-hitron:
         requires: []
         state: verb
@@ -2397,6 +2510,7 @@ paths:
         verifiedOn: "8.7.1.0.1b4"
         destructive: false
         models: []
+      x-hitron-destructive: false
       responses:
         "200":
           description: "Envelope with errCode/errMsg plus the payload."
@@ -2407,7 +2521,7 @@ paths:
       operationId: addons_assia
       summary: "Assia agent state"
       tags:
-        - system
+        - System
       x-hitron:
         requires: []
         state: ok
@@ -2415,6 +2529,7 @@ paths:
         verifiedOn: "8.7.1.0.1b4"
         destructive: false
         models: []
+      x-hitron-destructive: false
       responses:
         "200":
           description: "Envelope with errCode/errMsg plus the payload."
@@ -2423,7 +2538,7 @@ paths:
       operationId: manage_root
       summary: "Admin account screen"
       tags:
-        - system
+        - System
       x-hitron:
         requires: []
         state: ok
@@ -2431,6 +2546,7 @@ paths:
         verifiedOn: "8.7.1.0.1b4"
         destructive: false
         models: []
+      x-hitron-destructive: false
       description: "Returns the literal text 'cusadmin,false' (current admin username + a flag), not JSON, to an unauthenticated GET on 8.7.1.0.1b4."
       responses:
         "200":
@@ -2440,7 +2556,7 @@ paths:
       operationId: upload_root
       summary: "Config upload handler"
       tags:
-        - system
+        - System
       x-hitron:
         requires: []
         state: ok
@@ -2448,6 +2564,7 @@ paths:
         verifiedOn: "8.7.1.0.1b4"
         destructive: true
         models: []
+      x-hitron-destructive: true
       description: "Unauthenticated .cfg upload into /var/tmp on this build; GET renders the form, POST accepts it."
       security:
         - cookieAuth: []
@@ -2459,7 +2576,7 @@ paths:
       operationId: telemetry_rfmetrics
       summary: "RF metrics bundle"
       tags:
-        - telemetry
+        - Telemetry
       x-hitron:
         requires: []
         state: ok
@@ -2467,6 +2584,7 @@ paths:
         verifiedOn: "8.7.1.0.1b4"
         destructive: false
         models: []
+      x-hitron-destructive: false
       responses:
         "200":
           description: "Envelope with errCode/errMsg plus the payload."
@@ -2475,7 +2593,7 @@ paths:
       operationId: telemetry_pnm
       summary: "PNM bundle (rxmer etc.)"
       tags:
-        - telemetry
+        - Telemetry
       x-hitron:
         requires: []
         state: ok
@@ -2483,6 +2601,7 @@ paths:
         verifiedOn: "8.7.1.0.1b4"
         destructive: false
         models: []
+      x-hitron-destructive: false
       responses:
         "200":
           description: "Envelope with errCode/errMsg plus the payload."
@@ -2495,7 +2614,7 @@ paths:
       operationId: telemetry_pnm_rxmer
       summary: "Downstream RxMER per subcarrier"
       tags:
-        - telemetry
+        - Telemetry
       x-hitron:
         requires: []
         state: ok
@@ -2503,6 +2622,7 @@ paths:
         verifiedOn: "8.7.1.0.1b4"
         destructive: false
         models: []
+      x-hitron-destructive: false
       responses:
         "200":
           description: "Envelope with errCode/errMsg plus the payload."
@@ -2515,7 +2635,7 @@ paths:
       operationId: telemetry_pnm_ch_est_coef
       summary: "Channel estimate coefficients"
       tags:
-        - telemetry
+        - Telemetry
       x-hitron:
         requires: []
         state: untested
@@ -2523,6 +2643,7 @@ paths:
         verifiedOn: null
         destructive: false
         models: []
+      x-hitron-destructive: false
       responses:
         "200":
           description: "Envelope with errCode/errMsg plus the payload."
@@ -2535,7 +2656,7 @@ paths:
       operationId: telemetry_pnm_us_pre_eq
       summary: "Upstream pre-equaliser coefficients"
       tags:
-        - telemetry
+        - Telemetry
       x-hitron:
         requires: []
         state: ok
@@ -2543,6 +2664,7 @@ paths:
         verifiedOn: "8.7.1.0.1b4"
         destructive: false
         models: []
+      x-hitron-destructive: false
       responses:
         "200":
           description: "Envelope with errCode/errMsg plus the payload."
@@ -2555,7 +2677,7 @@ paths:
       operationId: telemetry_pnm_mod_prof
       summary: "Modulation profiles"
       tags:
-        - telemetry
+        - Telemetry
       x-hitron:
         requires: []
         state: ok
@@ -2563,6 +2685,7 @@ paths:
         verifiedOn: "8.7.1.0.1b4"
         destructive: false
         models: []
+      x-hitron-destructive: false
       responses:
         "200":
           description: "Envelope with errCode/errMsg plus the payload."
@@ -2575,7 +2698,7 @@ paths:
       operationId: cm_reboot
       summary: "Reboot / factory-reset flag"
       tags:
-        - write
+        - Write
       x-hitron:
         requires: []
         state: untested
@@ -2583,6 +2706,7 @@ paths:
         verifiedOn: null
         destructive: true
         models: []
+      x-hitron-destructive: true
       description: "Body {reboot:1}, {factoryReset:1} or {restoreReset:1}; the last one execs reboot directly."
       security:
         - cookieAuth: []
@@ -2594,7 +2718,7 @@ paths:
       operationId: adminremote_manage
       summary: "Enable/disable WAN admin"
       tags:
-        - write
+        - Write
       x-hitron:
         requires: []
         state: untested
@@ -2602,6 +2726,7 @@ paths:
         verifiedOn: null
         destructive: true
         models: []
+      x-hitron-destructive: true
       security:
         - cookieAuth: []
       responses:
@@ -2612,7 +2737,7 @@ paths:
       operationId: adminremote_restore
       summary: "Restore config from an uploaded file"
       tags:
-        - write
+        - Write
       x-hitron:
         requires: []
         state: untested
@@ -2620,6 +2745,7 @@ paths:
         verifiedOn: null
         destructive: true
         models: []
+      x-hitron-destructive: true
       description: "Builds exec('confPhp restore '.$target) from an unvalidated filename."
       security:
         - cookieAuth: []
@@ -2631,7 +2757,7 @@ paths:
       operationId: manage_password
       summary: "Change admin password"
       tags:
-        - write
+        - Write
       x-hitron:
         requires: []
         state: untested
@@ -2639,6 +2765,7 @@ paths:
         verifiedOn: null
         destructive: true
         models: []
+      x-hitron-destructive: true
       security:
         - cookieAuth: []
       responses:
@@ -2649,7 +2776,7 @@ paths:
       operationId: manage_username
       summary: "Change admin username"
       tags:
-        - write
+        - Write
       x-hitron:
         requires: []
         state: untested
@@ -2657,6 +2784,7 @@ paths:
         verifiedOn: null
         destructive: true
         models: []
+      x-hitron-destructive: true
       security:
         - cookieAuth: []
       responses:
@@ -2667,7 +2795,7 @@ paths:
       operationId: users_login
       summary: "Browser session login"
       tags:
-        - write
+        - Write
       x-hitron:
         requires: []
         state: untested
@@ -2675,6 +2803,7 @@ paths:
         verifiedOn: null
         destructive: true
         models: []
+      x-hitron-destructive: true
       security:
         - cookieAuth: []
       responses:
@@ -2685,7 +2814,7 @@ paths:
       operationId: users_logout
       summary: "Browser session logout"
       tags:
-        - write
+        - Write
       x-hitron:
         requires: []
         state: untested
@@ -2693,6 +2822,7 @@ paths:
         verifiedOn: null
         destructive: true
         models: []
+      x-hitron-destructive: true
       security:
         - cookieAuth: []
       responses:
@@ -2703,7 +2833,7 @@ paths:
       operationId: api_register
       summary: "Vendor-app JWT registration"
       tags:
-        - write
+        - Write
       x-hitron:
         requires: []
         state: verb
@@ -2711,6 +2841,7 @@ paths:
         verifiedOn: "8.7.1.0.1b4"
         destructive: true
         models: []
+      x-hitron-destructive: true
       description: "GET returns errCode 005; POST expects {appid, seckey}."
       security:
         - appTokenAuth: []
@@ -2730,10 +2861,10 @@ paths:
           description: "errCode 005 - GET is not supported for this model."
   "/1/Device/WiFi/Radios/{index}":
     put:
-      operationId: wifi_radio_write
+      operationId: wifi_radio_write_put
       summary: "Update one radio"
       tags:
-        - write
+        - Write
       x-hitron:
         requires:
           - wifi
@@ -2742,6 +2873,7 @@ paths:
         verifiedOn: null
         destructive: true
         models: []
+      x-hitron-destructive: true
       security:
         - cookieAuth: []
       responses:
@@ -2755,10 +2887,10 @@ paths:
             type: integer
             minimum: 1
     patch:
-      operationId: wifi_radio_write
+      operationId: wifi_radio_write_patch
       summary: "Update one radio"
       tags:
-        - write
+        - Write
       x-hitron:
         requires:
           - wifi
@@ -2767,6 +2899,7 @@ paths:
         verifiedOn: null
         destructive: true
         models: []
+      x-hitron-destructive: true
       security:
         - cookieAuth: []
       responses:

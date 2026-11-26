@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-11-26T17:30:31.117199+00:00",
+  "generated_at": "2026-11-26T17:37:12.451815+00:00",
   "device": {
     "host": "{host}",
     "model_name": "CODA60",
@@ -8,7 +8,7 @@
     "sw_version": "8.7.1.0.1b4",
     "serial_number": "REDACTED",
     "rf_mac": "REDACTED",
-    "system_uptime": "02h:24m:27s"
+    "system_uptime": "02h:31m:09s"
   },
   "detection": {
     "profile": {
@@ -300,7 +300,7 @@
         "Freq_List"
       ],
       "count": 5,
-      "bytes": 1090,
+      "bytes": 1091,
       "detail": ""
     },
     {
@@ -484,7 +484,7 @@
         "rtdata"
       ],
       "count": null,
-      "bytes": 1574,
+      "bytes": 297,
       "detail": ""
     },
     {
@@ -586,7 +586,7 @@
       "class": "php8: missing function",
       "keys": null,
       "count": null,
-      "bytes": 78794,
+      "bytes": 78786,
       "detail": "Call to undefined function getInstanceIDs() [/www/hitron/app/controllers/AdminRemoteManage"
     },
     {
@@ -660,7 +660,7 @@
         "us_ofdma_channel"
       ],
       "count": null,
-      "bytes": 12868,
+      "bytes": 12880,
       "detail": ""
     },
     {
@@ -679,7 +679,7 @@
         "mod_prof"
       ],
       "count": null,
-      "bytes": 121141,
+      "bytes": 121117,
       "detail": ""
     },
     {
@@ -695,7 +695,7 @@
         "rxmer"
       ],
       "count": null,
-      "bytes": 19142,
+      "bytes": 19128,
       "detail": ""
     },
     {
@@ -727,7 +727,7 @@
         "us_pre_eq"
       ],
       "count": null,
-      "bytes": 7015,
+      "bytes": 17122,
       "detail": ""
     },
     {

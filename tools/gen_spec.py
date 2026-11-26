@@ -28,6 +28,7 @@ from hitron.adapters import ENDPOINTS, FIRMWARE_VERIFIED, state_counts  # noqa: 
 from hitron.models import all_profiles  # noqa: E402
 
 SPEC_PATH = ROOT / "specs" / "openapi-coda60.yaml"
+SITE_SPEC_PATH = ROOT / "site" / "openapi.json"
 GENERATED = date(2026, 11, 26).isoformat()
 
 
@@ -225,11 +226,11 @@ SCHEMAS: dict[str, object] = {
             "telSec": {"type": "string"},
             "telTftp": {"type": "string"},
             "telReg": {"type": "string"},
-            "Line1RegState": {"type": ["string", "null"]},
-            "Line2RegState": {"type": ["string", "null"]},
-            "Line3RegState": {"type": ["string", "null"]},
-            "Line4RegState": {"type": ["string", "null"]},
-            "NumberOfSLIC": {"type": ["integer", "null"]},
+            "Line1RegState": {"type": "string", "nullable": True},
+            "Line2RegState": {"type": "string", "nullable": True},
+            "Line3RegState": {"type": "string", "nullable": True},
+            "Line4RegState": {"type": "string", "nullable": True},
+            "NumberOfSLIC": {"type": "integer", "nullable": True},
         },
     },
     "MoCA": {
@@ -268,6 +269,10 @@ SCHEMAS: dict[str, object] = {
         "properties": {
             "mac": {"type": "string"},
             "timestamp": {"type": "string", "description": "Unix seconds, device clock"},
+            "rxmer": {"type": "string", "description": "base64 vendor-encoded per-subcarrier MER"},
+            "ch_est_coef": {"type": "string", "description": "base64 channel-estimation coefficients"},
+            "us_pre_eq": {"type": "string", "description": "base64 upstream pre-equalization"},
+            "mod_prof": {"type": "string", "description": "base64 modulation profile"},
         },
         "additionalProperties": True,
     },
@@ -352,17 +357,39 @@ Every operation is tagged with x-hitron.state as measured against
 everything else, including /1/Device/Manage, answers anonymously. Only
 operations marked with `security` present a cookie. The attached model catalog
 ({models} profiles, specs/models.json) is what src/hitron/adapters.py uses to
-decide which of these paths a given SKU should be asked for.""",
+decide which of these paths a given SKU should be asked for.
+""",
         "contact": {"name": "Netquor SDN - internal reverse-engineering notes"},
         "license": {"name": "Private - Netquor internal"},
     }
 
 
-def _operation(endpoint) -> dict[str, object]:
+_TAG_DISPLAY = {
+    "shell": "Shell",
+    "identity": "Identity",
+    "docsis": "CM",
+    "wifi": "WiFi",
+    "lan": "LAN",
+    "moca": "MoCA",
+    "firewall": "Firewall",
+    "voice": "Voice",
+    "diagnostics": "Diagnostics",
+    "spectrum": "Spectrum",
+    "system": "System",
+    "telemetry": "Telemetry",
+    "write": "Write",
+}
+
+
+def _operation(endpoint, method: str, multi: bool) -> dict[str, object]:
+    op_id = endpoint.id.replace(".", "_")
+    if multi:
+        op_id = f"{op_id}_{method.lower()}"
+    tag = _TAG_DISPLAY.get(endpoint.group, endpoint.group.title())
     operation: dict[str, object] = {
-        "operationId": endpoint.id.replace(".", "_"),
+        "operationId": op_id,
         "summary": endpoint.summary or endpoint.id,
-        "tags": [endpoint.group],
+        "tags": [tag],
         "x-hitron": {
             "requires": sorted(c for c in endpoint.requires if c != "always"),
             "state": endpoint.state,
@@ -371,6 +398,7 @@ def _operation(endpoint) -> dict[str, object]:
             "destructive": not endpoint.read,
             "models": list(endpoint.models),
         },
+        "x-hitron-destructive": not endpoint.read,
     }
     if endpoint.note:
         operation["description"] = endpoint.note
@@ -404,12 +432,14 @@ def _operation(endpoint) -> dict[str, object]:
 
 def build() -> dict[str, object]:
     paths: dict[str, object] = {}
+    used_tags: list[str] = []
     for endpoint in ENDPOINTS:
         item = paths.setdefault(endpoint.path, {})
         params = []
         for name in re.findall(r"\{(\w+)\}", endpoint.path):
             if name in _PATH_PARAMS:
                 params.append(_PATH_PARAMS[name])
+        multi = len(endpoint.methods) > 1
         for method in endpoint.methods:
             key = method.lower()
             if key in item:
@@ -417,10 +447,13 @@ def build() -> dict[str, object]:
                     f"duplicate operation {method} {endpoint.path}: "
                     f"{item[key]['operationId']} and {endpoint.id}"
                 )
-            operation = _operation(endpoint)
+            operation = _operation(endpoint, method, multi)
             if params:
                 operation["parameters"] = params + operation.get("parameters", [])
             item[method.lower()] = operation
+            tag = operation["tags"][0]
+            if tag not in used_tags:
+                used_tags.append(tag)
 
     return {
         "openapi": "3.0.3",
@@ -452,11 +485,7 @@ def build() -> dict[str, object]:
             "stateCounts": state_counts(),
             "note": "Paths, methods, capability tags and states come from src/hitron/adapters.py. Do not edit the paths block by hand; run tools/gen_spec.py.",
         },
-        "tags": [
-            {"name": name}
-            for name in ("shell", "identity", "docsis", "wifi", "lan", "moca", "firewall",
-                         "voice", "diagnostics", "spectrum", "system", "telemetry", "write")
-        ],
+        "tags": [{"name": name} for name in used_tags],
         "paths": paths,
     }
 
@@ -466,16 +495,28 @@ def main() -> None:
     ap.add_argument("--check", action="store_true", help="exit 1 if the spec is stale")
     args = ap.parse_args()
 
-    text = to_yaml(build())
+    document = build()
+    text = to_yaml(document)
+    site_json = json.dumps(document, indent=2, ensure_ascii=False) + "\n"
     if args.check:
-        current = SPEC_PATH.read_text() if SPEC_PATH.exists() else ""
-        if current != text:
-            print(f"{SPEC_PATH} is out of date; run tools/gen_spec.py", file=sys.stderr)
+        stale = []
+        if not SPEC_PATH.exists() or SPEC_PATH.read_text() != text:
+            stale.append(SPEC_PATH.relative_to(ROOT))
+        if not SITE_SPEC_PATH.exists() or SITE_SPEC_PATH.read_text() != site_json:
+            stale.append(SITE_SPEC_PATH.relative_to(ROOT))
+        if stale:
+            print(
+                "out of date: " + ", ".join(map(str, stale)) + "; run tools/gen_spec.py",
+                file=sys.stderr,
+            )
             raise SystemExit(1)
-        print(f"{SPEC_PATH} is current")
+        print(f"{SPEC_PATH.relative_to(ROOT)} and {SITE_SPEC_PATH.relative_to(ROOT)} are current")
         return
     SPEC_PATH.write_text(text)
+    SITE_SPEC_PATH.parent.mkdir(parents=True, exist_ok=True)
+    SITE_SPEC_PATH.write_text(site_json)
     print(f"wrote {SPEC_PATH.relative_to(ROOT)} ({len(text.splitlines())} lines)")
+    print(f"wrote {SITE_SPEC_PATH.relative_to(ROOT)}")
 
 
 if __name__ == "__main__":
