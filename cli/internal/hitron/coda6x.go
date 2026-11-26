@@ -163,7 +163,7 @@ func parseCodaDS(snap *Snapshot, data map[string]any) {
 		channel := Channel{
 			ID:         str(item["channelId"]),
 			PortID:     str(item["portId"]),
-			Modulation: str(item["modulation"]),
+			Modulation: dsModulation(str(item["modulation"])),
 		}
 		channel.Frequency, _ = num(item["frequency"])
 		channel.Power, channel.HasPower = signal(item["signalStrength"])
@@ -310,4 +310,14 @@ func (c *Client) HardReset(ctx context.Context) (map[string]any, error) {
 		return nil, fmt.Errorf("hard reset on %s: %w (CODA6X only)", c.Kind.Label(), ErrUnsupported)
 	}
 	return c.coda6xAction(ctx, map[string]int{"restoreReset": 1})
+}
+
+// dsModulation names the raw downstream modulation code. Only "2" is confirmed
+// (the modem's web page shows 256QAM for it); other codes pass through as
+// reported rather than being guessed.
+func dsModulation(code string) string {
+	if code == "2" {
+		return "256QAM"
+	}
+	return code
 }
