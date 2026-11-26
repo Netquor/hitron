@@ -20,6 +20,14 @@ func IsTerminal() bool {
 	return info.Mode()&os.ModeCharDevice != 0
 }
 
+// sttyOutput runs stty against our own stdin. Without cmd.Stdin set, the child
+// reads /dev/null, so every query fails as "not a terminal" even in a real one.
+func sttyOutput(args ...string) ([]byte, error) {
+	cmd := exec.Command("stty", args...)
+	cmd.Stdin = os.Stdin
+	return cmd.Output()
+}
+
 type rawState struct {
 	saved string
 }
@@ -27,7 +35,7 @@ type rawState struct {
 // EnterRaw puts the terminal in raw mode without echo. Restore is safe to call
 // more than once.
 func EnterRaw() (*rawState, error) {
-	out, err := exec.Command("stty", "-g").Output()
+	out, err := sttyOutput("-g")
 	if err != nil {
 		return nil, fmt.Errorf("stdin is not a terminal")
 	}
@@ -65,7 +73,7 @@ func ReadKey() (byte, error) {
 // ReadPassword reads a line with echo disabled.
 func ReadPassword(prompt string) (string, error) {
 	fmt.Fprint(os.Stdout, prompt)
-	out, err := exec.Command("stty", "-g").Output()
+	out, err := sttyOutput("-g")
 	if err != nil {
 		line, readErr := bufio.NewReader(os.Stdin).ReadString('\n')
 		return strings.TrimRight(line, "\r\n"), readErr
@@ -100,7 +108,7 @@ func Size() (int, int) {
 		}
 	}
 	if width == 100 && height == 32 {
-		if out, err := exec.Command("stty", "size").Output(); err == nil {
+		if out, err := sttyOutput("size"); err == nil {
 			fields := strings.Fields(string(out))
 			if len(fields) == 2 {
 				if rows, err := strconv.Atoi(fields[0]); err == nil && rows > 8 {

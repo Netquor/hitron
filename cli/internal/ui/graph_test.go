@@ -1,8 +1,11 @@
 package ui
 
 import (
+	"fmt"
 	"strings"
 	"testing"
+
+	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/Netquor/hitron/cli/internal/hitron"
 )
@@ -77,7 +80,7 @@ func TestSparklineRightAlignedAndScaled(t *testing.T) {
 	}
 }
 
-func TestFrameWithAndWithoutGraphs(t *testing.T) {
+func TestViewWithAndWithoutGraphs(t *testing.T) {
 	prev := Color
 	Color = false
 	defer func() { Color = prev }()
@@ -85,12 +88,35 @@ func TestFrameWithAndWithoutGraphs(t *testing.T) {
 	s := snap(4, 38, 40)
 	h := NewHistory()
 	h.Push(s)
-	with := strings.Join(Frame(s, h, 120, 50, 5e9, true, ""), "\n")
-	without := strings.Join(Frame(s, nil, 120, 50, 5e9, true, ""), "\n")
+	m := model{snap: s, history: h, showGraphs: true, auto: true, interval: 5e9, width: 120, height: 60}
+	with := m.View()
+	m.showGraphs = false
+	without := m.View()
 	if !strings.Contains(with, "Trends") || !strings.Contains(with, "DS SNR") {
-		t.Fatalf("graphs missing from frame:\n%s", with)
+		t.Fatalf("graphs missing from view:\n%s", with)
 	}
 	if strings.Contains(without, "Trends") {
 		t.Fatalf("graphs shown when disabled")
+	}
+}
+
+func TestUpdateKeysAndRefreshGuard(t *testing.T) {
+	m := model{history: NewHistory(), auto: true, showGraphs: true, interval: 5e9, loading: true}
+	// a tick while a poll is in flight must not start another
+	next, _ := m.Update(tickMsg{})
+	if !next.(model).loading {
+		t.Fatalf("loading cleared by tick")
+	}
+	next, _ = next.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'g'}})
+	if next.(model).showGraphs {
+		t.Fatalf("g did not toggle graphs")
+	}
+	// a failed poll keeps the previous snapshot and surfaces the error
+	good := snap(4, 38, 40)
+	next, _ = next.Update(snapMsg{snap: good})
+	next, _ = next.Update(snapMsg{err: fmt.Errorf("boom")})
+	got := next.(model)
+	if got.snap != good || got.err == nil || got.history.Samples != 1 {
+		t.Fatalf("failed poll should keep data, set err, not record: %+v", got)
 	}
 }
