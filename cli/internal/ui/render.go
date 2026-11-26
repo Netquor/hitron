@@ -550,11 +550,11 @@ func formatUptime(seconds int64) string {
 	minutes := (seconds % 3600) / 60
 	switch {
 	case days > 0:
-		return fmt.Sprintf("%dd %dh %dm", days, hours, minutes)
+		return fmt.Sprintf("%s %d h %d m", plural(int(days), "day"), hours, minutes)
 	case hours > 0:
-		return fmt.Sprintf("%dh %dm", hours, minutes)
+		return fmt.Sprintf("%d h %d m", hours, minutes)
 	default:
-		return fmt.Sprintf("%dm %ds", minutes, seconds%60)
+		return fmt.Sprintf("%d m %d s", minutes, seconds%60)
 	}
 }
 
