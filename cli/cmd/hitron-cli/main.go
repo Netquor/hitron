@@ -26,7 +26,10 @@ type options struct {
 	token    string
 	timeout  time.Duration
 	interval time.Duration
-	limit    int
+	// intervalSet is true when --interval or HITRON_INTERVAL chose the value,
+	// so a per-model default does not override it.
+	intervalSet bool
+	limit       int
 
 	json     bool
 	noColor  bool
@@ -230,6 +233,11 @@ func chooseTheme(flagValue string) error {
 }
 
 func runMonitor(ctx context.Context, client *hitron.Client, opts options) int {
+	// The CODA-57 and CODA-60 answer local reads quickly, so they refresh every
+	// second unless the user picked an interval.
+	if !opts.intervalSet && (client.Kind == hitron.KindCoda6X || client.Kind == hitron.KindCoda57) {
+		opts.interval = time.Second
+	}
 	fetch := func(runCtx context.Context) (*hitron.Snapshot, error) {
 		return snapshotWithTimeout(runCtx, client, opts.timeout)
 	}
@@ -382,6 +390,7 @@ func parseArgs(argv []string) (options, error) {
 	if value := os.Getenv("HITRON_INTERVAL"); value != "" {
 		if parsed, err := parseInterval(value); err == nil {
 			opts.interval = parsed
+			opts.intervalSet = true
 		}
 	}
 
@@ -450,6 +459,7 @@ func parseArgs(argv []string) (options, error) {
 					return opts, fmt.Errorf("--interval: %w", err)
 				}
 				opts.interval = parsed
+				opts.intervalSet = true
 			case "--limit":
 				got, err := takeValue()
 				if err != nil {
@@ -613,7 +623,7 @@ channel, MoCA (on an HT-EM5), logs, and switch ports.
 Flags:
   --once            print one report and exit (no TUI)
   --json            machine-readable snapshot
-  --interval 5s     live refresh interval
+  --interval 5s     live refresh interval (default 1s on CODA-57 / CODA-60)
   --limit 20        log lines in the one-shot report
   --host 10.0.0.1   gateway address
 
@@ -762,7 +772,7 @@ right before it acts, so the action is one traceable operation.`
   HITRON_PASSWORD    password
   HITRON_APP_TOKEN   CODA6X Ht-App-Auth token
   HITRON_TIMEOUT     request timeout in seconds (10)
-  HITRON_INTERVAL    live refresh interval (5s)
+  HITRON_INTERVAL    live refresh interval (5s; 1s on CODA-57 / CODA-60)
   HITRON_THEME       color theme (neon, synthwave, dracula, nord, gruvbox, matrix)
   NO_COLOR           disable ANSI color
 
@@ -860,7 +870,7 @@ Global flags:
   -p, --password PASS    password
       --token TOKEN      CODA6X Ht-App-Auth app token
       --timeout 10s      per-request timeout
-      --interval 5s      TUI refresh interval
+      --interval 5s      TUI refresh interval (1s default on CODA-57 / CODA-60)
       --limit 20         log lines
       --once             one report, no TUI
       --json             machine-readable output
