@@ -330,17 +330,45 @@ func Logs(w io.Writer, s *hitron.Snapshot, limit int) {
 	}
 	rows := make([][]string, 0, limit)
 	for _, entry := range s.Logs[:limit] {
-		priority := entry.Priority
-		if entry.Type != "" {
-			priority = entry.Type
+		ev := entry.Friendly()
+		when := ev.When
+		if ev.ClockUnset {
+			when = Dim("no clock")
+		} else if when == "" {
+			when = Dim("—")
 		}
-		rows = append(rows, []string{entry.Time, emptyDash(priority), entry.Event})
+		rows = append(rows, []string{when, severityCell(ev.Severity), eventText(ev)})
 	}
 	writeLines(w, columns(
 		[]string{"Time", "Level", "Event"},
 		rows,
-		[]int{24, 11, 80},
+		[]int{13, 5, 80},
 	))
+}
+
+func severityCell(sev hitron.Severity) string {
+	switch sev {
+	case hitron.SevCritical:
+		return Red("CRIT")
+	case hitron.SevError:
+		return Red("ERR")
+	case hitron.SevWarning:
+		return Yellow("WARN")
+	case hitron.SevNotice:
+		return Dim("note")
+	default:
+		return Dim("info")
+	}
+}
+
+// eventText colours the summary by severity and highlights the arrow in
+// "from → to" changes.
+func eventText(ev hitron.FriendlyEvent) string {
+	text := strings.ReplaceAll(ev.Summary, " → ", " "+AccentBold("→")+" ")
+	if ev.Severity == hitron.SevCritical || ev.Severity == hitron.SevError {
+		return Red(ev.Summary)
+	}
+	return text
 }
 
 // Moca prints the HT-EM5 view.

@@ -536,7 +536,7 @@ func (m model) bodyView() string {
 		panels = append(panels, panel("MoCA", capture(func(b *strings.Builder) { Moca(b, m.snap) })))
 	}
 	if len(m.snap.Logs) > 0 {
-		panels = append(panels, panel("Logs", capture(func(b *strings.Builder) { Logs(b, m.snap, 6) })))
+		panels = append(panels, panel("Logs", capture(func(b *strings.Builder) { Logs(b, m.snap, 8) })))
 	}
 	return lipgloss.JoinVertical(lipgloss.Left, panels...)
 }

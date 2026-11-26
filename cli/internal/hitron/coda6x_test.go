@@ -286,3 +286,45 @@ func TestCMTSMacFromLogs(t *testing.T) {
 		t.Fatalf("got %q, want empty", got)
 	}
 }
+
+func TestFriendlyLogEvents(t *testing.T) {
+	now := time.Date(2026, 11, 26, 12, 0, 0, 0, time.UTC)
+	tail := ";CM-MAC=b0:f5:30:da:e6:a0;CMTS-MAC=00:90:f0:78:00:00;CM-QOS=1.1;CM-VER=4.0;"
+	cases := []struct {
+		entry LogEntry
+		want  string
+		sev   Severity
+	}{
+		{LogEntry{Time: "11/26/26 09:19:38", Type: "67061601", Priority: "notice",
+			Event: "US profile assignment change.  US Chan ID: 42; Previous Profile: 9; New Profile: 6." + tail},
+			"US ch 42 profile 9 → 6", SevNotice},
+		{LogEntry{Priority: "critical", Event: "No Ranging Response received - T3 time-out" + tail}, "Ranging timed out (T3)", SevCritical},
+		{LogEntry{Priority: "critical", Event: "Received Response to Broadcast Maintenance Request, But no Unicast Maintenance opportunities received - T4 time out" + tail}, "Maintenance timed out (T4)", SevCritical},
+		{LogEntry{Priority: "warning", Event: "Lost MDD Timeout" + tail}, "Lost downstream MDD (timeout)", SevWarning},
+		{LogEntry{Priority: "notice", Event: "CM Reboot Reason : SW_UPGRADE_REBOOT" + tail}, "Reboot · software upgrade", SevNotice},
+		{LogEntry{Priority: "notice", Event: "CM Reboot Reason : POWER_ON" + tail}, "Reboot · power on", SevNotice},
+		{LogEntry{Priority: "warning", Event: "MIMO Event MIMO: Stored MIMO=-1 post cfg file MIMO=-1" + tail}, "MIMO setting: stored -1, config file -1", SevWarning},
+		{LogEntry{Priority: "notice", Event: "SW download Successful - Via NMS"}, "Firmware download finished", SevNotice},
+		{LogEntry{Priority: "notice", Event: "DHCP Renew - lease parameters tftp file-^1/36269148/Hitron modified" + tail}, "DHCP renew · config file path changed", SevNotice},
+		{LogEntry{Priority: "notice", Event: "CM-STATUS message sent. Event Type Code: 24; Chan ID: 159 ; DSID: N/A; MAC Addr: N/A; OFDM/OFDMA Profile ID: 0 1 ." + tail},
+			"OFDM profile recovered · ch 159 · profile 0 1", SevNotice},
+		{LogEntry{Priority: "notice", Event: "CM-STATUS message sent. Event Type Code: 4; Chan ID: 159 ; DSID: N/A; MAC Addr: N/A; OFDM/OFDMA Profile ID: N/A." + tail},
+			"Secondary channel MDD recovered · ch 159", SevNotice},
+		{LogEntry{Priority: "5", Type: "Information", Event: "Something unfamiliar" + tail}, "Something unfamiliar", SevWarning},
+	}
+	for _, c := range cases {
+		got := c.entry.friendlyAt(now)
+		if got.Summary != c.want || got.Severity != c.sev {
+			t.Errorf("%q\n got %q (%s)\nwant %q (%s)", c.entry.Event, got.Summary, got.Severity, c.want, c.sev)
+		}
+		if strings.Contains(got.Message, "CM-MAC") {
+			t.Errorf("trailer not removed: %q", got.Message)
+		}
+	}
+	if f := (LogEntry{Time: "11/26/26 09:19:38"}).friendlyAt(now); f.When != "Nov 26 09:19" {
+		t.Errorf("when = %q", f.When)
+	}
+	if f := (LogEntry{Time: "12/31/69 18:00:41"}).friendlyAt(now); !f.ClockUnset || f.When != "" {
+		t.Errorf("unset clock = %+v", f)
+	}
+}
