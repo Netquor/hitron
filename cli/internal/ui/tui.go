@@ -37,6 +37,8 @@ type TUIOptions struct {
 	NoLogin bool
 
 	NoMouse bool
+	// NoBackground turns the themed gradient background off.
+	NoBackground bool
 }
 
 type dialogStage int
@@ -91,6 +93,7 @@ type model struct {
 
 	reboot            RebootFunc
 	noLogin           bool
+	bg                bool
 	preUser, prePass  string
 	dlg               dialogStage
 	fUser, fPass, fOK []rune
@@ -111,7 +114,7 @@ func RunTUI(ctx context.Context, o TUIOptions) error {
 		ctx: ctx, fetch: o.Fetch, interval: interval, host: o.Host,
 		history: NewHistory(), auto: true, showGraphs: true,
 		width: 100, height: 32, loading: true,
-		reboot: o.Reboot, noLogin: o.NoLogin, preUser: o.Username, prePass: o.Password,
+		bg: !o.NoBackground && TrueColor(), reboot: o.Reboot, noLogin: o.NoLogin, preUser: o.Username, prePass: o.Password,
 	}
 	opts := []tea.ProgramOption{tea.WithAltScreen(), tea.WithContext(ctx)}
 	if !o.NoMouse {
@@ -250,6 +253,8 @@ func (m model) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.showGraphs = !m.showGraphs
 	case "t":
 		SaveTheme(NextTheme().Name)
+	case "b":
+		m.bg = !m.bg
 	case "z":
 		if m.snap != nil {
 			if m.fecBase != nil {
@@ -341,6 +346,14 @@ func (m model) dialogEnter() (tea.Model, tea.Cmd) {
 // ---- views -----------------------------------------------------------------
 
 func (m model) View() string {
+	out := m.render()
+	if m.bg {
+		return paintBackground(out, m.width, m.height)
+	}
+	return out
+}
+
+func (m model) render() string {
 	switch {
 	case m.dlg != dlgNone:
 		return m.dialogView()
@@ -551,6 +564,7 @@ func (m model) helpView() string {
 		{"r / space", "refresh now"},
 		{"a", "toggle automatic refresh"},
 		{"g", "toggle trend graphs"},
+		{"b", "toggle the gradient background (needs a 24-bit colour terminal)"},
 		{"z", "zero the FEC counters (toggle; shows counts since now)"},
 		{"t", "next theme (remembered for next time)"},
 		{"j / k, ↓ / ↑", "scroll (the mouse wheel works too)"},

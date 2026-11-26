@@ -34,6 +34,7 @@ type options struct {
 	once     bool
 	noBanner bool
 	noMouse  bool
+	noBg     bool
 	theme    string
 
 	command string
@@ -233,10 +234,11 @@ func runMonitor(ctx context.Context, client *hitron.Client, opts options) int {
 		return snapshotWithTimeout(runCtx, client, opts.timeout)
 	}
 	tui := ui.TUIOptions{
-		Fetch:    fetch,
-		Interval: opts.interval,
-		Host:     client.Addr(),
-		NoMouse:  opts.noMouse,
+		Fetch:        fetch,
+		Interval:     opts.interval,
+		Host:         client.Addr(),
+		NoMouse:      opts.noMouse,
+		NoBackground: opts.noBg,
 	}
 	// Reboot is offered where the CLI's own reboot command works. The CODA-57
 	// has no confirmed write endpoint, so it gets no button at all.
@@ -470,6 +472,8 @@ func parseArgs(argv []string) (options, error) {
 				opts.noBanner = true
 			case "--no-mouse":
 				opts.noMouse = true
+			case "--no-bg":
+				opts.noBg = true
 			case "--theme":
 				got, err := takeValue()
 				if err != nil {
@@ -646,6 +650,8 @@ the TUI; they stay separate commands. The CODA-57 has no reboot button.
 Flags:
   --theme NAME   color theme
   --no-mouse     do not capture the mouse (lets you select text normally)
+  --no-bg        no gradient background (it is also skipped unless the terminal
+                 reports 24-bit colour via COLORTERM; b toggles it live)
 
 The TUI needs a real terminal. Use --once to get the same report as text, or
 --json for a snapshot.
@@ -863,6 +869,7 @@ Global flags:
       --no-banner        suppress the startup art
       --theme NAME       TUI color theme (neon, synthwave, dracula, nord, gruvbox, matrix)
       --no-mouse         do not capture the mouse in the TUI
+      --no-bg            no gradient background in the TUI
   -h, --help             this text
   -V, --version          version
 

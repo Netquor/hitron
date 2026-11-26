@@ -3,6 +3,8 @@ package ui
 import (
 	"fmt"
 	"strings"
+
+	"github.com/charmbracelet/lipgloss"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -149,5 +151,21 @@ func TestChannelsTypedAndHidesDisabledOFDMA(t *testing.T) {
 	}
 	if strings.Index(out, "561.0 MHz") > strings.Index(out, "567.0 MHz") {
 		t.Fatalf("SC-QAM channels should be sorted by channel ID:\n%s", out)
+	}
+}
+
+func TestPaintBackgroundKeepsWidthAndSurvivesResets(t *testing.T) {
+	out := paintBackground("a\x1b[31mred\x1b[0m tail\nb", 10, 3)
+	lines := strings.Split(out, "\n")
+	if len(lines) != 3 {
+		t.Fatalf("lines = %d, want 3", len(lines))
+	}
+	for i, l := range lines {
+		if w := lipgloss.Width(l); w != 10 {
+			t.Errorf("line %d width %d, want 10", i, w)
+		}
+	}
+	if strings.Count(lines[0], "\x1b[48;2;") < 2 {
+		t.Error("background must be re-issued after a reset")
 	}
 }
