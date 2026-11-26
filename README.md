@@ -30,9 +30,44 @@ Read (prints a JSON snapshot to stdout):
 
 ```bash
 hitron ht-em5 192.168.0.212 --phy-rates
-hitron coda60 192.168.100.1
+hitron coda60 192.168.100.1                # detect model, poll only what it supports
+hitron coda60 192.168.100.1 --no-detect    # poll every known endpoint (legacy shape)
+hitron coda60 192.168.100.1 --model coda60 # force a profile if detection is wrong
 hitron coda57 192.168.100.1 --spec-check
 ```
+
+Model catalog and read-only verification:
+
+```bash
+hitron coda60-models                # every known profile + capability set
+hitron coda60-models coda6011uv     # one profile
+hitron coda60-verify 192.168.100.1 --out verify.json
+hitron coda60-verify 192.168.100.1 --model coda60 --group docsis
+```
+
+`coda60-verify` is GET-only and re-measures every endpoint in the resolved
+profile's plan, including ones this firmware is known to break, so the report is
+a current measurement rather than a restatement. The latest run against a
+customer-owned CODA60 on `8.7.1.0.1b4` is in `docs/VERIFICATION.md`; the machine
+readable copy is `specs/verification-coda60.json`.
+
+### Model detection and capability gating
+
+The CODA family shares one firmware image, so the app exposes WiFi, voice, MoCA
+and router endpoints whether or not the SKU has the hardware. `hitron coda60`
+resolves a profile first (explicit `--model`, then `hw_model` from the root
+`GET /deviceinfo`, then `Device.DeviceInfo.ModelName`, then a probe-refined
+generic profile) and only polls the endpoints that profile can answer. A CODA60
+— DOCSIS 4.0, one Ethernet port, no WiFi/voice/MoCA/USB — is never asked for
+`/WiFi/*`, `/MTA/*`, `/MoCA` or the firewall. `specs/models.json` is the
+catalog; `src/hitron/adapters.py` is the endpoint registry that both the client
+and the verifier consume, and `specs/openapi-coda60.yaml` is generated from it
+(`python tools/gen_spec.py`).
+
+Two caveats that matter on real hardware: `/WiFi/WPS` and `/MTA/StatusInfo`
+return `200` with empty hardware fields on a unit that has neither, so detection
+keys on payload evidence rather than status codes; and an empty USB list is an
+empty port, not an absent one.
 
 Write/action — each is its own named subcommand (never a flag on the read
 command), needs a login, and the destructive ones need `--yes-really-do-this`:
@@ -62,6 +97,7 @@ Or via environment variables (handy under systemd/Docker):
 ```bash
 export HITRON_HT_EM5_HOSTS=192.168.0.212,192.168.0.241,192.168.0.60
 export HITRON_CODA60_HOST=192.168.100.1
+export HITRON_CODA60_MODEL=coda60      # optional: skip detection
 export HITRON_EXPORTER_PORT=9877
 hitron-exporter
 ```
@@ -70,6 +106,10 @@ CODA6X/CODA-57 series use `modem_*` names matching the metric names an
 earlier standalone exporter already used, so an existing Prometheus
 `scrape_config` pointed at port 9877 needs no changes. New HT-EM5/MoCA series
 use a `hitron_` prefix.
+
+The exporter detects the CODA6X model once per host (~10 GETs) and caches it,
+so subsequent scrapes only hit the endpoints that SKU supports. Pass
+`--coda60-model` / `HITRON_CODA60_MODEL` to skip detection entirely.
 
 ## Library
 
@@ -81,7 +121,9 @@ async def main():
     async with HitronMocaClient("192.168.0.212") as bridge:
         print(await bridge.get_all())
 
-    print(await Coda60Client("192.168.100.1").get_all())
+    client = Coda60Client("192.168.100.1")
+    match = await client.detect_profile()        # -> hw_model CODA60, capability-gated
+    print(await client.get_all(profile=match.profile))
     print(await Coda57Client("192.168.100.1").get_all())
 
 asyncio.run(main())
@@ -93,6 +135,10 @@ asyncio.run(main())
 `specs/openapi-coda57-legacy.yaml` — OpenAPI 3.0, reverse engineered from live
 devices and (for CODA6X) a static read of a real signed firmware image.
 Not official Hitron documentation.
+
+`openapi-coda60.yaml` is generated: paths, methods, capability tags and
+per-firmware state come from `src/hitron/adapters.py` via `tools/gen_spec.py`.
+`specs/models.json` is the model/capability catalog. Edit those, not the YAML.
 
 ## Tests
 

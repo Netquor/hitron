@@ -1,63 +1,49 @@
-openapi: 3.0.3
+openapi: "3.0.3"
 info:
-  title: Hitron CODA6X (e.g. CODA-60) — console REST API (reverse engineered)
-  version: "8.5.0.0.110"
+  title: "Hitron CODA6X console REST API (reverse engineered)"
+  version: "8.7.1.0.1b4"
   description: |
-    Not an official Hitron spec. Reverse engineered from a static read of a real
-    CODA6X-863 firmware image (`CODA6X-8.5.0.0.4b1-...-D3.1.sbn`, CableLabs CVC-signed,
-    Puma8/MaxLinear, Yocto `poky-lgm`, `DISTRO_NAME="PacketCable 1.5 EMTA"`, built
-    2026-02-24). Nothing was executed from the image; it was unwrapped (detached
-    PKCS#7 signature) and its embedded SquashFS rootfs was mounted read-only.
+    Not an official Hitron specification. Reconstructed from a static read of a real
+    CODA6X firmware image (SquashFS rootfs mounted read-only; nothing executed from
+    it) and then verified GET-by-GET against a live, customer-owned CODA60 running
+    8.7.1.0.1b4 on 2026-11-26.
 
-    Architecture: `lighttpd` + `php-fpm` serve a small Fat-Free-Framework PHP app at
-    `www/hitron/`. Its `app/routes.ini` maps URL patterns to controller classes in
-    `app/controllers/*.php`. Those controllers call bare global functions `getStr()` /
-    `setStr()` / `getInstanceIds()` / `addTblObj()` / `delTblObj()`, which are NOT PHP —
-    they are native functions from `extension=cosa.so` (`/fss/gw/usr/ccsp/cosa.so`),
-    RDK-B's standard "COSA" bridge into the TR-181 `Device.*` object tree. So every
-    endpoint below is really a thin JSON view over a few TR-181 (and Hitron
-    `Device.X_HITRON_COM_*` extension) parameters — the same data model CableLabs/RDK-B
-    document publicly, just fronted by this PHP layer instead of TR-069/CWMP.
+    Architecture: lighttpd + php-fpm serve a Fat-Free-Framework PHP app at
+    www/hitron/. app/routes.ini maps URL patterns to app/controllers/*.php; those
+    controllers call the RDK-B COSA bridge (extension=cosa.so) which speaks TR-181
+    Device.*. Every path below is therefore a thin projection of a TR-181 subtree,
+    not an independent API.
 
-    This matches the field names already used by the existing standalone scripts in
-    `~/Documents/hitron-client/CODA_60.py` (independently written against a live unit),
-    which this spec treats as a second, corroborating source for field shapes. It is
-    ALSO the API this repo's `server/src/features/modem/service.ts` consumes (today via
-    a sidecar aggregator writing `modem_metrics.json`, not by calling this API directly).
+    Read surface, measured on 8.7.1.0.1b4: 50 working, 53 PHP-8 fatals, 5 session-gated, 1 verb-rejected, 3 untested.
+    A PHP-8 fatal is a defect in the shipped controller (undefined array key,
+    getInstanceIds vs getInstanceIDs, a parameter declared before a required one),
+    not a request-shaping problem: it fails identically for the browser UI.
 
-    Base path: all app routes are under `/1/Device/...`. `@info`-style route params in
-    routes.ini become query-string-free path segments that this spec models explicitly
-    (e.g. `/1/Device/CM/SysInfo`, not `/1/Device/CM/@info?info=SysInfo`) — confirm the
-    exact querystring vs. path-segment convention against a live unit's traffic before
-    wiring a client; both are plausible given the router pattern seen (`@name`).
+    Two responses on this platform are stubs and must not be read as capability
+    evidence: /WiFi/* and /MTA/StatusInfo return 200 with empty strings or null
+    hardware fields on a unit that has no radios or SLIC. Model/capability detection
+    therefore keys on /deviceinfo's hw_model plus payload evidence, and each
+    endpoint carries its `requires` capability in x-hitron.
 
-    Auth: two independent schemes observed in the source.
-      1. Browser session cookie, `SESSION.uid`, set by `POST /1/Device/Users/Login`.
-         Unauthenticated-exempt routes (hardcoded in Controller::check_session): `/`,
-         `/1/Device/CM/Version`, `/1/Device/Users/Login`, `/1/Device/Users/Logout`,
-         `/1/Device/API/Register`.
-      2. Vendor-app bearer auth: `POST /1/Device/API/Register` with an RS256 JWT (issuer
-         must be the literal string "Hitron", vendor checked against
-         `Device.X_HITRON_COM_App.VendorList`) returns a token; later requests send it as
-         a custom `ht-app-header` header.
-
-    Known build quirks (informational, not exploited): shipped with `DEBUG=5` in
-    `app/config.ini` (Fat-Free verbose-error mode); `UserAction.php`'s token check writes
-    a debug line to world-readable `/tmp/app-debug.log` on every call; a user
-    creation/reset path sets a fallback `HashPassword` of `md5("password")` — worth
-    confirming whether that path is reachable without a prior factory reset before
-    relying on it as "safe by default".
+    Every operation is tagged with x-hitron.state as measured against
+    8.7.1.0.1b4. Five reads require the web UI session and one rejects GET;
+    everything else, including /1/Device/Manage, answers anonymously. Only
+    operations marked with `security` present a cookie. The attached model catalog
+    (18 profiles, specs/models.json) is what src/hitron/adapters.py uses to
+    decide which of these paths a given SKU should be asked for.
   contact:
-    name: Netquor SDN — internal reverse-engineering notes
+    name: "Netquor SDN - internal reverse-engineering notes"
+  license:
+    name: "Private - Netquor internal"
 externalDocs:
-  description: Unified Hitron KB (HT-EM5 + CODA6X, existing assets, recommendations)
-  url: ./KB.md
-
+  description: "Unified Hitron KB (HT-EM5 + CODA6X + CODA-57)"
+  url: "./KB.md"
 servers:
-  - url: http://{host}
+  - url: "http://{host}"
     variables:
-      host: { default: 192.168.100.1, description: The gateway's LAN IP. }
-
+      host:
+        default: "192.168.100.1"
+        description: "The gateway's LAN IP."
 components:
   securitySchemes:
     cookieAuth:
@@ -69,313 +55,2727 @@ components:
       in: header
       name: ht-app-header
   schemas:
+    Envelope:
+      type: object
+      description: "Every response wraps its payload in this envelope. errCode 000 is success; 001 is a rejected parameter or missing session; 005 is a verb the model does not support."
+      properties:
+        errCode:
+          type: string
+          example: "000"
+        errMsg:
+          type: string
+    DeviceInfo:
+      type: object
+      description: "GET /deviceinfo (root telemetry route). The only place hw_model is populated on 8.7.1.0.1b4; this is what model detection keys on."
+      properties:
+        device_id:
+          type: string
+          description: "RF/device MAC"
+        mso:
+          type: string
+        hw_model:
+          type: string
+          example: CODA60
+        hw_manufacturer:
+          type: string
+        hardware_version:
+          type: string
+          example: "1A"
+        software_version:
+          type: string
+          example: "8.7.1.0.1b4"
+        serial_number:
+          type: string
+        parent:
+          type: string
+        connect_type:
+          type: string
+    CmVersion:
+      type: object
+      description: "GET /1/Device/CM/Version. Unauthenticated on this build."
+    RouterSysInfo:
+      type: object
+      description: "GET /1/Device/Router/SysInfo. modelName/vendorName/deploymentName are null even when the device reports hw_model elsewhere."
+      properties:
+        hwVersion:
+          type: string
+        swVersion:
+          type: string
+        serialNumber:
+          type: string
+        systemTime:
+          type: string
+        rfMac:
+          type: string
+        systemUptime:
+          type: string
     DocsisDs:
       type: object
-      description: One locked downstream SC-QAM channel. Built in ModelInfo::getDocsisDs() from Device.Docsis's `DownstreamChannel_Overview` per-port parameter; only Locked ports are returned.
+      description: "One locked downstream SC-QAM channel."
       properties:
-        portId: { type: integer }
-        frequency: { type: string, description: "Hz" }
-        modulation: { type: string }
-        signalStrength: { type: string, description: dBmV }
-        snr: { type: string, description: dB }
-        channelId: { type: string }
-        dsoctets: { type: string }
-        correcteds: { type: string }
-        uncorrect: { type: string }
+        portId:
+          type: integer
+        frequency:
+          type: string
+          description: Hz
+        modulation:
+          type: string
+        signalStrength:
+          type: string
+          description: dBmV
+        snr:
+          type: string
+          description: dB
+        channelId:
+          type: string
+        dsoctets:
+          type: string
+        correcteds:
+          type: string
+        uncorrect:
+          type: string
     DocsisUs:
       type: object
       properties:
-        portId: { type: integer }
-        frequency: { type: string }
-        modtype: { type: string }
-        signalStrength: { type: string }
-        bandwidth: { type: string }
-        channelId: { type: string }
-        scdmaMode: { type: string }
+        portId:
+          type: integer
+        frequency:
+          type: string
+        modtype:
+          type: string
+        signalStrength:
+          type: string
+        bandwidth:
+          type: string
+        channelId:
+          type: string
+        scdmaMode:
+          type: string
     DocsisDsOfdm:
       type: object
       properties:
-        receive: { type: string }
-        ffttype: { type: string }
-        Subcarr0freqFreq: { type: string }
-        plclock: { type: string }
-        ncplock: { type: string }
-        mdc1lock: { type: string }
-        plcpower: { type: string }
-        SNR: { type: string }
-        dsoctets: { type: string }
-        correcteds: { type: string }
-        uncorrect: { type: string }
-        index: { type: string }
+        receive:
+          type: string
+        ffttype:
+          type: string
+        Subcarr0freqFreq:
+          type: string
+        plclock:
+          type: string
+        ncplock:
+          type: string
+        mdc1lock:
+          type: string
+        plcpower:
+          type: string
+        SNR:
+          type: string
+        dsoctets:
+          type: string
+        correcteds:
+          type: string
+        uncorrect:
+          type: string
+        index:
+          type: string
     DocsisUsOfdm:
       type: object
       properties:
-        uschindex: { type: string }
-        state: { type: string }
-        frequency: { type: string }
-        digAtten: { type: string }
-        channelBw: { type: string }
-        repPower: { type: string, description: dBmV }
-        repPower1_6: { type: string, description: "DOCSIS 3.0-equivalent reported power, dBmV" }
-        fftVal: { type: string }
+        uschindex:
+          type: string
+        state:
+          type: string
+        frequency:
+          type: string
+        digAtten:
+          type: string
+        channelBw:
+          type: string
+        repPower:
+          type: string
+          description: dBmV
+        repPower1_6:
+          type: string
+          description: "DOCSIS 3.0-equivalent reported power"
+        fftVal:
+          type: string
     DocsisLog:
       type: object
       properties:
-        index: { type: string }
-        time: { type: string }
-        type: { type: string }
-        priority: { type: string }
-        event: { type: string }
+        index:
+          type: string
+        time:
+          type: string
+        type:
+          type: string
+        priority:
+          type: string
+        event:
+          type: string
+    WifiWps:
+      type: object
+      description: "GET /1/Device/WiFi/WPS. Answers 200 on units with no radios; all state fields are empty strings. Treat a populated wlsWpsState24g/5g as the evidence a radio exists."
+    WifiGuestSsid:
+      type: object
+      description: "GET /1/Device/WiFi/GuestSSID. bssid/ssidName are the radio-presence evidence; empty strings mean a stub response."
+    MtaStatus:
+      type: object
+      description: "GET /1/Device/MTA/StatusInfo. NumberOfSLIC and the LineNRegState fields are null on a unit with no EMTA hardware even though the route returns 200."
+      properties:
+        telDhcp:
+          type: string
+        telSec:
+          type: string
+        telTftp:
+          type: string
+        telReg:
+          type: string
+        Line1RegState:
+          type:
+            - string
+            - "null"
+        Line2RegState:
+          type:
+            - string
+            - "null"
+        Line3RegState:
+          type:
+            - string
+            - "null"
+        Line4RegState:
+          type:
+            - string
+            - "null"
+        NumberOfSLIC:
+          type:
+            - integer
+            - "null"
     MoCA:
       type: object
-      description: Full field set from the firmware's own models/MoCA.php — the authoritative shape for GET /1/Device/MoCA.
+      description: "Field set from models/MoCA.php. password is plaintext on the device; it is deliberately not requested here."
       properties:
-        moca_status: { type: string, enum: [ON, OFF] }
-        fs_mode: { type: string, description: Device.MoCA.Interface.1.X_HITRON_COM_ChannelPlan }
-        fs_channel: { type: integer, description: "Device.MoCA.Interface.1.CurrentOperFreq, or 0 if channel scanning is on" }
-        fs_scan_start: { type: string }
-        fs_scan_end: { type: string }
-        txpower: { type: string, description: Device.MoCA.Interface.1.TxPowerLimit }
-        beaconpwr: { type: string, description: Device.MoCA.Interface.1.BeaconPowerLimit }
-        nctype: { type: string, enum: [Preferred, "Auto Negotiated"] }
-        mocaNTSecurity: { type: string, enum: [Enable, Disable] }
-        password: { type: string, description: "PLAINTEXT - Device.MoCA.Interface.1.KeyPassphrase. Treat as a secret." }
-        fwVersion: { type: string }
-        mocaMac: { type: string }
-        coaxTx: { type: string }
-        coaxRx: { type: string }
-        mocaLink: { type: string }
+        moca_status:
+          type: string
+          enum:
+            - "ON"
+            - "OFF"
+        fs_mode:
+          type: string
+        fs_channel:
+          type: integer
+        txpower:
+          type: string
+        beaconpwr:
+          type: string
+        nctype:
+          type: string
+          enum:
+            - Preferred
+            - "Auto Negotiated"
+        mocaNTSecurity:
+          type: string
+          enum:
+            - Enable
+            - Disable
+        fwVersion:
+          type: string
+        mocaMac:
+          type: string
+        coaxTx:
+          type: string
+        coaxRx:
+          type: string
+        mocaLink:
+          type: string
     AdvancedSwitchPort:
       type: object
-      description: Despite the route name "Advanced", this is the on-board Ethernet switch, 4 ports (DB index 1,2,5,6 per putSwitchCollection).
+      description: "On-board Ethernet switch port. The live CODA60 reports exactly one (1Gbps, linked)."
       properties:
-        portId: { type: integer }
-        power: { type: string, enum: [ON, OFF] }
-        neg: { type: string }
-        speed: { type: string, example: "1Gbps" }
-        duplex: { type: string }
-        linked: { type: string }
-    SpectrumFreqPower:
-      type: array
-      description: "Output of `hitrondec -f centFreq fromFreq toFreq`, JSON-decoded server-side. Exact element shape not independently confirmed - treat as opaque until read back live."
-      items: {}
+        portId:
+          type: integer
+        power:
+          type: string
+          enum:
+            - "true"
+            - "false"
+        neg:
+          type: string
+        speed:
+          type: string
+          example: "1Gbps"
+        duplex:
+          type: string
+        linked:
+          type: string
+    PnmBundle:
+      type: object
+      description: "Proactive Network Maintenance bundle from the root telemetry route. Arrays carry base64-encoded, vendor-encoded payloads (rxmer, us_pre_eq, mod_prof) keyed by channel_id."
+      properties:
+        mac:
+          type: string
+        timestamp:
+          type: string
+          description: "Unix seconds, device clock"
+      additionalProperties: true
     RegisterRequest:
       type: object
-      required: [appid, seckey]
+      required:
+        - appid
+        - seckey
       properties:
-        appid: { type: string }
-        seckey: { type: string, description: "RS256 JWT. Claims required: jti, iss=\"Hitron\", vendor (must be in Device.X_HITRON_COM_App.VendorList), model." }
-
-security:
-  - cookieAuth: []
-
+        appid:
+          type: string
+        seckey:
+          type: string
+          description: "RS256 JWT with jti, iss=Hitron, vendor (from Device.X_HITRON_COM_App.VendorList), model."
+x-hitron:
+  generated: "2026-11-26"
+  generator: tools/gen_spec.py
+  firmware: "8.7.1.0.1b4"
+  modelCatalog: "./models.json"
+  stateCounts:
+    ok: 50
+    php8: 53
+    session: 5
+    untested: 3
+    verb: 1
+  note: "Paths, methods, capability tags and states come from src/hitron/adapters.py. Do not edit the paths block by hand; run tools/gen_spec.py."
+tags:
+  - name: shell
+  - name: identity
+  - name: docsis
+  - name: wifi
+  - name: lan
+  - name: moca
+  - name: firewall
+  - name: voice
+  - name: diagnostics
+  - name: spectrum
+  - name: system
+  - name: telemetry
+  - name: write
 paths:
-  /1/Device/Users/Login:
-    post:
-      summary: Browser session login
-      responses: { '200': { description: Sets SESSION.uid cookie on success. } }
-  /1/Device/Users/Logout:
-    post: { summary: Logout, responses: { '200': { description: OK } } }
-  /1/Device/API/Register:
-    post:
-      summary: Vendor-app registration — exchange a signed JWT for an ht-app-header bearer token
-      requestBody: { content: { application/json: { schema: { $ref: '#/components/schemas/RegisterRequest' } } } }
-      responses: { '200': { description: Token issued, stored under Device.X_HITRON_COM_App.TokenList. } }
-
-  /1/Device/CM/Version:
-    get: { summary: "CM firmware/hardware version (unauthenticated route)", responses: { '200': { description: OK } } }
-  /1/Device/CM/SysInfo:
+  "/1/Device/Menu/Main":
     get:
-      summary: Router system info (hwVersion, swVersion, serialNumber, systemTime, rfMac, systemUptime)
-      description: "Field names match ~/Documents/hitron-client/CODA_60.py's router_sys_info exactly - confirms this is the live route shape, modulo the @info querystring-vs-path question noted in info.description."
-      responses: { '200': { description: OK } }
-  /1/Device/CM/DocsisProvision:
-    get:
-      summary: DOCSIS provisioning state machine (hwInit, findDownstream, ranging, dhcp, timeOfday, downloadCfg, registration, bpiStatus)
-      responses: { '200': { description: OK } }
-  /1/Device/CM/DsInfo:
-    get:
-      summary: Downstream SC-QAM channels — the primary signal-quality endpoint for alerting
+      operationId: menu_main
+      summary: "Main menu tree (session-shaped)"
+      tags:
+        - shell
+      x-hitron:
+        requires: []
+        state: ok
+        httpStatus: 200
+        verifiedOn: "8.7.1.0.1b4"
+        destructive: false
+        models: []
       responses:
-        '200': { description: OK, content: { application/json: { schema: { type: object, properties: { Freq_List: { type: array, items: { $ref: '#/components/schemas/DocsisDs' } } } } } } }
-  /1/Device/CM/UsInfo:
+        "200":
+          description: "Envelope with errCode/errMsg plus the payload."
+  "/1/Device/Menu/Sub":
     get:
-      summary: Upstream SC-QAM channels
+      operationId: menu_sub
+      summary: "Submenu for the selected main menu"
+      tags:
+        - shell
+      x-hitron:
+        requires: []
+        state: ok
+        httpStatus: 200
+        verifiedOn: "8.7.1.0.1b4"
+        destructive: false
+        models: []
       responses:
-        '200': { description: OK, content: { application/json: { schema: { type: object, properties: { Freq_List: { type: array, items: { $ref: '#/components/schemas/DocsisUs' } } } } } } }
-  /1/Device/CM/DsOfdm:
+        "200":
+          description: "Envelope with errCode/errMsg plus the payload."
+  "/1/Device/Users":
     get:
-      summary: Downstream OFDM channel(s) — DOCSIS 3.1
+      operationId: users_list
+      summary: "Local account list"
+      tags:
+        - shell
+      x-hitron:
+        requires: []
+        state: php8
+        httpStatus: 500
+        verifiedOn: "8.7.1.0.1b4"
+        destructive: false
+        models: []
+      description: "Undefined array key 'action'"
       responses:
-        '200': { description: OK, content: { application/json: { schema: { type: object, properties: { Freq_List: { type: array, items: { $ref: '#/components/schemas/DocsisDsOfdm' } } } } } } }
-  /1/Device/CM/UsOfdm:
+        "200":
+          description: "Envelope with errCode/errMsg plus the payload."
+        "500":
+          description: "PHP 8 fatal in the shipped controller on 8.7.1.0.1b4. Undefined array key 'action'"
+  "/deviceinfo":
     get:
-      summary: Upstream OFDMA channel(s) — DOCSIS 3.1
+      operationId: deviceinfo
+      summary: "Telemetry identity: hw_model, hardware_version, software_version, serial"
+      tags:
+        - identity
+      x-hitron:
+        requires: []
+        state: ok
+        httpStatus: 200
+        verifiedOn: "8.7.1.0.1b4"
+        destructive: false
+        models: []
+      description: "Root route (/@info=TelemetryAssist), not under /1/Device. The only place hw_model is populated on this build; TR-181 DeviceInfo.ModelName is null."
       responses:
-        '200': { description: OK, content: { application/json: { schema: { type: object, properties: { Freq_List: { type: array, items: { $ref: '#/components/schemas/DocsisUsOfdm' } } } } } } }
-  /1/Device/CM/Log:
+        "200":
+          description: "Envelope with errCode/errMsg plus the payload."
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/DeviceInfo"
+  "/1/Device/CM/Version":
     get:
-      summary: DOCSIS event log
+      operationId: cm_version
+      summary: "CM version screen"
+      tags:
+        - identity
+      x-hitron:
+        requires: []
+        state: ok
+        httpStatus: 200
+        verifiedOn: "8.7.1.0.1b4"
+        destructive: false
+        models: []
+      description: Unauthenticated.
       responses:
-        '200': { description: OK, content: { application/json: { schema: { type: object, properties: { Log_List: { type: array, items: { $ref: '#/components/schemas/DocsisLog' } } } } } } }
-  /1/Device/CM/LTEBackup:
-    get: { summary: LTE backup-WAN status (BBU/failover units), responses: { '200': { description: OK } } }
-  /1/Device/CM/Ready:
-    get: { summary: "App-only: CM readiness status (requires SESSION.app)", responses: { '200': { description: OK } } }
-
-  /1/Device/MoCA:
+        "200":
+          description: "Envelope with errCode/errMsg plus the payload."
+  "/1/Device/CM/SysInfo":
     get:
-      summary: Full MoCA interface status/config (see MoCA schema)
-      responses: { '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/MoCA' } } } } }
-    put:
-      summary: Update MoCA settings (channel plan, tx/beacon power, preferred NC, privacy enable, password)
-      requestBody: { content: { application/json: { schema: { $ref: '#/components/schemas/MoCA' } } } }
-      responses: { '200': { description: OK } }
-
-  /1/Device/WiFi/Radios:
-    get:
-      summary: All WiFi radios (2.4/5GHz etc)
-      responses: { '200': { description: OK } }
-  /1/Device/WiFi/Radios/{index}:
-    get:
-      summary: One radio's config by its 1-based index (bounded by Utils::getRadioNum())
-      parameters: [ { name: index, in: path, required: true, schema: { type: integer, minimum: 1 } } ]
-      responses: { '200': { description: OK } }
-    put:
-      summary: Update one radio (channel, bandwidth, power, etc — validated server-side via Utils::checkRadioValidate before Utils::updateRadioInfo)
-      parameters: [ { name: index, in: path, required: true, schema: { type: integer, minimum: 1 } } ]
-      requestBody: { content: { application/json: { schema: { type: object } } } }
-      responses: { '200': { description: OK }, '400': { description: "Validation failed, or 'Nothing changed.' if the write was a no-op" } }
-    patch:
-      summary: Partial update (accepts `athX` interface names too, remapped to a 1-based index)
-      parameters: [ { name: index, in: path, required: true, schema: { type: string } } ]
-      requestBody: { content: { application/json: { schema: { type: object } } } }
-      responses: { '200': { description: OK } }
-  /1/Device/WiFi/Radios/Survey:
-    get: { summary: "WiFi channel survey (neighboring AP scan) - likely the DFS/ACS input", responses: { '200': { description: OK } } }
-  /1/Device/WiFi/Radios/ATF:
-    get:
-      summary: Airtime Fairness (ATF) config across radios
-      responses: { '200': { description: OK } }
-    put:
-      summary: Set ATF config
-      responses: { '200': { description: OK } }
-  /1/Device/WiFi/SSIDs:
-    get: { summary: "All SSIDs - app config.ini caps SSID2GNum=4, SSID5GNum=4, Guest2GSSID index 7, Guest5GSSID index 8", responses: { '200': { description: OK } } }
-  /1/Device/WiFi/Client:
-    get: { summary: Connected WiFi clients, responses: { '200': { description: OK } } }
-  /1/Device/WiFi/AccessControl:
-    get: { summary: MAC allow/deny list, responses: { '200': { description: OK } } }
-    put: { summary: Update allow/deny list, responses: { '200': { description: OK } } }
-
-  /1/Device/Advanced/AdvancedSwitch:
-    get:
-      summary: "On-board Ethernet switch ports (NOT WiFi 'Advanced' despite the route name)"
+      operationId: cm_sysinfo
+      summary: "CM IP/subnet/gateway, lease and provisioned config name"
+      tags:
+        - identity
+      x-hitron:
+        requires: []
+        state: ok
+        httpStatus: 200
+        verifiedOn: "8.7.1.0.1b4"
+        destructive: false
+        models: []
       responses:
-        '200': { description: OK, content: { application/json: { schema: { type: object, properties: { advSwitch_List: { type: array, items: { $ref: '#/components/schemas/AdvancedSwitchPort' } } } } } } }
-    put:
-      summary: Enable/disable a port's power (writes Device.Ethernet.Interface.{1,2,5,6}.Enable)
-      requestBody: { content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/AdvancedSwitchPort' } } } } }
-      responses: { '200': { description: OK } }
-
-  /1/Device/Spectrum:
+        "200":
+          description: "Envelope with errCode/errMsg plus the payload."
+  "/1/Device/Router/SysInfo":
     get:
-      summary: Spectrum analyzer source address (the CM's own IP as seen for this diagnostic)
-      responses: { '200': { description: OK } }
-  /1/Device/Spectrum/FreqList:
+      operationId: router_sysinfo
+      summary: "hw/sw version, serial, rfMac, uptime"
+      tags:
+        - identity
+      x-hitron:
+        requires: []
+        state: ok
+        httpStatus: 200
+        verifiedOn: "8.7.1.0.1b4"
+        destructive: false
+        models: []
+      description: "modelName/vendorName/deploymentName are null on 8.7.1.0.1b4."
+      responses:
+        "200":
+          description: "Envelope with errCode/errMsg plus the payload."
+  "/1/Device/CM/DocsisProvision":
     get:
-      summary: "Available analyzer frequency list - shells out to `hitrondec -l`"
-      responses: { '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/SpectrumFreqPower' } } } } }
-  /1/Device/Spectrum/FreqPower:
+      operationId: cm_provision
+      summary: "DOCSIS provisioning state machine"
+      tags:
+        - docsis
+      x-hitron:
+        requires: []
+        state: ok
+        httpStatus: 200
+        verifiedOn: "8.7.1.0.1b4"
+        destructive: false
+        models: []
+      responses:
+        "200":
+          description: "Envelope with errCode/errMsg plus the payload."
+  "/1/Device/CM/DsInfo":
     get:
-      summary: "Power sweep over a frequency range - shells out to `hitrondec -f centFreq fromFreq toFreq` (MHz, 43-1794 range enforced server-side)"
+      operationId: cm_ds
+      summary: "Downstream SC-QAM channels"
+      tags:
+        - docsis
+      x-hitron:
+        requires: []
+        state: ok
+        httpStatus: 200
+        verifiedOn: "8.7.1.0.1b4"
+        destructive: false
+        models: []
+      responses:
+        "200":
+          description: "Envelope with errCode/errMsg plus the payload."
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/DocsisDs"
+  "/1/Device/CM/UsInfo":
+    get:
+      operationId: cm_us
+      summary: "Upstream SC-QAM channels"
+      tags:
+        - docsis
+      x-hitron:
+        requires: []
+        state: ok
+        httpStatus: 200
+        verifiedOn: "8.7.1.0.1b4"
+        destructive: false
+        models: []
+      responses:
+        "200":
+          description: "Envelope with errCode/errMsg plus the payload."
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/DocsisUs"
+  "/1/Device/CM/DsOfdm":
+    get:
+      operationId: cm_ds_ofdm
+      summary: "Downstream OFDM channels"
+      tags:
+        - docsis
+      x-hitron:
+        requires:
+          - docsis31
+        state: ok
+        httpStatus: 200
+        verifiedOn: "8.7.1.0.1b4"
+        destructive: false
+        models: []
+      responses:
+        "200":
+          description: "Envelope with errCode/errMsg plus the payload."
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/DocsisDsOfdm"
+  "/1/Device/CM/UsOfdm":
+    get:
+      operationId: cm_us_ofdm
+      summary: "Upstream OFDMA channels"
+      tags:
+        - docsis
+      x-hitron:
+        requires:
+          - docsis31
+        state: ok
+        httpStatus: 200
+        verifiedOn: "8.7.1.0.1b4"
+        destructive: false
+        models: []
+      responses:
+        "200":
+          description: "Envelope with errCode/errMsg plus the payload."
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/DocsisUsOfdm"
+  "/1/Device/CM/Log":
+    get:
+      operationId: cm_log
+      summary: "DOCSIS event log"
+      tags:
+        - docsis
+      x-hitron:
+        requires: []
+        state: ok
+        httpStatus: 200
+        verifiedOn: "8.7.1.0.1b4"
+        destructive: false
+        models: []
+      responses:
+        "200":
+          description: "Envelope with errCode/errMsg plus the payload."
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/DocsisLog"
+  "/1/Device/CM/LTEBackup":
+    get:
+      operationId: cm_lte
+      summary: "LTE backup-WAN status"
+      tags:
+        - docsis
+      x-hitron:
+        requires:
+          - lte
+        state: php8
+        httpStatus: 500
+        verifiedOn: "8.7.1.0.1b4"
+        destructive: false
+        models: []
+      description: "Creation of dynamic property LTEBackup::$LANClient"
+      responses:
+        "200":
+          description: "Envelope with errCode/errMsg plus the payload."
+        "500":
+          description: "PHP 8 fatal in the shipped controller on 8.7.1.0.1b4. Creation of dynamic property LTEBackup::$LANClient"
+  "/1/Device/CM/Ready":
+    get:
+      operationId: cm_ready
+      summary: "App-only CM readiness"
+      tags:
+        - docsis
+      x-hitron:
+        requires: []
+        state: session
+        httpStatus: 400
+        verifiedOn: "8.7.1.0.1b4"
+        destructive: false
+        models: []
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: "Envelope with errCode/errMsg plus the payload."
+        "400":
+          description: "errCode 001 - requires the web UI SESSION.uid cookie."
+  "/1/Device/WiFi":
+    get:
+      operationId: wifi_root
+      summary: "WiFi overview"
+      tags:
+        - wifi
+      x-hitron:
+        requires:
+          - wifi
+        state: php8
+        httpStatus: 500
+        verifiedOn: "8.7.1.0.1b4"
+        destructive: false
+        models: []
+      description: "Undefined array key 'info'"
+      responses:
+        "200":
+          description: "Envelope with errCode/errMsg plus the payload."
+        "500":
+          description: "PHP 8 fatal in the shipped controller on 8.7.1.0.1b4. Undefined array key 'info'"
+  "/1/Device/WiFi/BandSteering":
+    get:
+      operationId: wifi_bandsteering
+      summary: "Band-steering state"
+      tags:
+        - wifi
+      x-hitron:
+        requires:
+          - wifi
+        state: ok
+        httpStatus: 200
+        verifiedOn: "8.7.1.0.1b4"
+        destructive: false
+        models: []
+      responses:
+        "200":
+          description: "Envelope with errCode/errMsg plus the payload."
+  "/1/Device/WiFi/GuestSSID":
+    get:
+      operationId: wifi_guestssid
+      summary: "Guest + primary SSID summary"
+      tags:
+        - wifi
+      x-hitron:
+        requires:
+          - wifi
+        state: ok
+        httpStatus: 200
+        verifiedOn: "8.7.1.0.1b4"
+        destructive: false
+        models: []
+      description: "Answers 200 even on a unit with no radios; all fields are empty strings."
+      responses:
+        "200":
+          description: "Envelope with errCode/errMsg plus the payload."
+  "/1/Device/WiFi/WPS":
+    get:
+      operationId: wifi_wps
+      summary: "WPS state per band"
+      tags:
+        - wifi
+      x-hitron:
+        requires:
+          - wifi
+        state: ok
+        httpStatus: 200
+        verifiedOn: "8.7.1.0.1b4"
+        destructive: false
+        models: []
+      description: "Same stub caveat: 200 does not prove a radio exists."
+      responses:
+        "200":
+          description: "Envelope with errCode/errMsg plus the payload."
+  "/1/Device/WiFi/Radios":
+    get:
+      operationId: wifi_radios
+      summary: "All radios"
+      tags:
+        - wifi
+      x-hitron:
+        requires:
+          - wifi
+        state: php8
+        httpStatus: 500
+        verifiedOn: "8.7.1.0.1b4"
+        destructive: false
+        models: []
+      description: "Fatal at class load: optional parameter $radio declared before required $f3."
+      responses:
+        "200":
+          description: "Envelope with errCode/errMsg plus the payload."
+        "500":
+          description: "PHP 8 fatal in the shipped controller on 8.7.1.0.1b4. Fatal at class load: optional parameter $radio declared before required $f3."
+  "/1/Device/WiFi/Radios/Survey":
+    get:
+      operationId: wifi_radios_survey
+      summary: "Neighbour scan / ACS input"
+      tags:
+        - wifi
+      x-hitron:
+        requires:
+          - wifi
+        state: php8
+        httpStatus: 500
+        verifiedOn: "8.7.1.0.1b4"
+        destructive: false
+        models: []
+      responses:
+        "200":
+          description: "Envelope with errCode/errMsg plus the payload."
+        "500":
+          description: "PHP 8 fatal in the shipped controller on 8.7.1.0.1b4."
+  "/1/Device/WiFi/Radios/ATF":
+    get:
+      operationId: wifi_radios_atf
+      summary: "Airtime fairness config"
+      tags:
+        - wifi
+      x-hitron:
+        requires:
+          - wifi
+        state: php8
+        httpStatus: 500
+        verifiedOn: "8.7.1.0.1b4"
+        destructive: false
+        models: []
+      responses:
+        "200":
+          description: "Envelope with errCode/errMsg plus the payload."
+        "500":
+          description: "PHP 8 fatal in the shipped controller on 8.7.1.0.1b4."
+  "/1/Device/WiFi/Radios/ATFSSID":
+    get:
+      operationId: wifi_radios_atfssid
+      summary: "Per-SSID ATF policy"
+      tags:
+        - wifi
+      x-hitron:
+        requires:
+          - wifi
+        state: php8
+        httpStatus: 500
+        verifiedOn: "8.7.1.0.1b4"
+        destructive: false
+        models: []
+      responses:
+        "200":
+          description: "Envelope with errCode/errMsg plus the payload."
+        "500":
+          description: "PHP 8 fatal in the shipped controller on 8.7.1.0.1b4."
+  "/1/Device/WiFi/Radios/ATFSTATION":
+    get:
+      operationId: wifi_radios_atfstation
+      summary: "Per-station ATF state"
+      tags:
+        - wifi
+      x-hitron:
+        requires:
+          - wifi
+        state: php8
+        httpStatus: 500
+        verifiedOn: "8.7.1.0.1b4"
+        destructive: false
+        models: []
+      responses:
+        "200":
+          description: "Envelope with errCode/errMsg plus the payload."
+        "500":
+          description: "PHP 8 fatal in the shipped controller on 8.7.1.0.1b4."
+  "/1/Device/WiFi/Radios/Advanced":
+    get:
+      operationId: wifi_radios_advanced
+      summary: "Per-radio advanced settings"
+      tags:
+        - wifi
+      x-hitron:
+        requires:
+          - wifi
+        state: php8
+        httpStatus: 500
+        verifiedOn: "8.7.1.0.1b4"
+        destructive: false
+        models: []
+      responses:
+        "200":
+          description: "Envelope with errCode/errMsg plus the payload."
+        "500":
+          description: "PHP 8 fatal in the shipped controller on 8.7.1.0.1b4."
+  "/1/Device/WiFi/SSIDs":
+    get:
+      operationId: wifi_ssids
+      summary: "All SSIDs"
+      tags:
+        - wifi
+      x-hitron:
+        requires:
+          - wifi
+        state: php8
+        httpStatus: 500
+        verifiedOn: "8.7.1.0.1b4"
+        destructive: false
+        models: []
+      description: "Undefined array key 'info'"
+      responses:
+        "200":
+          description: "Envelope with errCode/errMsg plus the payload."
+        "500":
+          description: "PHP 8 fatal in the shipped controller on 8.7.1.0.1b4. Undefined array key 'info'"
+  "/1/Device/WiFi/SSIDs/{ifname}/version":
+    get:
+      operationId: wifi_ssids_one
+      summary: "One SSID by interface name"
+      tags:
+        - wifi
+      x-hitron:
+        requires:
+          - wifi
+        state: php8
+        httpStatus: 500
+        verifiedOn: "8.7.1.0.1b4"
+        destructive: false
+        models: []
+      description: "Needs both @ifname and @info; checkValidIfName() itself is broken on PHP 8."
+      responses:
+        "200":
+          description: "Envelope with errCode/errMsg plus the payload."
+        "500":
+          description: "PHP 8 fatal in the shipped controller on 8.7.1.0.1b4. Needs both @ifname and @info; checkValidIfName() itself is broken on PHP 8."
       parameters:
-        - { name: centFreq, in: query, required: true, schema: { type: number, minimum: 49, maximum: 1788, default: 645 } }
-        - { name: fromFreq, in: query, required: true, schema: { type: number, minimum: 43, maximum: 1794, default: 637.5 } }
-        - { name: toFreq, in: query, required: true, schema: { type: number, minimum: 43, maximum: 1794, default: 643.5 } }
-      responses: { '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/SpectrumFreqPower' } } } } }
-  /1/Device/Spectrum/RTData:
+        - name: ifname
+          in: path
+          required: true
+          schema:
+            type: string
+            example: ath0
+  "/1/Device/WiFi/Client":
     get:
-      summary: "Real-time spectrum data - shells out to `hitrondec -m`"
-      responses: { '200': { description: OK } }
-  /1/Device/Spectrum/Constellation:
+      operationId: wifi_client
+      summary: "Associated WiFi clients"
+      tags:
+        - wifi
+      x-hitron:
+        requires:
+          - wifi
+        state: php8
+        httpStatus: 500
+        verifiedOn: "8.7.1.0.1b4"
+        destructive: false
+        models: []
+      responses:
+        "200":
+          description: "Envelope with errCode/errMsg plus the payload."
+        "500":
+          description: "PHP 8 fatal in the shipped controller on 8.7.1.0.1b4."
+  "/1/Device/WiFi/Stations/{ifname}":
     get:
-      summary: "QAM constellation diagram points for one downstream port - shells out to `hitrondec -c portId` (0-31)"
-      parameters: [ { name: portId, in: query, required: true, schema: { type: integer, minimum: 0, maximum: 31, default: 24 } } ]
-      responses: { '200': { description: OK } }
-
-  /1/Device/Router/SysInfo:
-    get: { summary: Router-level system info (overlaps CM/SysInfo), responses: { '200': { description: OK } } }
-  /1/Device/Router/PortForward:
-    get: { summary: Port-forward rules, responses: { '200': { description: OK } } }
-    put: { summary: Update port-forward rules, responses: { '200': { description: OK } } }
-  /1/Device/Router/PortTrigger:
-    get: { summary: Port-trigger rules, responses: { '200': { description: OK } } }
-    put: { summary: Update port-trigger rules, responses: { '200': { description: OK } } }
-
-  /1/Device/DHCP:
-    get: { summary: DHCP server config/leases, responses: { '200': { description: OK } } }
-  /1/Device/DHCP/Reservation:
-    get: { summary: Static DHCP reservations, responses: { '200': { description: OK } } }
-    put: { summary: Update reservations, responses: { '200': { description: OK } } }
-  /1/Device/WAN:
-    get: { summary: WAN config/status, responses: { '200': { description: OK } } }
-  /1/Device/DNS:
-    get: { summary: DNS config, responses: { '200': { description: OK } } }
-  /1/Device/DDNS:
-    get: { summary: Dynamic DNS config, responses: { '200': { description: OK } } }
-    put: { summary: Update DDNS, responses: { '200': { description: OK } } }
-  /1/Device/Ether:
-    get: { summary: Ethernet interface status, responses: { '200': { description: OK } } }
-  /1/Device/RipInfo:
-    get: { summary: RIP routing config, responses: { '200': { description: OK } } }
-  /1/Device/StaticRouteInfo:
-    get: { summary: Static routes, responses: { '200': { description: OK } } }
-  /1/Device/IpMappingInfo:
-    get: { summary: 1:1 NAT / IP mapping rules, responses: { '200': { description: OK } } }
-    put: { summary: Update IP mapping, responses: { '200': { description: OK } } }
-  /1/Device/GRE:
-    get: { summary: GRE tunnel config, responses: { '200': { description: OK } } }
-  /1/Device/IpPass:
-    get: { summary: IP passthrough config, responses: { '200': { description: OK } } }
-    put: { summary: Update IP passthrough, responses: { '200': { description: OK } } }
-
-  /1/Device/Firewall:
-    get: { summary: Firewall global settings, responses: { '200': { description: OK } } }
-  /1/Device/Firewall/Inbound:
-    get: { summary: Inbound rules, responses: { '200': { description: OK } } }
-    put: { summary: Update inbound rules, responses: { '200': { description: OK } } }
-  /1/Device/Firewall/ServiceFilter:
-    get: { summary: Service filters, responses: { '200': { description: OK } } }
-  /1/Device/Firewall/DeviceFilter:
-    get: { summary: Device filters, responses: { '200': { description: OK } } }
-  /1/Device/Firewall/KeywordFilter:
-    get: { summary: Keyword/content filters, responses: { '200': { description: OK } } }
-  /1/Device/Firewall/TimeFilter:
-    get: { summary: Time-based access filters, responses: { '200': { description: OK } } }
-
-  /1/Device/MTA/StatusInfo:
-    get: { summary: PacketCable/EMTA (voice line) status, responses: { '200': { description: OK } } }
-
-  /1/Device/Diagnostics:
-    get: { summary: Diagnostics (ping/traceroute-style tooling, exact shape unconfirmed), responses: { '200': { description: OK } } }
-  /1/Device/Time:
-    get: { summary: NTP/time config, responses: { '200': { description: OK } } }
-    put: { summary: Update time config, responses: { '200': { description: OK } } }
-  /1/Device/USB:
-    get: { summary: USB status (storage/modem passthrough), responses: { '200': { description: OK } } }
-  /1/Device/BBU:
-    get: { summary: Battery backup unit status, responses: { '200': { description: OK } } }
-  /1/Device/AdminRemoteManagement:
-    get: { summary: Remote management (WAN-side admin access) config, responses: { '200': { description: OK } } }
-    put: { summary: Update remote management, responses: { '200': { description: OK } } }
-  /1/Device/Health:
-    get: { summary: App-defined device health summary, responses: { '200': { description: OK } } }
-  /1/Device/Manage:
-    get: { summary: Admin account/password management, responses: { '200': { description: OK } } }
-    put: { summary: Change admin password, responses: { '200': { description: OK } } }
-  /1/Device/Hosts:
-    get: { summary: Connected LAN hosts (DHCP + static), responses: { '200': { description: OK } } }
-  /1/Device/Users:
-    get: { summary: List of local accounts, responses: { '200': { description: OK } } }
-    post: { summary: "Create a user (writes Device.X_HITRON_COM_App.Users.User.{id}.HashPassword; see info.description re: the md5(\"password\") fallback)", responses: { '200': { description: OK } } }
+      operationId: wifi_client_ssids
+      summary: "Clients per radio"
+      tags:
+        - wifi
+      x-hitron:
+        requires:
+          - wifi
+        state: php8
+        httpStatus: 500
+        verifiedOn: "8.7.1.0.1b4"
+        destructive: false
+        models: []
+      responses:
+        "200":
+          description: "Envelope with errCode/errMsg plus the payload."
+        "500":
+          description: "PHP 8 fatal in the shipped controller on 8.7.1.0.1b4."
+      parameters:
+        - name: ifname
+          in: path
+          required: true
+          schema:
+            type: string
+            example: ath0
+  "/1/Device/WiFi/Client/SSIDs":
+    get:
+      operationId: wifi_client_ssids_alias
+      summary: "Clients per radio (alias route)"
+      tags:
+        - wifi
+      x-hitron:
+        requires:
+          - wifi
+        state: php8
+        httpStatus: 500
+        verifiedOn: "8.7.1.0.1b4"
+        destructive: false
+        models: []
+      description: "Same data as /WiFi/Stations/{ifname}; this shape omits the @ifname the handler reads."
+      responses:
+        "200":
+          description: "Envelope with errCode/errMsg plus the payload."
+        "500":
+          description: "PHP 8 fatal in the shipped controller on 8.7.1.0.1b4. Same data as /WiFi/Stations/{ifname}; this shape omits the @ifname the handler reads."
+  "/1/Device/WiFi/AccessControl":
+    get:
+      operationId: wifi_accesscontrol
+      summary: "MAC allow/deny list"
+      tags:
+        - wifi
+      x-hitron:
+        requires:
+          - wifi
+        state: php8
+        httpStatus: 500
+        verifiedOn: "8.7.1.0.1b4"
+        destructive: false
+        models: []
+      responses:
+        "200":
+          description: "Envelope with errCode/errMsg plus the payload."
+        "500":
+          description: "PHP 8 fatal in the shipped controller on 8.7.1.0.1b4."
+  "/1/Device/WiFi/AccessControl/Macs":
+    get:
+      operationId: wifi_accesscontrol_macs
+      summary: "Access-control entries"
+      tags:
+        - wifi
+      x-hitron:
+        requires:
+          - wifi
+        state: php8
+        httpStatus: 500
+        verifiedOn: "8.7.1.0.1b4"
+        destructive: false
+        models: []
+      description: "Undefined function getInstanceIDs() (platform defines getInstanceIDs)."
+      responses:
+        "200":
+          description: "Envelope with errCode/errMsg plus the payload."
+        "500":
+          description: "PHP 8 fatal in the shipped controller on 8.7.1.0.1b4. Undefined function getInstanceIDs() (platform defines getInstanceIDs)."
+  "/1/Device/WiFi/AccessControl/Mode":
+    get:
+      operationId: wifi_accesscontrol_mode
+      summary: "Allow/deny mode"
+      tags:
+        - wifi
+      x-hitron:
+        requires:
+          - wifi
+        state: ok
+        httpStatus: 200
+        verifiedOn: "8.7.1.0.1b4"
+        destructive: false
+        models: []
+      responses:
+        "200":
+          description: "Envelope with errCode/errMsg plus the payload."
+  "/1/Device/WiFi/AccessControl/Status":
+    get:
+      operationId: wifi_accesscontrol_status
+      summary: "Access-control enabled"
+      tags:
+        - wifi
+      x-hitron:
+        requires:
+          - wifi
+        state: ok
+        httpStatus: 200
+        verifiedOn: "8.7.1.0.1b4"
+        destructive: false
+        models: []
+      responses:
+        "200":
+          description: "Envelope with errCode/errMsg plus the payload."
+  "/1/Device/WiFi/Hotspot":
+    get:
+      operationId: wifi_hotspot
+      summary: "Hotspot / community WiFi"
+      tags:
+        - wifi
+      x-hitron:
+        requires:
+          - wifi
+        state: php8
+        httpStatus: 500
+        verifiedOn: "8.7.1.0.1b4"
+        destructive: false
+        models: []
+      description: "Undefined variable $rootObjName"
+      responses:
+        "200":
+          description: "Envelope with errCode/errMsg plus the payload."
+        "500":
+          description: "PHP 8 fatal in the shipped controller on 8.7.1.0.1b4. Undefined variable $rootObjName"
+  "/1/Device/WiFi/RSSIs":
+    get:
+      operationId: wifi_rssis
+      summary: "Per-client RSSI"
+      tags:
+        - wifi
+      x-hitron:
+        requires:
+          - wifi
+        state: session
+        httpStatus: 400
+        verifiedOn: "8.7.1.0.1b4"
+        destructive: false
+        models: []
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: "Envelope with errCode/errMsg plus the payload."
+        "400":
+          description: "errCode 001 - requires the web UI SESSION.uid cookie."
+  "/1/Device/Router/PortForward":
+    get:
+      operationId: router_portforward
+      summary: "Port-forward rules"
+      tags:
+        - lan
+      x-hitron:
+        requires:
+          - router
+        state: php8
+        httpStatus: 500
+        verifiedOn: "8.7.1.0.1b4"
+        destructive: false
+        models: []
+      responses:
+        "200":
+          description: "Envelope with errCode/errMsg plus the payload."
+        "500":
+          description: "PHP 8 fatal in the shipped controller on 8.7.1.0.1b4."
+  "/1/Device/Router/PortForward/Status":
+    get:
+      operationId: router_portforward_status
+      summary: "Port-forward enabled"
+      tags:
+        - lan
+      x-hitron:
+        requires:
+          - router
+        state: ok
+        httpStatus: 200
+        verifiedOn: "8.7.1.0.1b4"
+        destructive: false
+        models: []
+      responses:
+        "200":
+          description: "Envelope with errCode/errMsg plus the payload."
+  "/1/Device/Router/PortTrigger":
+    get:
+      operationId: router_porttrigger
+      summary: "Port-trigger rules"
+      tags:
+        - lan
+      x-hitron:
+        requires:
+          - router
+        state: php8
+        httpStatus: 500
+        verifiedOn: "8.7.1.0.1b4"
+        destructive: false
+        models: []
+      responses:
+        "200":
+          description: "Envelope with errCode/errMsg plus the payload."
+        "500":
+          description: "PHP 8 fatal in the shipped controller on 8.7.1.0.1b4."
+  "/1/Device/Router/PortTrigger/Status":
+    get:
+      operationId: router_porttrigger_status
+      summary: "Port-trigger enabled"
+      tags:
+        - lan
+      x-hitron:
+        requires:
+          - router
+        state: ok
+        httpStatus: 200
+        verifiedOn: "8.7.1.0.1b4"
+        destructive: false
+        models: []
+      responses:
+        "200":
+          description: "Envelope with errCode/errMsg plus the payload."
+  "/1/Device/Hosts":
+    get:
+      operationId: hosts
+      summary: "Connected LAN hosts"
+      tags:
+        - lan
+      x-hitron:
+        requires:
+          - router
+        state: php8
+        httpStatus: 500
+        verifiedOn: "8.7.1.0.1b4"
+        destructive: false
+        models: []
+      responses:
+        "200":
+          description: "Envelope with errCode/errMsg plus the payload."
+        "500":
+          description: "PHP 8 fatal in the shipped controller on 8.7.1.0.1b4."
+  "/1/Device/Hosts/DefFwLevel":
+    get:
+      operationId: hosts_deffw
+      summary: "Default firmware level per host"
+      tags:
+        - lan
+      x-hitron:
+        requires:
+          - router
+        state: session
+        httpStatus: 400
+        verifiedOn: "8.7.1.0.1b4"
+        destructive: false
+        models: []
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: "Envelope with errCode/errMsg plus the payload."
+        "400":
+          description: "errCode 001 - requires the web UI SESSION.uid cookie."
+  "/1/Device/DHCP":
+    get:
+      operationId: dhcp
+      summary: "DHCP server config/leases"
+      tags:
+        - lan
+      x-hitron:
+        requires:
+          - router
+        state: php8
+        httpStatus: 500
+        verifiedOn: "8.7.1.0.1b4"
+        destructive: false
+        models: []
+      responses:
+        "200":
+          description: "Envelope with errCode/errMsg plus the payload."
+        "500":
+          description: "PHP 8 fatal in the shipped controller on 8.7.1.0.1b4."
+  "/1/Device/DHCP/Lan":
+    get:
+      operationId: dhcp_lan
+      summary: "LAN DHCP settings"
+      tags:
+        - lan
+      x-hitron:
+        requires:
+          - router
+        state: php8
+        httpStatus: 500
+        verifiedOn: "8.7.1.0.1b4"
+        destructive: false
+        models: []
+      description: "Creation of dynamic property DHCP::$bSomeItemsReadOnly"
+      responses:
+        "200":
+          description: "Envelope with errCode/errMsg plus the payload."
+        "500":
+          description: "PHP 8 fatal in the shipped controller on 8.7.1.0.1b4. Creation of dynamic property DHCP::$bSomeItemsReadOnly"
+  "/1/Device/DHCP/Reservation":
+    get:
+      operationId: dhcp_reservation
+      summary: "Static reservations"
+      tags:
+        - lan
+      x-hitron:
+        requires:
+          - router
+        state: php8
+        httpStatus: 500
+        verifiedOn: "8.7.1.0.1b4"
+        destructive: false
+        models: []
+      responses:
+        "200":
+          description: "Envelope with errCode/errMsg plus the payload."
+        "500":
+          description: "PHP 8 fatal in the shipped controller on 8.7.1.0.1b4."
+  "/1/Device/WAN":
+    get:
+      operationId: wan
+      summary: "WAN config/status"
+      tags:
+        - lan
+      x-hitron:
+        requires:
+          - router
+        state: php8
+        httpStatus: 500
+        verifiedOn: "8.7.1.0.1b4"
+        destructive: false
+        models: []
+      responses:
+        "200":
+          description: "Envelope with errCode/errMsg plus the payload."
+        "500":
+          description: "PHP 8 fatal in the shipped controller on 8.7.1.0.1b4."
+  "/1/Device/DNS":
+    get:
+      operationId: dns
+      summary: "DNS config"
+      tags:
+        - lan
+      x-hitron:
+        requires:
+          - router
+        state: php8
+        httpStatus: 500
+        verifiedOn: "8.7.1.0.1b4"
+        destructive: false
+        models: []
+      responses:
+        "200":
+          description: "Envelope with errCode/errMsg plus the payload."
+        "500":
+          description: "PHP 8 fatal in the shipped controller on 8.7.1.0.1b4."
+  "/1/Device/DDNS":
+    get:
+      operationId: ddns
+      summary: "Dynamic DNS config"
+      tags:
+        - lan
+      x-hitron:
+        requires:
+          - router
+        state: php8
+        httpStatus: 500
+        verifiedOn: "8.7.1.0.1b4"
+        destructive: false
+        models: []
+      responses:
+        "200":
+          description: "Envelope with errCode/errMsg plus the payload."
+        "500":
+          description: "PHP 8 fatal in the shipped controller on 8.7.1.0.1b4."
+  "/1/Device/DDNS/Status":
+    get:
+      operationId: ddns_status
+      summary: "Dynamic DNS state"
+      tags:
+        - lan
+      x-hitron:
+        requires:
+          - router
+        state: ok
+        httpStatus: 200
+        verifiedOn: "8.7.1.0.1b4"
+        destructive: false
+        models: []
+      responses:
+        "200":
+          description: "Envelope with errCode/errMsg plus the payload."
+  "/1/Device/IpMappingInfo":
+    get:
+      operationId: ipmapping
+      summary: "1:1 NAT / IP mapping"
+      tags:
+        - lan
+      x-hitron:
+        requires:
+          - router
+        state: php8
+        httpStatus: 500
+        verifiedOn: "8.7.1.0.1b4"
+        destructive: false
+        models: []
+      responses:
+        "200":
+          description: "Envelope with errCode/errMsg plus the payload."
+        "500":
+          description: "PHP 8 fatal in the shipped controller on 8.7.1.0.1b4."
+  "/1/Device/IpMappingInfo/Status":
+    get:
+      operationId: ipmapping_status
+      summary: "IP mapping enabled"
+      tags:
+        - lan
+      x-hitron:
+        requires:
+          - router
+        state: ok
+        httpStatus: 200
+        verifiedOn: "8.7.1.0.1b4"
+        destructive: false
+        models: []
+      responses:
+        "200":
+          description: "Envelope with errCode/errMsg plus the payload."
+  "/1/Device/IpPass":
+    get:
+      operationId: ippass
+      summary: "IP passthrough"
+      tags:
+        - lan
+      x-hitron:
+        requires:
+          - router
+        state: php8
+        httpStatus: 500
+        verifiedOn: "8.7.1.0.1b4"
+        destructive: false
+        models: []
+      responses:
+        "200":
+          description: "Envelope with errCode/errMsg plus the payload."
+        "500":
+          description: "PHP 8 fatal in the shipped controller on 8.7.1.0.1b4."
+  "/1/Device/GRE":
+    get:
+      operationId: gre
+      summary: "GRE tunnels"
+      tags:
+        - lan
+      x-hitron:
+        requires:
+          - router
+        state: php8
+        httpStatus: 500
+        verifiedOn: "8.7.1.0.1b4"
+        destructive: false
+        models: []
+      responses:
+        "200":
+          description: "Envelope with errCode/errMsg plus the payload."
+        "500":
+          description: "PHP 8 fatal in the shipped controller on 8.7.1.0.1b4."
+  "/1/Device/RipInfo":
+    get:
+      operationId: ripinfo
+      summary: "RIP routing"
+      tags:
+        - lan
+      x-hitron:
+        requires:
+          - router
+        state: php8
+        httpStatus: 500
+        verifiedOn: "8.7.1.0.1b4"
+        destructive: false
+        models: []
+      responses:
+        "200":
+          description: "Envelope with errCode/errMsg plus the payload."
+        "500":
+          description: "PHP 8 fatal in the shipped controller on 8.7.1.0.1b4."
+  "/1/Device/StaticRouteInfo":
+    get:
+      operationId: staticrouteinfo
+      summary: "Static routes"
+      tags:
+        - lan
+      x-hitron:
+        requires:
+          - router
+        state: php8
+        httpStatus: 500
+        verifiedOn: "8.7.1.0.1b4"
+        destructive: false
+        models: []
+      responses:
+        "200":
+          description: "Envelope with errCode/errMsg plus the payload."
+        "500":
+          description: "PHP 8 fatal in the shipped controller on 8.7.1.0.1b4."
+  "/1/Device/Ether/VLAN":
+    get:
+      operationId: ether_vlan
+      summary: "Ethernet port VLAN state"
+      tags:
+        - lan
+      x-hitron:
+        requires: []
+        state: ok
+        httpStatus: 200
+        verifiedOn: "8.7.1.0.1b4"
+        destructive: false
+        models: []
+      description: "ethPort1..4 are fixed schema fields, not a port count; on the live CODA60 all four are 0 while AdvancedSwitch reports one port."
+      responses:
+        "200":
+          description: "Envelope with errCode/errMsg plus the payload."
+  "/1/Device/Advanced/AdvancedSwitch":
+    get:
+      operationId: advanced_switch
+      summary: "On-board Ethernet switch ports"
+      tags:
+        - lan
+      x-hitron:
+        requires: []
+        state: ok
+        httpStatus: 200
+        verifiedOn: "8.7.1.0.1b4"
+        destructive: false
+        models: []
+      responses:
+        "200":
+          description: "Envelope with errCode/errMsg plus the payload."
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/AdvancedSwitchPort"
+  "/1/Device/MoCA":
+    get:
+      operationId: moca
+      summary: "MoCA interface status/config"
+      tags:
+        - moca
+      x-hitron:
+        requires:
+          - moca
+        state: php8
+        httpStatus: 500
+        verifiedOn: "8.7.1.0.1b4"
+        destructive: false
+        models: []
+      description: "Undefined array key 'info'"
+      responses:
+        "200":
+          description: "Envelope with errCode/errMsg plus the payload."
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/MoCA"
+        "500":
+          description: "PHP 8 fatal in the shipped controller on 8.7.1.0.1b4. Undefined array key 'info'"
+  "/1/Device/Firewall/Level":
+    get:
+      operationId: firewall_level
+      summary: "Firewall level"
+      tags:
+        - firewall
+      x-hitron:
+        requires:
+          - router
+        state: ok
+        httpStatus: 200
+        verifiedOn: "8.7.1.0.1b4"
+        destructive: false
+        models: []
+      responses:
+        "200":
+          description: "Envelope with errCode/errMsg plus the payload."
+  "/1/Device/Firewall/Levels":
+    get:
+      operationId: firewall_levels
+      summary: "Firewall level list"
+      tags:
+        - firewall
+      x-hitron:
+        requires:
+          - router
+        state: session
+        httpStatus: 400
+        verifiedOn: "8.7.1.0.1b4"
+        destructive: false
+        models: []
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: "Envelope with errCode/errMsg plus the payload."
+        "400":
+          description: "errCode 001 - requires the web UI SESSION.uid cookie."
+  "/1/Device/Firewall/Logs":
+    get:
+      operationId: firewall_logs
+      summary: "Firewall log"
+      tags:
+        - firewall
+      x-hitron:
+        requires:
+          - router
+        state: ok
+        httpStatus: 200
+        verifiedOn: "8.7.1.0.1b4"
+        destructive: false
+        models: []
+      responses:
+        "200":
+          description: "Envelope with errCode/errMsg plus the payload."
+  "/1/Device/Firewall/VPN":
+    get:
+      operationId: firewall_vpn
+      summary: "VPN passthrough state"
+      tags:
+        - firewall
+      x-hitron:
+        requires:
+          - router
+        state: ok
+        httpStatus: 200
+        verifiedOn: "8.7.1.0.1b4"
+        destructive: false
+        models: []
+      responses:
+        "200":
+          description: "Envelope with errCode/errMsg plus the payload."
+  "/1/Device/Firewall/Inbound":
+    get:
+      operationId: firewall_inbound
+      summary: "Inbound rule set"
+      tags:
+        - firewall
+      x-hitron:
+        requires:
+          - router
+        state: php8
+        httpStatus: 500
+        verifiedOn: "8.7.1.0.1b4"
+        destructive: false
+        models: []
+      responses:
+        "200":
+          description: "Envelope with errCode/errMsg plus the payload."
+        "500":
+          description: "PHP 8 fatal in the shipped controller on 8.7.1.0.1b4."
+  "/1/Device/Firewall/Inbound/Rules":
+    get:
+      operationId: firewall_inbound_rules
+      summary: "Inbound rules"
+      tags:
+        - firewall
+      x-hitron:
+        requires:
+          - router
+        state: ok
+        httpStatus: 200
+        verifiedOn: "8.7.1.0.1b4"
+        destructive: false
+        models: []
+      responses:
+        "200":
+          description: "Envelope with errCode/errMsg plus the payload."
+  "/1/Device/Firewall/Inbound/Status":
+    get:
+      operationId: firewall_inbound_status
+      summary: "Inbound filter enabled"
+      tags:
+        - firewall
+      x-hitron:
+        requires:
+          - router
+        state: ok
+        httpStatus: 200
+        verifiedOn: "8.7.1.0.1b4"
+        destructive: false
+        models: []
+      responses:
+        "200":
+          description: "Envelope with errCode/errMsg plus the payload."
+  "/1/Device/Firewall/ServiceFilter":
+    get:
+      operationId: firewall_servicefilter
+      summary: "Service filter set"
+      tags:
+        - firewall
+      x-hitron:
+        requires:
+          - router
+        state: php8
+        httpStatus: 500
+        verifiedOn: "8.7.1.0.1b4"
+        destructive: false
+        models: []
+      responses:
+        "200":
+          description: "Envelope with errCode/errMsg plus the payload."
+        "500":
+          description: "PHP 8 fatal in the shipped controller on 8.7.1.0.1b4."
+  "/1/Device/Firewall/ServiceFilter/Rules":
+    get:
+      operationId: firewall_servicefilter_rules
+      summary: "Service filter rules"
+      tags:
+        - firewall
+      x-hitron:
+        requires:
+          - router
+        state: php8
+        httpStatus: 500
+        verifiedOn: "8.7.1.0.1b4"
+        destructive: false
+        models: []
+      description: "Undefined function getInstanceIDs()."
+      responses:
+        "200":
+          description: "Envelope with errCode/errMsg plus the payload."
+        "500":
+          description: "PHP 8 fatal in the shipped controller on 8.7.1.0.1b4. Undefined function getInstanceIDs()."
+  "/1/Device/Firewall/ServiceFilter/Status":
+    get:
+      operationId: firewall_servicefilter_status
+      summary: "Service filter enabled"
+      tags:
+        - firewall
+      x-hitron:
+        requires:
+          - router
+        state: ok
+        httpStatus: 200
+        verifiedOn: "8.7.1.0.1b4"
+        destructive: false
+        models: []
+      responses:
+        "200":
+          description: "Envelope with errCode/errMsg plus the payload."
+  "/1/Device/Firewall/ServiceFilter/TrustRules":
+    get:
+      operationId: firewall_servicefilter_trust
+      summary: "Service filter trust rules"
+      tags:
+        - firewall
+      x-hitron:
+        requires:
+          - router
+        state: php8
+        httpStatus: 500
+        verifiedOn: "8.7.1.0.1b4"
+        destructive: false
+        models: []
+      responses:
+        "200":
+          description: "Envelope with errCode/errMsg plus the payload."
+        "500":
+          description: "PHP 8 fatal in the shipped controller on 8.7.1.0.1b4."
+  "/1/Device/Firewall/DeviceFilter":
+    get:
+      operationId: firewall_devicefilter
+      summary: "Device filter set"
+      tags:
+        - firewall
+      x-hitron:
+        requires:
+          - router
+        state: php8
+        httpStatus: 500
+        verifiedOn: "8.7.1.0.1b4"
+        destructive: false
+        models: []
+      responses:
+        "200":
+          description: "Envelope with errCode/errMsg plus the payload."
+        "500":
+          description: "PHP 8 fatal in the shipped controller on 8.7.1.0.1b4."
+  "/1/Device/Firewall/DeviceFilter/Rules":
+    get:
+      operationId: firewall_devicefilter_rules
+      summary: "Device filter rules"
+      tags:
+        - firewall
+      x-hitron:
+        requires:
+          - router
+        state: php8
+        httpStatus: 500
+        verifiedOn: "8.7.1.0.1b4"
+        destructive: false
+        models: []
+      responses:
+        "200":
+          description: "Envelope with errCode/errMsg plus the payload."
+        "500":
+          description: "PHP 8 fatal in the shipped controller on 8.7.1.0.1b4."
+  "/1/Device/Firewall/DeviceFilter/Type":
+    get:
+      operationId: firewall_devicefilter_type
+      summary: "Device filter allow/deny type"
+      tags:
+        - firewall
+      x-hitron:
+        requires:
+          - router
+        state: ok
+        httpStatus: 200
+        verifiedOn: "8.7.1.0.1b4"
+        destructive: false
+        models: []
+      responses:
+        "200":
+          description: "Envelope with errCode/errMsg plus the payload."
+  "/1/Device/Firewall/KeywordFilter":
+    get:
+      operationId: firewall_keywordfilter
+      summary: "Keyword filter set"
+      tags:
+        - firewall
+      x-hitron:
+        requires:
+          - router
+        state: php8
+        httpStatus: 500
+        verifiedOn: "8.7.1.0.1b4"
+        destructive: false
+        models: []
+      responses:
+        "200":
+          description: "Envelope with errCode/errMsg plus the payload."
+        "500":
+          description: "PHP 8 fatal in the shipped controller on 8.7.1.0.1b4."
+  "/1/Device/Firewall/KeywordFilter/Rules":
+    get:
+      operationId: firewall_keywordfilter_rules
+      summary: "Keyword filter rules"
+      tags:
+        - firewall
+      x-hitron:
+        requires:
+          - router
+        state: php8
+        httpStatus: 500
+        verifiedOn: "8.7.1.0.1b4"
+        destructive: false
+        models: []
+      responses:
+        "200":
+          description: "Envelope with errCode/errMsg plus the payload."
+        "500":
+          description: "PHP 8 fatal in the shipped controller on 8.7.1.0.1b4."
+  "/1/Device/Firewall/KeywordFilter/Status":
+    get:
+      operationId: firewall_keywordfilter_status
+      summary: "Keyword filter enabled"
+      tags:
+        - firewall
+      x-hitron:
+        requires:
+          - router
+        state: ok
+        httpStatus: 200
+        verifiedOn: "8.7.1.0.1b4"
+        destructive: false
+        models: []
+      responses:
+        "200":
+          description: "Envelope with errCode/errMsg plus the payload."
+  "/1/Device/Firewall/KeywordFilter/TrustRules":
+    get:
+      operationId: firewall_keywordfilter_trust
+      summary: "Keyword filter trust rules"
+      tags:
+        - firewall
+      x-hitron:
+        requires:
+          - router
+        state: php8
+        httpStatus: 500
+        verifiedOn: "8.7.1.0.1b4"
+        destructive: false
+        models: []
+      responses:
+        "200":
+          description: "Envelope with errCode/errMsg plus the payload."
+        "500":
+          description: "PHP 8 fatal in the shipped controller on 8.7.1.0.1b4."
+  "/1/Device/Firewall/TimeFilter":
+    get:
+      operationId: firewall_timefilter
+      summary: "Time-based access filter"
+      tags:
+        - firewall
+      x-hitron:
+        requires:
+          - router
+        state: php8
+        httpStatus: 500
+        verifiedOn: "8.7.1.0.1b4"
+        destructive: false
+        models: []
+      responses:
+        "200":
+          description: "Envelope with errCode/errMsg plus the payload."
+        "500":
+          description: "PHP 8 fatal in the shipped controller on 8.7.1.0.1b4."
+  "/1/Device/Firewall/KwdFilter/{info}":
+    get:
+      operationId: firewall_kwdfilter_app
+      summary: "App-only keyword filter"
+      tags:
+        - firewall
+      x-hitron:
+        requires:
+          - router
+        state: untested
+        httpStatus: null
+        verifiedOn: null
+        destructive: false
+        models: []
+      responses:
+        "200":
+          description: "Envelope with errCode/errMsg plus the payload."
+      parameters:
+        - name: info
+          in: path
+          required: true
+          schema:
+            type: string
+  "/1/Device/Firewall/SrvFilter/{info}":
+    get:
+      operationId: firewall_srvfilter_app
+      summary: "App-only service filter"
+      tags:
+        - firewall
+      x-hitron:
+        requires:
+          - router
+        state: untested
+        httpStatus: null
+        verifiedOn: null
+        destructive: false
+        models: []
+      responses:
+        "200":
+          description: "Envelope with errCode/errMsg plus the payload."
+      parameters:
+        - name: info
+          in: path
+          required: true
+          schema:
+            type: string
+  "/1/Device/MTA/StatusInfo":
+    get:
+      operationId: mta_status
+      summary: "EMTA line registration + call state"
+      tags:
+        - voice
+      x-hitron:
+        requires:
+          - voice
+        state: ok
+        httpStatus: 200
+        verifiedOn: "8.7.1.0.1b4"
+        destructive: false
+        models: []
+      description: "Answers 200 even with no SLIC; NumberOfSLIC is null and all LineNRegState are null."
+      responses:
+        "200":
+          description: "Envelope with errCode/errMsg plus the payload."
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/MtaStatus"
+  "/1/Device/MTA/StatusInfo/DhcpInfo":
+    get:
+      operationId: mta_dhcp
+      summary: "EMTA DHCP state"
+      tags:
+        - voice
+      x-hitron:
+        requires:
+          - voice
+        state: ok
+        httpStatus: 200
+        verifiedOn: "8.7.1.0.1b4"
+        destructive: false
+        models: []
+      responses:
+        "200":
+          description: "Envelope with errCode/errMsg plus the payload."
+  "/1/Device/MTA/StatusInfo/Log":
+    get:
+      operationId: mta_log
+      summary: "EMTA event log"
+      tags:
+        - voice
+      x-hitron:
+        requires:
+          - voice
+        state: ok
+        httpStatus: 200
+        verifiedOn: "8.7.1.0.1b4"
+        destructive: false
+        models: []
+      responses:
+        "200":
+          description: "Envelope with errCode/errMsg plus the payload."
+  "/1/Device/MTA/StatusInfo/QualityMetric":
+    get:
+      operationId: mta_quality
+      summary: "Voice quality metrics"
+      tags:
+        - voice
+      x-hitron:
+        requires:
+          - voice
+        state: ok
+        httpStatus: 200
+        verifiedOn: "8.7.1.0.1b4"
+        destructive: false
+        models: []
+      responses:
+        "200":
+          description: "Envelope with errCode/errMsg plus the payload."
+  "/1/Device/BBU":
+    get:
+      operationId: bbu
+      summary: "Battery backup unit"
+      tags:
+        - voice
+      x-hitron:
+        requires:
+          - battery
+        state: php8
+        httpStatus: 500
+        verifiedOn: "8.7.1.0.1b4"
+        destructive: false
+        models: []
+      responses:
+        "200":
+          description: "Envelope with errCode/errMsg plus the payload."
+        "500":
+          description: "PHP 8 fatal in the shipped controller on 8.7.1.0.1b4."
+  "/1/Device/Diagnostics":
+    get:
+      operationId: diagnostics_root
+      summary: "Diagnostics controller root"
+      tags:
+        - diagnostics
+      x-hitron:
+        requires: []
+        state: php8
+        httpStatus: 500
+        verifiedOn: "8.7.1.0.1b4"
+        destructive: false
+        models: []
+      description: "Requires an @info branch; the bare controller root reads $args['info'] and fatals."
+      responses:
+        "200":
+          description: "Envelope with errCode/errMsg plus the payload."
+        "500":
+          description: "PHP 8 fatal in the shipped controller on 8.7.1.0.1b4. Requires an @info branch; the bare controller root reads $args['info'] and fatals."
+  "/1/Device/Diagnostics/Input":
+    get:
+      operationId: diag_input
+      summary: "Stored diagnostic target"
+      tags:
+        - diagnostics
+      x-hitron:
+        requires: []
+        state: ok
+        httpStatus: 200
+        verifiedOn: "8.7.1.0.1b4"
+        destructive: false
+        models: []
+      responses:
+        "200":
+          description: "Envelope with errCode/errMsg plus the payload."
+  "/1/Device/Diagnostics/Ping":
+    get:
+      operationId: diag_ping
+      summary: "Last ping result"
+      tags:
+        - diagnostics
+      x-hitron:
+        requires: []
+        state: ok
+        httpStatus: 200
+        verifiedOn: "8.7.1.0.1b4"
+        destructive: false
+        models: []
+      responses:
+        "200":
+          description: "Envelope with errCode/errMsg plus the payload."
+  "/1/Device/Diagnostics/TraceRoute":
+    get:
+      operationId: diag_traceroute
+      summary: "Last traceroute result"
+      tags:
+        - diagnostics
+      x-hitron:
+        requires: []
+        state: ok
+        httpStatus: 200
+        verifiedOn: "8.7.1.0.1b4"
+        destructive: false
+        models: []
+      responses:
+        "200":
+          description: "Envelope with errCode/errMsg plus the payload."
+  "/1/Device/Spectrum":
+    get:
+      operationId: spectrum
+      summary: "Spectrum analyzer source address"
+      tags:
+        - spectrum
+      x-hitron:
+        requires:
+          - spectrum
+        state: ok
+        httpStatus: 200
+        verifiedOn: "8.7.1.0.1b4"
+        destructive: false
+        models: []
+      responses:
+        "200":
+          description: "Envelope with errCode/errMsg plus the payload."
+  "/1/Device/Spectrum/FreqList":
+    get:
+      operationId: spectrum_freqlist
+      summary: "Analyzer frequency list"
+      tags:
+        - spectrum
+      x-hitron:
+        requires:
+          - spectrum
+        state: ok
+        httpStatus: 200
+        verifiedOn: "8.7.1.0.1b4"
+        destructive: false
+        models: []
+      responses:
+        "200":
+          description: "Envelope with errCode/errMsg plus the payload."
+  "/1/Device/Spectrum/RTData":
+    get:
+      operationId: spectrum_rtdata
+      summary: "Real-time spectrum trace"
+      tags:
+        - spectrum
+      x-hitron:
+        requires:
+          - spectrum
+        state: ok
+        httpStatus: 200
+        verifiedOn: "8.7.1.0.1b4"
+        destructive: false
+        models: []
+      responses:
+        "200":
+          description: "Envelope with errCode/errMsg plus the payload."
+  "/1/Device/Spectrum/Constellation":
+    get:
+      operationId: spectrum_constellation
+      summary: "Constellation points for one downstream port"
+      tags:
+        - spectrum
+      x-hitron:
+        requires:
+          - spectrum
+        state: php8
+        httpStatus: 500
+        verifiedOn: "8.7.1.0.1b4"
+        destructive: false
+        models: []
+      description: "Handler reads $args['query'], which the route never supplies."
+      parameters:
+        - name: portId
+          in: query
+          required: true
+          schema:
+            type: integer
+            minimum: 0
+            maximum: 31
+            default: 24
+      responses:
+        "200":
+          description: "Envelope with errCode/errMsg plus the payload."
+        "500":
+          description: "PHP 8 fatal in the shipped controller on 8.7.1.0.1b4. Handler reads $args['query'], which the route never supplies."
+  "/1/Device/Spectrum/FreqPower":
+    get:
+      operationId: spectrum_freqpower
+      summary: "Power sweep over a frequency range"
+      tags:
+        - spectrum
+      x-hitron:
+        requires:
+          - spectrum
+        state: php8
+        httpStatus: 500
+        verifiedOn: "8.7.1.0.1b4"
+        destructive: false
+        models: []
+      description: "Same $args['query'] defect as Constellation."
+      parameters:
+        - name: centFreq
+          in: query
+          required: true
+          schema:
+            type: number
+            minimum: 49
+            maximum: 1788
+            default: 645
+        - name: fromFreq
+          in: query
+          required: true
+          schema:
+            type: number
+            minimum: 43
+            maximum: 1794
+            default: 637.5
+        - name: toFreq
+          in: query
+          required: true
+          schema:
+            type: number
+            minimum: 43
+            maximum: 1794
+            default: 643.5
+      responses:
+        "200":
+          description: "Envelope with errCode/errMsg plus the payload."
+        "500":
+          description: "PHP 8 fatal in the shipped controller on 8.7.1.0.1b4. Same $args['query'] defect as Constellation."
+  "/1/Device/Time":
+    get:
+      operationId: time
+      summary: "NTP/time configuration"
+      tags:
+        - system
+      x-hitron:
+        requires: []
+        state: php8
+        httpStatus: 500
+        verifiedOn: "8.7.1.0.1b4"
+        destructive: false
+        models: []
+      responses:
+        "200":
+          description: "Envelope with errCode/errMsg plus the payload."
+        "500":
+          description: "PHP 8 fatal in the shipped controller on 8.7.1.0.1b4."
+  "/1/Device/Advanced":
+    get:
+      operationId: advanced_root
+      summary: "Advanced controller root"
+      tags:
+        - system
+      x-hitron:
+        requires: []
+        state: php8
+        httpStatus: 500
+        verifiedOn: "8.7.1.0.1b4"
+        destructive: false
+        models: []
+      description: "Requires an @info branch."
+      responses:
+        "200":
+          description: "Envelope with errCode/errMsg plus the payload."
+        "500":
+          description: "PHP 8 fatal in the shipped controller on 8.7.1.0.1b4. Requires an @info branch."
+  "/1/Device/USB":
+    get:
+      operationId: usb_root
+      summary: "USB controller root"
+      tags:
+        - system
+      x-hitron:
+        requires: []
+        state: php8
+        httpStatus: 500
+        verifiedOn: "8.7.1.0.1b4"
+        destructive: false
+        models: []
+      description: "Requires an @info branch."
+      responses:
+        "200":
+          description: "Envelope with errCode/errMsg plus the payload."
+        "500":
+          description: "PHP 8 fatal in the shipped controller on 8.7.1.0.1b4. Requires an @info branch."
+  "/1/Device/AdminRemoteManagement":
+    get:
+      operationId: adminremote_root
+      summary: "Remote-management controller root"
+      tags:
+        - system
+      x-hitron:
+        requires: []
+        state: php8
+        httpStatus: 500
+        verifiedOn: "8.7.1.0.1b4"
+        destructive: false
+        models: []
+      description: "Requires an @info branch."
+      responses:
+        "200":
+          description: "Envelope with errCode/errMsg plus the payload."
+        "500":
+          description: "PHP 8 fatal in the shipped controller on 8.7.1.0.1b4. Requires an @info branch."
+  "/1/Device/USB/DeviceList":
+    get:
+      operationId: usb_devices
+      summary: "Attached USB devices"
+      tags:
+        - system
+      x-hitron:
+        requires:
+          - usb
+        state: ok
+        httpStatus: 200
+        verifiedOn: "8.7.1.0.1b4"
+        destructive: false
+        models: []
+      description: "0 entries proves an empty port, not an absent one; only the catalog can say a SKU has no USB."
+      responses:
+        "200":
+          description: "Envelope with errCode/errMsg plus the payload."
+  "/1/Device/AdminRemoteManagement/Status":
+    get:
+      operationId: adminremote_status
+      summary: "WAN-side admin access state"
+      tags:
+        - system
+      x-hitron:
+        requires: []
+        state: ok
+        httpStatus: 200
+        verifiedOn: "8.7.1.0.1b4"
+        destructive: false
+        models: []
+      responses:
+        "200":
+          description: "Envelope with errCode/errMsg plus the payload."
+  "/1/Device/AdminRemoteManagement/AcList":
+    get:
+      operationId: adminremote_aclist
+      summary: "Remote-management allow list"
+      tags:
+        - system
+      x-hitron:
+        requires: []
+        state: php8
+        httpStatus: 500
+        verifiedOn: "8.7.1.0.1b4"
+        destructive: false
+        models: []
+      description: "count() on a RemoteAccess object"
+      responses:
+        "200":
+          description: "Envelope with errCode/errMsg plus the payload."
+        "500":
+          description: "PHP 8 fatal in the shipped controller on 8.7.1.0.1b4. count() on a RemoteAccess object"
+  "/1/Device/AdminRemoteManagement/RList":
+    get:
+      operationId: adminremote_rlist
+      summary: "Remote-management rule list"
+      tags:
+        - system
+      x-hitron:
+        requires: []
+        state: php8
+        httpStatus: 500
+        verifiedOn: "8.7.1.0.1b4"
+        destructive: false
+        models: []
+      description: "Undefined function getInstanceIDs()."
+      responses:
+        "200":
+          description: "Envelope with errCode/errMsg plus the payload."
+        "500":
+          description: "PHP 8 fatal in the shipped controller on 8.7.1.0.1b4. Undefined function getInstanceIDs()."
+    post:
+      operationId: adminremote_rlist_write
+      summary: "Add/remove remote-management rules"
+      tags:
+        - write
+      x-hitron:
+        requires: []
+        state: untested
+        httpStatus: null
+        verifiedOn: null
+        destructive: true
+        models: []
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: "Envelope with errCode/errMsg plus the payload."
+    put:
+      operationId: adminremote_rlist_write
+      summary: "Add/remove remote-management rules"
+      tags:
+        - write
+      x-hitron:
+        requires: []
+        state: untested
+        httpStatus: null
+        verifiedOn: null
+        destructive: true
+        models: []
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: "Envelope with errCode/errMsg plus the payload."
+  "/1/Device/AdminRemoteManagement/Backup":
+    get:
+      operationId: adminremote_backup
+      summary: "Download the running config"
+      tags:
+        - system
+      x-hitron:
+        requires: []
+        state: php8
+        httpStatus: 500
+        verifiedOn: "8.7.1.0.1b4"
+        destructive: true
+        models: []
+      description: "Saves to /tmp/basic.cfg then readfile()s it; confPhp never produces the file on this build."
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: "Envelope with errCode/errMsg plus the payload."
+        "500":
+          description: "PHP 8 fatal in the shipped controller on 8.7.1.0.1b4. Saves to /tmp/basic.cfg then readfile()s it; confPhp never produces the file on this build."
+  "/1/Device/Health":
+    get:
+      operationId: health_root
+      summary: "App health summary"
+      tags:
+        - system
+      x-hitron:
+        requires: []
+        state: php8
+        httpStatus: 500
+        verifiedOn: "8.7.1.0.1b4"
+        destructive: false
+        models: []
+      responses:
+        "200":
+          description: "Envelope with errCode/errMsg plus the payload."
+        "500":
+          description: "PHP 8 fatal in the shipped controller on 8.7.1.0.1b4."
+  "/1/Device/Health/Settings":
+    get:
+      operationId: health_settings
+      summary: "App health thresholds"
+      tags:
+        - system
+      x-hitron:
+        requires: []
+        state: session
+        httpStatus: 400
+        verifiedOn: "8.7.1.0.1b4"
+        destructive: false
+        models: []
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: "Envelope with errCode/errMsg plus the payload."
+        "400":
+          description: "errCode 001 - requires the web UI SESSION.uid cookie."
+  "/1/Device/TempAccess/Status":
+    get:
+      operationId: tempaccess_status
+      summary: "Temporary access window"
+      tags:
+        - system
+      x-hitron:
+        requires: []
+        state: verb
+        httpStatus: 400
+        verifiedOn: "8.7.1.0.1b4"
+        destructive: false
+        models: []
+      responses:
+        "200":
+          description: "Envelope with errCode/errMsg plus the payload."
+        "400":
+          description: "errCode 005 - GET is not supported for this model."
+  "/1/Device/Addons/AssiaAgent":
+    get:
+      operationId: addons_assia
+      summary: "Assia agent state"
+      tags:
+        - system
+      x-hitron:
+        requires: []
+        state: ok
+        httpStatus: 200
+        verifiedOn: "8.7.1.0.1b4"
+        destructive: false
+        models: []
+      responses:
+        "200":
+          description: "Envelope with errCode/errMsg plus the payload."
+  "/1/Device/Manage":
+    get:
+      operationId: manage_root
+      summary: "Admin account screen"
+      tags:
+        - system
+      x-hitron:
+        requires: []
+        state: ok
+        httpStatus: 200
+        verifiedOn: "8.7.1.0.1b4"
+        destructive: false
+        models: []
+      description: "Returns the literal text 'cusadmin,false' (current admin username + a flag), not JSON, to an unauthenticated GET on 8.7.1.0.1b4."
+      responses:
+        "200":
+          description: "Envelope with errCode/errMsg plus the payload."
+  "/1/Device/Upload":
+    post:
+      operationId: upload_root
+      summary: "Config upload handler"
+      tags:
+        - system
+      x-hitron:
+        requires: []
+        state: ok
+        httpStatus: 200
+        verifiedOn: "8.7.1.0.1b4"
+        destructive: true
+        models: []
+      description: "Unauthenticated .cfg upload into /var/tmp on this build; GET renders the form, POST accepts it."
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: "Envelope with errCode/errMsg plus the payload."
+  "/rfmetrics":
+    get:
+      operationId: telemetry_rfmetrics
+      summary: "RF metrics bundle"
+      tags:
+        - telemetry
+      x-hitron:
+        requires: []
+        state: ok
+        httpStatus: 200
+        verifiedOn: "8.7.1.0.1b4"
+        destructive: false
+        models: []
+      responses:
+        "200":
+          description: "Envelope with errCode/errMsg plus the payload."
+  "/pnm":
+    get:
+      operationId: telemetry_pnm
+      summary: "PNM bundle (rxmer etc.)"
+      tags:
+        - telemetry
+      x-hitron:
+        requires: []
+        state: ok
+        httpStatus: 200
+        verifiedOn: "8.7.1.0.1b4"
+        destructive: false
+        models: []
+      responses:
+        "200":
+          description: "Envelope with errCode/errMsg plus the payload."
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/PnmBundle"
+  "/pnm/rxmer":
+    get:
+      operationId: telemetry_pnm_rxmer
+      summary: "Downstream RxMER per subcarrier"
+      tags:
+        - telemetry
+      x-hitron:
+        requires: []
+        state: ok
+        httpStatus: 200
+        verifiedOn: "8.7.1.0.1b4"
+        destructive: false
+        models: []
+      responses:
+        "200":
+          description: "Envelope with errCode/errMsg plus the payload."
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/PnmBundle"
+  "/pnm/ch_est_coef":
+    get:
+      operationId: telemetry_pnm_ch_est_coef
+      summary: "Channel estimate coefficients"
+      tags:
+        - telemetry
+      x-hitron:
+        requires: []
+        state: untested
+        httpStatus: null
+        verifiedOn: null
+        destructive: false
+        models: []
+      responses:
+        "200":
+          description: "Envelope with errCode/errMsg plus the payload."
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/PnmBundle"
+  "/pnm/us_pre_eq":
+    get:
+      operationId: telemetry_pnm_us_pre_eq
+      summary: "Upstream pre-equaliser coefficients"
+      tags:
+        - telemetry
+      x-hitron:
+        requires: []
+        state: ok
+        httpStatus: 200
+        verifiedOn: "8.7.1.0.1b4"
+        destructive: false
+        models: []
+      responses:
+        "200":
+          description: "Envelope with errCode/errMsg plus the payload."
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/PnmBundle"
+  "/pnm/mod_prof":
+    get:
+      operationId: telemetry_pnm_mod_prof
+      summary: "Modulation profiles"
+      tags:
+        - telemetry
+      x-hitron:
+        requires: []
+        state: ok
+        httpStatus: 200
+        verifiedOn: "8.7.1.0.1b4"
+        destructive: false
+        models: []
+      responses:
+        "200":
+          description: "Envelope with errCode/errMsg plus the payload."
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/PnmBundle"
+  "/1/Device/CM/Reboot":
+    post:
+      operationId: cm_reboot
+      summary: "Reboot / factory-reset flag"
+      tags:
+        - write
+      x-hitron:
+        requires: []
+        state: untested
+        httpStatus: null
+        verifiedOn: null
+        destructive: true
+        models: []
+      description: "Body {reboot:1}, {factoryReset:1} or {restoreReset:1}; the last one execs reboot directly."
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: "Envelope with errCode/errMsg plus the payload."
+  "/1/Device/AdminRemoteManagement/Manage":
+    post:
+      operationId: adminremote_manage
+      summary: "Enable/disable WAN admin"
+      tags:
+        - write
+      x-hitron:
+        requires: []
+        state: untested
+        httpStatus: null
+        verifiedOn: null
+        destructive: true
+        models: []
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: "Envelope with errCode/errMsg plus the payload."
+  "/1/Device/AdminRemoteManagement/Restore":
+    post:
+      operationId: adminremote_restore
+      summary: "Restore config from an uploaded file"
+      tags:
+        - write
+      x-hitron:
+        requires: []
+        state: untested
+        httpStatus: null
+        verifiedOn: null
+        destructive: true
+        models: []
+      description: "Builds exec('confPhp restore '.$target) from an unvalidated filename."
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: "Envelope with errCode/errMsg plus the payload."
+  "/1/Device/Manage/Password":
+    post:
+      operationId: manage_password
+      summary: "Change admin password"
+      tags:
+        - write
+      x-hitron:
+        requires: []
+        state: untested
+        httpStatus: null
+        verifiedOn: null
+        destructive: true
+        models: []
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: "Envelope with errCode/errMsg plus the payload."
+  "/1/Device/Manage/Username":
+    post:
+      operationId: manage_username
+      summary: "Change admin username"
+      tags:
+        - write
+      x-hitron:
+        requires: []
+        state: untested
+        httpStatus: null
+        verifiedOn: null
+        destructive: true
+        models: []
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: "Envelope with errCode/errMsg plus the payload."
+  "/1/Device/Users/Login":
+    post:
+      operationId: users_login
+      summary: "Browser session login"
+      tags:
+        - write
+      x-hitron:
+        requires: []
+        state: untested
+        httpStatus: null
+        verifiedOn: null
+        destructive: true
+        models: []
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: "Envelope with errCode/errMsg plus the payload."
+  "/1/Device/Users/Logout":
+    post:
+      operationId: users_logout
+      summary: "Browser session logout"
+      tags:
+        - write
+      x-hitron:
+        requires: []
+        state: untested
+        httpStatus: null
+        verifiedOn: null
+        destructive: true
+        models: []
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: "Envelope with errCode/errMsg plus the payload."
+  "/1/Device/API/Register":
+    post:
+      operationId: api_register
+      summary: "Vendor-app JWT registration"
+      tags:
+        - write
+      x-hitron:
+        requires: []
+        state: verb
+        httpStatus: 400
+        verifiedOn: "8.7.1.0.1b4"
+        destructive: true
+        models: []
+      description: "GET returns errCode 005; POST expects {appid, seckey}."
+      security:
+        - appTokenAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              "$ref": "#/components/schemas/RegisterRequest"
+      responses:
+        "200":
+          description: "Envelope with errCode/errMsg plus the payload."
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/RegisterRequest"
+        "400":
+          description: "errCode 005 - GET is not supported for this model."
+  "/1/Device/WiFi/Radios/{index}":
+    put:
+      operationId: wifi_radio_write
+      summary: "Update one radio"
+      tags:
+        - write
+      x-hitron:
+        requires:
+          - wifi
+        state: untested
+        httpStatus: null
+        verifiedOn: null
+        destructive: true
+        models: []
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: "Envelope with errCode/errMsg plus the payload."
+      parameters:
+        - name: index
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+    patch:
+      operationId: wifi_radio_write
+      summary: "Update one radio"
+      tags:
+        - write
+      x-hitron:
+        requires:
+          - wifi
+        state: untested
+        httpStatus: null
+        verifiedOn: null
+        destructive: true
+        models: []
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: "Envelope with errCode/errMsg plus the payload."
+      parameters:
+        - name: index
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 1

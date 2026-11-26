@@ -31,8 +31,12 @@ from prometheus_client import Gauge, start_http_server
 from .coda57 import Coda57Client
 from .coda60 import Coda60Client
 from .ht_em5 import HitronMocaClient
+from .models import ModelProfile, get_profile
 
 log = logging.getLogger("hitron.exporter")
+
+# Per-host capability profile, resolved once and reused for every scrape.
+_CODA60_PROFILES: dict[str, ModelProfile] = {}
 
 # ---------------------------------------------------------------------------
 # CODA6X / CODA-57 gauges - names match CODA_60_rpt.py exactly where that
@@ -72,8 +76,19 @@ def _step_ok(value: str | None) -> int:
     return 1 if (value or "").strip().lower() == "success" else 0
 
 
-async def poll_coda60(client: Coda60Client, source: str) -> None:
-    data = (await client.get_all())["metrics"]
+async def poll_coda60(client: Coda60Client, source: str, model: str | None = None) -> None:
+    # Model detection costs ~10 GETs, so do it once per host, not per scrape.
+    # A wrong capability profile only changes which endpoints are polled, so
+    # caching it for the process lifetime is safe; a restart re-detects.
+    cached = _CODA60_PROFILES.get(client.host)
+    if cached is None:
+        match = await client.detect_profile(model)
+        _CODA60_PROFILES[client.host] = match.profile
+        log.info("coda60 %s: model profile %s (matched by %s)", client.host, match.profile.id, match.matched_by)
+        profile = match.profile
+    else:
+        profile = cached
+    data = (await client.get_all(profile=profile))["metrics"]
 
     sysinfo = data.get("router_sysinfo", {})
     # parse "123h:45m:06s"-shaped uptime if present, else leave unset
@@ -200,10 +215,15 @@ def _f(x) -> float | None:
         return None
 
 
-async def poll_once(ht_em5_hosts: list[str], coda60_host: str | None, coda57_host: str | None) -> None:
+async def poll_once(
+    ht_em5_hosts: list[str],
+    coda60_host: str | None,
+    coda57_host: str | None,
+    coda60_model: str | None = None,
+) -> None:
     jobs = [poll_ht_em5(HitronMocaClient(host)) for host in ht_em5_hosts]
     if coda60_host:
-        jobs.append(poll_coda60(Coda60Client(coda60_host), source="coda60"))
+        jobs.append(poll_coda60(Coda60Client(coda60_host), source="coda60", model=coda60_model))
     if coda57_host:
         jobs.append(poll_coda57(Coda57Client(coda57_host), source="coda57"))
     results = await asyncio.gather(*jobs, return_exceptions=True)
@@ -212,9 +232,15 @@ async def poll_once(ht_em5_hosts: list[str], coda60_host: str | None, coda57_hos
             log.warning("poll of %s failed: %s", host, result)
 
 
-async def poll_loop(ht_em5_hosts: list[str], coda60_host: str | None, coda57_host: str | None, interval: float) -> None:
+async def poll_loop(
+    ht_em5_hosts: list[str],
+    coda60_host: str | None,
+    coda57_host: str | None,
+    interval: float,
+    coda60_model: str | None = None,
+) -> None:
     while True:
-        await poll_once(ht_em5_hosts, coda60_host, coda57_host)
+        await poll_once(ht_em5_hosts, coda60_host, coda57_host, coda60_model)
         await asyncio.sleep(interval)
 
 
@@ -225,16 +251,23 @@ def main() -> None:
     ap.add_argument("--interval", type=float, default=float(os.environ.get("HITRON_EXPORTER_INTERVAL", "30")))
     ap.add_argument("--ht-em5", action="append", default=[h for h in os.environ.get("HITRON_HT_EM5_HOSTS", "").split(",") if h], help="HT-EM5 bridge IP; repeatable")
     ap.add_argument("--coda60", default=os.environ.get("HITRON_CODA60_HOST") or None, help="CODA6X gateway IP")
+    ap.add_argument("--coda60-model", default=os.environ.get("HITRON_CODA60_MODEL") or None,
+                    help="force a model profile (e.g. coda6011uv) instead of detecting it")
     ap.add_argument("--coda57", default=os.environ.get("HITRON_CODA57_HOST") or None, help="CODA-57 gateway IP (legacy .asp API)")
     args = ap.parse_args()
 
     if not args.ht_em5 and not args.coda60 and not args.coda57:
         ap.error("give at least one of --ht-em5 / --coda60 / --coda57 (or the matching env var)")
+    if args.coda60 and args.coda60_model:
+        profile = get_profile(args.coda60_model)
+        if profile is None:
+            ap.error(f"unknown --coda60-model {args.coda60_model!r}")
+        _CODA60_PROFILES[args.coda60] = profile
 
     log.info("serving /metrics on :%d, polling every %ss", args.port, args.interval)
     log.info("HT-EM5: %s | CODA6X: %s | CODA-57: %s", args.ht_em5 or "(none)", args.coda60 or "(none)", args.coda57 or "(none)")
     start_http_server(args.port)
-    asyncio.run(poll_loop(args.ht_em5, args.coda60, args.coda57, args.interval))
+    asyncio.run(poll_loop(args.ht_em5, args.coda60, args.coda57, args.interval, args.coda60_model))
 
 
 if __name__ == "__main__":

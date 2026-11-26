@@ -18,6 +18,8 @@ import sys
 from .coda57 import Coda57Client
 from .coda60 import Coda60Client
 from .ht_em5 import HitronMocaClient
+from .models import all_profiles, get_profile
+from .verify import verify
 
 
 async def _ht_em5(args: argparse.Namespace) -> dict:
@@ -29,7 +31,30 @@ async def _ht_em5(args: argparse.Namespace) -> dict:
 
 
 async def _coda60(args: argparse.Namespace) -> dict:
-    return await Coda60Client(args.host).get_all()
+    client = Coda60Client(args.host)
+    if args.no_detect:
+        return await client.get_all()
+    match = await client.detect_profile(args.model)
+    data = await client.get_all(profile=match.profile)
+    data["metadata"]["detection"] = match.to_dict()
+    return data
+
+
+async def _coda60_verify(args: argparse.Namespace) -> dict:
+    report = await verify(args.host, model=args.model, groups=args.groups)
+    if args.out:
+        with open(args.out, "w") as fh:
+            fh.write(json.dumps(report, indent=2, default=str) + "\n")
+    return report
+
+
+async def _coda60_models(args: argparse.Namespace) -> dict:
+    if args.profile:
+        profile = get_profile(args.profile)
+        if profile is None:
+            raise SystemExit(f"unknown profile {args.profile!r}")
+        return {"profile": profile.to_dict()}
+    return {"profiles": [p.to_dict() for p in all_profiles().values()]}
 
 
 async def _coda57(args: argparse.Namespace) -> dict:
@@ -78,7 +103,20 @@ def main() -> None:
 
     p = sub.add_parser("coda60", help="CODA6X gateway (REST API) - read")
     p.add_argument("host", default="192.168.100.1", nargs="?")
+    p.add_argument("--model", help="force a model profile id/alias (skips detection)")
+    p.add_argument("--no-detect", action="store_true", help="poll every known endpoint, do not capability-gate")
     p.set_defaults(run=_coda60)
+
+    p = sub.add_parser("coda60-verify", help="CODA6X: read-only capability verification report")
+    p.add_argument("host", default="192.168.100.1", nargs="?")
+    p.add_argument("--model", help="force a model profile id/alias")
+    p.add_argument("--group", action="append", dest="groups", help="limit to one endpoint group; repeatable")
+    p.add_argument("--out", help="write the JSON report here instead of stdout")
+    p.set_defaults(run=_coda60_verify)
+
+    p = sub.add_parser("coda60-models", help="list the model capability catalog")
+    p.add_argument("profile", nargs="?", help="show one profile by id/alias")
+    p.set_defaults(run=_coda60_models)
 
     p = sub.add_parser("coda57", help="CODA-57 gateway (legacy .asp API) - read")
     p.add_argument("host", default="192.168.100.1", nargs="?")

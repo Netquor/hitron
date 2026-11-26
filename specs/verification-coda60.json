@@ -1,0 +1,751 @@
+{
+  "generated_at": "2026-11-26T17:30:31.117199+00:00",
+  "device": {
+    "host": "{host}",
+    "model_name": "CODA60",
+    "vendor_name": null,
+    "hw_version": "1A",
+    "sw_version": "8.7.1.0.1b4",
+    "serial_number": "REDACTED",
+    "rf_mac": "REDACTED",
+    "system_uptime": "02h:24m:27s"
+  },
+  "detection": {
+    "profile": {
+      "id": "coda60",
+      "model_name": "CODA60",
+      "aliases": [
+        "CODA-60",
+        "CODA60"
+      ],
+      "family": "coda6x",
+      "docsis": "4.0",
+      "downstream_scqam": 32,
+      "upstream_scqam": 8,
+      "downstream_ofdm": 5,
+      "upstream_ofdma": 7,
+      "wifi_bands": [],
+      "voice_lines": 0,
+      "moca": false,
+      "usb": false,
+      "battery": false,
+      "lte_backup": false,
+      "router": false,
+      "ethernet": [
+        {
+          "count": 1,
+          "speed": "10G"
+        }
+      ],
+      "spectrum_min_mhz": 5,
+      "spectrum_max_mhz": 1800,
+      "capabilities": [
+        "always",
+        "docsis31",
+        "docsis40",
+        "spectrum"
+      ],
+      "notes": "DOCSIS 4.0 32x8, no WiFi, no voice. Wired-only gateway/modem."
+    },
+    "matched_by": "deviceinfo",
+    "reported_model": "CODA60",
+    "confidence": 1.0,
+    "suggestions": [
+      "coda56",
+      "coda60u",
+      "coda6021"
+    ]
+  },
+  "capabilities": {
+    "wifi": false,
+    "voice": false,
+    "moca": false,
+    "usb": false,
+    "spectrum": true,
+    "router": false,
+    "docsis31": true,
+    "docsis40": true,
+    "lte_backup": false,
+    "battery": false
+  },
+  "probes": {
+    "wifi": false,
+    "voice": false,
+    "moca": null,
+    "usb": null,
+    "spectrum": true,
+    "ofdm_downstream": true,
+    "ofdm_upstream": true
+  },
+  "suggestions": [
+    {
+      "id": "coda60",
+      "model_name": "CODA60",
+      "distance": 0.0,
+      "docsis": "4.0",
+      "wifi_bands": [],
+      "voice_lines": 0,
+      "moca": false
+    },
+    {
+      "id": "coda56",
+      "model_name": "CODA56",
+      "distance": 0.25,
+      "docsis": "3.1",
+      "wifi_bands": [],
+      "voice_lines": 0,
+      "moca": false
+    },
+    {
+      "id": "coda60u",
+      "model_name": "CODA60U",
+      "distance": 0.25,
+      "docsis": "3.1",
+      "wifi_bands": [],
+      "voice_lines": 0,
+      "moca": false
+    }
+  ],
+  "summary": {
+    "endpoints_in_plan": 43,
+    "by_class": {
+      "ok": 30,
+      "php8: missing key": 7,
+      "rejected (400)": 3,
+      "php8: type error": 1,
+      "php8: missing function": 1,
+      "ok (non-json)": 1
+    },
+    "skipped_groups": []
+  },
+  "results": [
+    {
+      "id": "menu.main",
+      "path": "{host}/1/Device/Menu/Main",
+      "status": 200,
+      "class": "ok",
+      "keys": [
+        "errCode",
+        "errMsg",
+        "MenuList"
+      ],
+      "count": null,
+      "bytes": 169,
+      "detail": ""
+    },
+    {
+      "id": "menu.sub",
+      "path": "{host}/1/Device/Menu/Sub",
+      "status": 200,
+      "class": "ok",
+      "keys": [
+        "errCode",
+        "errMsg",
+        "SubMenuList"
+      ],
+      "count": null,
+      "bytes": 1049,
+      "detail": ""
+    },
+    {
+      "id": "users.list",
+      "path": "{host}/1/Device/Users",
+      "status": 500,
+      "class": "php8: missing key",
+      "keys": null,
+      "count": null,
+      "bytes": 375,
+      "detail": "Undefined array key \"action\""
+    },
+    {
+      "id": "deviceinfo",
+      "path": "{host}/deviceinfo",
+      "status": 200,
+      "class": "ok",
+      "keys": [
+        "errCode",
+        "errMsg",
+        "device_id",
+        "mso",
+        "hw_model",
+        "hw_manufacturer",
+        "hardware_version",
+        "software_version",
+        "serial_number",
+        "parent",
+        "connect_type"
+      ],
+      "count": null,
+      "bytes": 273,
+      "detail": ""
+    },
+    {
+      "id": "cm.version",
+      "path": "{host}/1/Device/CM/Version",
+      "status": 200,
+      "class": "ok",
+      "keys": [
+        "errCode",
+        "errMsg",
+        "modelName",
+        "vendorName",
+        "deploymentName",
+        "hwVersion",
+        "swVersion",
+        "serialNumber"
+      ],
+      "count": null,
+      "bytes": 160,
+      "detail": ""
+    },
+    {
+      "id": "cm.sysinfo",
+      "path": "{host}/1/Device/CM/SysInfo",
+      "status": 200,
+      "class": "ok",
+      "keys": [
+        "errCode",
+        "errMsg",
+        "ntAccess",
+        "ip",
+        "subMask",
+        "gw",
+        "lease",
+        "Configname"
+      ],
+      "count": null,
+      "bytes": 212,
+      "detail": ""
+    },
+    {
+      "id": "router.sysinfo",
+      "path": "{host}/1/Device/Router/SysInfo",
+      "status": 200,
+      "class": "ok",
+      "keys": [
+        "errCode",
+        "errMsg",
+        "modelName",
+        "vendorName",
+        "deploymentName",
+        "hwVersion",
+        "swVersion",
+        "serialNumber",
+        "systemTime",
+        "rfMac",
+        "systemUptime"
+      ],
+      "count": null,
+      "bytes": 259,
+      "detail": ""
+    },
+    {
+      "id": "cm.provision",
+      "path": "{host}/1/Device/CM/DocsisProvision",
+      "status": 200,
+      "class": "ok",
+      "keys": [
+        "errCode",
+        "errMsg",
+        "hwInit",
+        "findDownstream",
+        "ranging",
+        "dhcp",
+        "timeOfday",
+        "downloadCfg",
+        "registration",
+        "eaeStatus",
+        "bpiStatus"
+      ],
+      "count": null,
+      "bytes": 253,
+      "detail": ""
+    },
+    {
+      "id": "cm.ds",
+      "path": "{host}/1/Device/CM/DsInfo",
+      "status": 200,
+      "class": "ok",
+      "keys": [
+        "errCode",
+        "errMsg",
+        "Freq_List"
+      ],
+      "count": 8,
+      "bytes": 1390,
+      "detail": ""
+    },
+    {
+      "id": "cm.us",
+      "path": "{host}/1/Device/CM/UsInfo",
+      "status": 200,
+      "class": "ok",
+      "keys": [
+        "errCode",
+        "errMsg",
+        "Freq_List"
+      ],
+      "count": 2,
+      "bytes": 324,
+      "detail": ""
+    },
+    {
+      "id": "cm.ds.ofdm",
+      "path": "{host}/1/Device/CM/DsOfdm",
+      "status": 200,
+      "class": "ok",
+      "keys": [
+        "errCode",
+        "errMsg",
+        "Freq_List"
+      ],
+      "count": 5,
+      "bytes": 1090,
+      "detail": ""
+    },
+    {
+      "id": "cm.us.ofdm",
+      "path": "{host}/1/Device/CM/UsOfdm",
+      "status": 200,
+      "class": "ok",
+      "keys": [
+        "errCode",
+        "errMsg",
+        "Freq_List"
+      ],
+      "count": 7,
+      "bytes": 1362,
+      "detail": ""
+    },
+    {
+      "id": "cm.log",
+      "path": "{host}/1/Device/CM/Log",
+      "status": 200,
+      "class": "ok",
+      "keys": [
+        "errCode",
+        "errMsg",
+        "Log_List"
+      ],
+      "count": null,
+      "bytes": 4984,
+      "detail": ""
+    },
+    {
+      "id": "cm.ready",
+      "path": "{host}/1/Device/CM/Ready",
+      "status": 400,
+      "class": "rejected (400)",
+      "keys": null,
+      "count": null,
+      "bytes": 48,
+      "detail": "{\"errCode\":\"001\",\"errMsg\":\"Invalid Paramters.\"}"
+    },
+    {
+      "id": "ether.vlan",
+      "path": "{host}/1/Device/Ether/VLAN",
+      "status": 200,
+      "class": "ok",
+      "keys": [
+        "errCode",
+        "errMsg",
+        "hotspotssid",
+        "ethPort1",
+        "ethPort2",
+        "ethPort3",
+        "ethPort4"
+      ],
+      "count": null,
+      "bytes": 113,
+      "detail": ""
+    },
+    {
+      "id": "advanced.switch",
+      "path": "{host}/1/Device/Advanced/AdvancedSwitch",
+      "status": 200,
+      "class": "ok",
+      "keys": [
+        "errCode",
+        "errMsg",
+        "advSwitch_List"
+      ],
+      "count": null,
+      "bytes": 136,
+      "detail": ""
+    },
+    {
+      "id": "diagnostics.root",
+      "path": "{host}/1/Device/Diagnostics",
+      "status": 500,
+      "class": "php8: missing key",
+      "keys": null,
+      "count": null,
+      "bytes": 388,
+      "detail": "Undefined array key \"info\""
+    },
+    {
+      "id": "diag.input",
+      "path": "{host}/1/Device/Diagnostics/Input",
+      "status": 200,
+      "class": "ok",
+      "keys": [
+        "errCode",
+        "errMsg",
+        "TestIpAddress",
+        "UserType",
+        "ModelName"
+      ],
+      "count": null,
+      "bytes": 87,
+      "detail": ""
+    },
+    {
+      "id": "diag.ping",
+      "path": "{host}/1/Device/Diagnostics/Ping",
+      "status": 200,
+      "class": "ok",
+      "keys": [
+        "errCode",
+        "errMsg",
+        "DiagnosticsState",
+        "Host",
+        "DataBlockSize",
+        "NumberOfRepetitions",
+        "SuccessCount",
+        "FailureCount",
+        "AverageResponseTime",
+        "MinimumResponseTime",
+        "MaximumResponseTime",
+        "text"
+      ],
+      "count": null,
+      "bytes": 245,
+      "detail": ""
+    },
+    {
+      "id": "diag.traceroute",
+      "path": "{host}/1/Device/Diagnostics/TraceRoute",
+      "status": 200,
+      "class": "ok",
+      "keys": [
+        "errCode",
+        "errMsg",
+        "DiagnosticsState",
+        "Host",
+        "NumberOfTries",
+        "Timeout",
+        "DataBlockSize",
+        "DSCP",
+        "MaxHopCount",
+        "ResponseTime",
+        "Hops_List",
+        "text"
+      ],
+      "count": null,
+      "bytes": 201,
+      "detail": ""
+    },
+    {
+      "id": "spectrum",
+      "path": "{host}/1/Device/Spectrum",
+      "status": 200,
+      "class": "ok",
+      "keys": [
+        "errCode",
+        "errMsg",
+        "source"
+      ],
+      "count": null,
+      "bytes": 64,
+      "detail": ""
+    },
+    {
+      "id": "spectrum.freqlist",
+      "path": "{host}/1/Device/Spectrum/FreqList",
+      "status": 200,
+      "class": "ok",
+      "keys": [
+        "errCode",
+        "errMsg",
+        "frequency"
+      ],
+      "count": null,
+      "bytes": 211,
+      "detail": ""
+    },
+    {
+      "id": "spectrum.rtdata",
+      "path": "{host}/1/Device/Spectrum/RTData",
+      "status": 200,
+      "class": "ok",
+      "keys": [
+        "errCode",
+        "errMsg",
+        "rtdata"
+      ],
+      "count": null,
+      "bytes": 1574,
+      "detail": ""
+    },
+    {
+      "id": "spectrum.constellation",
+      "path": "{host}/1/Device/Spectrum/Constellation",
+      "status": 200,
+      "class": "ok",
+      "keys": [
+        "errCode",
+        "errMsg",
+        "constellation"
+      ],
+      "count": null,
+      "bytes": 49,
+      "detail": ""
+    },
+    {
+      "id": "spectrum.freqpower",
+      "path": "{host}/1/Device/Spectrum/FreqPower",
+      "status": 200,
+      "class": "ok",
+      "keys": [
+        "errCode",
+        "errMsg",
+        "spectrum"
+      ],
+      "count": null,
+      "bytes": 6811,
+      "detail": ""
+    },
+    {
+      "id": "time",
+      "path": "{host}/1/Device/Time",
+      "status": 500,
+      "class": "php8: missing key",
+      "keys": null,
+      "count": null,
+      "bytes": 367,
+      "detail": "Undefined array key \"info\""
+    },
+    {
+      "id": "advanced.root",
+      "path": "{host}/1/Device/Advanced",
+      "status": 500,
+      "class": "php8: missing key",
+      "keys": null,
+      "count": null,
+      "bytes": 379,
+      "detail": "Undefined array key \"info\""
+    },
+    {
+      "id": "usb.root",
+      "path": "{host}/1/Device/USB",
+      "status": 500,
+      "class": "php8: missing key",
+      "keys": null,
+      "count": null,
+      "bytes": 364,
+      "detail": "Undefined array key \"info\""
+    },
+    {
+      "id": "adminremote.root",
+      "path": "{host}/1/Device/AdminRemoteManagement",
+      "status": 500,
+      "class": "php8: missing key",
+      "keys": null,
+      "count": null,
+      "bytes": 418,
+      "detail": "Undefined array key \"info\""
+    },
+    {
+      "id": "adminremote.status",
+      "path": "{host}/1/Device/AdminRemoteManagement/Status",
+      "status": 200,
+      "class": "ok",
+      "keys": [
+        "errCode",
+        "errMsg",
+        "allowAll"
+      ],
+      "count": null,
+      "bytes": 51,
+      "detail": ""
+    },
+    {
+      "id": "adminremote.aclist",
+      "path": "{host}/1/Device/AdminRemoteManagement/AcList",
+      "status": 500,
+      "class": "php8: type error",
+      "keys": null,
+      "count": null,
+      "bytes": 78765,
+      "detail": "count(): Argument #1 ($value) must be of type Countable|array, RemoteAc given [/www/hitron"
+    },
+    {
+      "id": "adminremote.rlist",
+      "path": "{host}/1/Device/AdminRemoteManagement/RList",
+      "status": 500,
+      "class": "php8: missing function",
+      "keys": null,
+      "count": null,
+      "bytes": 78794,
+      "detail": "Call to undefined function getInstanceIDs() [/www/hitron/app/controllers/AdminRemoteManage"
+    },
+    {
+      "id": "health.root",
+      "path": "{host}/1/Device/Health",
+      "status": 500,
+      "class": "php8: missing key",
+      "keys": null,
+      "count": null,
+      "bytes": 382,
+      "detail": "Undefined array key \"info\""
+    },
+    {
+      "id": "health.settings",
+      "path": "{host}/1/Device/Health/Settings",
+      "status": 400,
+      "class": "rejected (400)",
+      "keys": null,
+      "count": null,
+      "bytes": 48,
+      "detail": "{\"errCode\":\"001\",\"errMsg\":\"Invalid Paramters.\"}"
+    },
+    {
+      "id": "tempaccess.status",
+      "path": "{host}/1/Device/TempAccess/Status",
+      "status": 400,
+      "class": "rejected (400)",
+      "keys": null,
+      "count": null,
+      "bytes": 73,
+      "detail": "{\"errCode\":\"005\",\"errMsg\":\"GET request is not supported for this model\"}"
+    },
+    {
+      "id": "addons.assia",
+      "path": "{host}/1/Device/Addons/AssiaAgent",
+      "status": 200,
+      "class": "ok",
+      "keys": [
+        "errCode",
+        "errMsg",
+        "enable"
+      ],
+      "count": null,
+      "bytes": 45,
+      "detail": ""
+    },
+    {
+      "id": "manage.root",
+      "path": "{host}/1/Device/Manage",
+      "status": 200,
+      "class": "ok (non-json)",
+      "keys": null,
+      "count": null,
+      "bytes": 14,
+      "detail": "cusadmin,false"
+    },
+    {
+      "id": "telemetry.rfmetrics",
+      "path": "{host}/rfmetrics",
+      "status": 200,
+      "class": "ok",
+      "keys": [
+        "errCode",
+        "errMsg",
+        "mac",
+        "timestamp",
+        "status",
+        "ds_channel",
+        "us_channel",
+        "ds_ofdm_channel",
+        "us_ofdma_channel"
+      ],
+      "count": null,
+      "bytes": 12868,
+      "detail": ""
+    },
+    {
+      "id": "telemetry.pnm",
+      "path": "{host}/pnm",
+      "status": 200,
+      "class": "ok",
+      "keys": [
+        "errCode",
+        "errMsg",
+        "mac",
+        "timestamp",
+        "rxmer",
+        "ch_est_coef",
+        "us_pre_eq",
+        "mod_prof"
+      ],
+      "count": null,
+      "bytes": 121141,
+      "detail": ""
+    },
+    {
+      "id": "telemetry.pnm.rxmer",
+      "path": "{host}/pnm/rxmer",
+      "status": 200,
+      "class": "ok",
+      "keys": [
+        "errCode",
+        "errMsg",
+        "mac",
+        "timestamp",
+        "rxmer"
+      ],
+      "count": null,
+      "bytes": 19142,
+      "detail": ""
+    },
+    {
+      "id": "telemetry.pnm.ch_est_coef",
+      "path": "{host}/pnm/ch_est_coef",
+      "status": 200,
+      "class": "ok",
+      "keys": [
+        "errCode",
+        "errMsg",
+        "mac",
+        "timestamp",
+        "ch_est_coef"
+      ],
+      "count": null,
+      "bytes": 75427,
+      "detail": ""
+    },
+    {
+      "id": "telemetry.pnm.us_pre_eq",
+      "path": "{host}/pnm/us_pre_eq",
+      "status": 200,
+      "class": "ok",
+      "keys": [
+        "errCode",
+        "errMsg",
+        "mac",
+        "timestamp",
+        "us_pre_eq"
+      ],
+      "count": null,
+      "bytes": 7015,
+      "detail": ""
+    },
+    {
+      "id": "telemetry.pnm.mod_prof",
+      "path": "{host}/pnm/mod_prof",
+      "status": 200,
+      "class": "ok",
+      "keys": [
+        "errCode",
+        "errMsg",
+        "mac",
+        "timestamp",
+        "mod_prof"
+      ],
+      "count": null,
+      "bytes": 9726,
+      "detail": ""
+    }
+  ],
+  "redaction": "Host IP, serial and RF MAC replaced with placeholders. No credentials, tokens or payloads are included."
+}
