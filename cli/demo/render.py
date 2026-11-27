@@ -60,36 +60,42 @@ class Painter:
         self.h = ROWS * CH + PAD * 2
 
     def chrome(self, content):
-        """Wrap a frame in a macOS-style window: title bar, traffic lights, shadow."""
-        if not hasattr(self, "_base"):
-            m, bar, rad = 44, 38, 12
-            w, h = content.width, content.height + bar
-            W, H = w + 2 * m, h + 2 * m + 10
-            bg = Image.new("RGB", (W, H), (24, 26, 40))
-            shadow = Image.new("L", (W, H), 0)
-            ImageDraw.Draw(shadow).rounded_rectangle([m, m + 14, m + w, m + 14 + h], rad, fill=170)
-            shadow = shadow.filter(ImageFilter.GaussianBlur(18))
-            bg.paste(Image.new("RGB", (W, H), (4, 5, 10)), (0, 0), shadow)
-            win = Image.new("RGB", (w, h), (44, 44, 50))
-            d = ImageDraw.Draw(win)
-            for i, c in enumerate([(255, 95, 86), (255, 189, 46), (39, 201, 63)]):
-                d.ellipse([16 + i * 26, 12, 16 + i * 26 + 13, 25], fill=c)
-            f = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 13)
-            title = "hitron-cli — monitor — %d×%d" % (COLS, ROWS)
-            d.text(((w - d.textlength(title, font=f)) / 2, 11), title, font=f, fill=(170, 170, 180))
-            d.line([0, bar - 1, w, bar - 1], fill=(20, 20, 24))
-            self._base = (bg, win, m, bar, rad)
-        bg, win, m, bar, rad = self._base
-        win = win.copy()
-        win.paste(content, (0, bar))
-        mask = Image.new("L", win.size, 0)
-        ImageDraw.Draw(mask).rounded_rectangle([0, 0, win.width - 1, win.height - 1], rad, fill=255)
-        out = bg.copy()
-        out.paste(win, (m, m), mask)
-        return out
+        """Wrap a frame in a macOS-style window (RGBA, transparent rounded corners)."""
+        bar, rad, S = 40, 12, 4
+        w, h = content.width, content.height + bar
+        win = Image.new("RGBA", (w * S, h * S), (0, 0, 0, 0))
+        d = ImageDraw.Draw(win)
+        d.rounded_rectangle([0, 0, w * S - 1, h * S - 1], rad * S, fill=(30, 31, 38, 255))
+        d.rounded_rectangle([0, 0, w * S - 1, (bar + rad) * S], rad * S, fill=(46, 47, 55, 255))
+        d.rectangle([0, bar * S, w * S, (bar + rad) * S], fill=(30, 31, 38, 255))
+        d.line([0, bar * S - 1, w * S, bar * S - 1], fill=(14, 14, 18, 255), width=S)
+        for i, (hi, mid, rim) in enumerate([((255, 141, 130), (255, 95, 86), (224, 62, 54)),
+                                           ((255, 216, 112), (255, 189, 46), (214, 150, 20)),
+                                           ((120, 232, 130), (39, 201, 63), (28, 150, 44))]):
+            cx, cy, rr = (20 + i * 22) * S, (bar // 2) * S, 6 * S
+            d.ellipse([cx - rr, cy - rr, cx + rr, cy + rr], fill=rim)
+            d.ellipse([cx - rr + S, cy - rr + S, cx + rr - S, cy + rr - S], fill=mid)
+            d.ellipse([cx - rr + 2 * S, cy - rr + S, cx + rr - 2 * S, cy], fill=hi)
+        win = win.resize((w, h), Image.LANCZOS)
+        d = ImageDraw.Draw(win)
+        f = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 13)
+        title = "hitron-cli \u2014 monitor \u2014 %d\u00d7%d" % (COLS, ROWS)
+        d.text(((w - d.textlength(title, font=f)) / 2, bar // 2 - 8), title, font=f, fill=(165, 167, 180, 255))
+        mask = Image.new("L", (w * S, h * S), 0)
+        ImageDraw.Draw(mask).rounded_rectangle([0, bar * S, w * S - 1, h * S - 1], rad * S, fill=255)
+        ImageDraw.Draw(mask).rectangle([0, bar * S, w * S, (bar + rad) * S], fill=255)
+        mask = mask.resize((w, h), Image.LANCZOS).crop((0, bar, w, h))
+        win.paste(content.convert("RGBA"), (0, bar), mask)
+        return win
+
+    rows = None
 
     def draw(self, screen):
-        return self.chrome(self._draw(screen))
+        img = self._draw(screen)
+        if self.rows:
+            a, b = self.rows
+            img = img.crop((0, a * CH + (PAD if a else 0), img.width, PAD + b * CH))
+        return self.chrome(img)
 
     def _draw(self, screen):
         img = Image.new("RGB", (self.w, self.h), DEFAULT_BG)
@@ -158,23 +164,54 @@ class Session:
             pass
 
 
-def save_gif(frames, path, fps=5, colors=128):
+LIGHTS = [(255, 141, 130), (255, 95, 86), (224, 62, 54), (255, 216, 112), (255, 189, 46),
+          (214, 150, 20), (120, 232, 130), (39, 201, 63), (28, 150, 44), (46, 47, 55), (30, 31, 38)]
+
+
+def palette_for(sample):
+    base = sample.convert("RGB").quantize(colors=244, method=Image.Quantize.MEDIANCUT, dither=Image.Dither.NONE)
+    flat = base.getpalette()[: 244 * 3]
+    for c in LIGHTS:
+        flat += list(c)
+    flat += [0, 0, 0] * (256 - len(flat) // 3)
+    pal = Image.new("P", (1, 1))
+    pal.putpalette(flat)
+    return pal
+
+
+def to_indexed(img, pal):
+    out = img.convert("RGB").quantize(palette=pal, dither=Image.Dither.NONE)
+    clear = img.getchannel("A").point(lambda a: 255 if a < 128 else 0)
+    out.paste(255, mask=clear)
+    return out
+
+
+def save_png(img, path):
+    to_indexed(img, palette_for(img)).save(path, transparency=255, optimize=True)
+
+
+def save_gif(frames, path, fps=5):
     if not frames:
         return
-    pal = frames[len(frames) // 2].convert("P", palette=Image.ADAPTIVE, colors=colors)
-    out = [f.quantize(palette=pal, dither=Image.Dither.NONE) for f in frames]
-    out[0].save(path, save_all=True, append_images=out[1:], duration=int(1000 / fps), loop=0, optimize=False, disposal=1)
+    pal = palette_for(frames[len(frames) // 2])
+    out = [to_indexed(f, pal) for f in frames]
+    out[0].save(path, save_all=True, append_images=out[1:], duration=int(1000 / fps), loop=0,
+                optimize=False, disposal=1, transparency=255)
 
 
 def scenario(name, binary, host, out, extra=None):
     home = tempfile.mkdtemp()
     s = Session(binary, host, home, extra or [])
+    s.painter.rows = {"analyser": (0, 32), "reboot": (10, 33)}.get(name)
     shots = {}
     try:
         s.pump(5, record=False)  # let the history build and the layout settle
         if name == "summary":
             s.pump(1)
             shots["summary"] = s.painter.draw(s.screen)
+            full = s.painter._draw(s.screen)
+            top = PAD + 27 * CH
+            shots["codewords"] = s.painter.chrome(full.crop((0, top, full.width, full.height - PAD - CH)))
             s.pump(24)
         elif name == "themes":
             for i, theme in enumerate(["neon", "synthwave", "dracula", "nord", "gruvbox", "matrix"]):
@@ -210,7 +247,7 @@ def scenario(name, binary, host, out, extra=None):
         s.close()
     os.makedirs(out, exist_ok=True)
     for k, img in shots.items():
-        img.save(os.path.join(out, k + ".png"), optimize=True)
+        save_png(img, os.path.join(out, k + ".png"))
     if s.frames:
         save_gif(s.frames, os.path.join(out, name + ".gif"))
     return len(s.frames), list(shots)
