@@ -5,6 +5,9 @@ on:
     branches: [main]
     paths:
       - "site/**"
+      - "docs/**"
+      - "cli/README.md"
+      - "tools/build_docs.py"
       - "specs/openapi-coda60.yaml"
       - "dashboards/**"
       - ".github/workflows/pages.yml"
@@ -47,6 +50,11 @@ jobs:
           )
           shutil.copy(root / "llms.txt", site / "llms.txt")
           PY
+
+      - name: Render the Markdown guides to site/docs
+        run: |
+          pip install markdown
+          python3 tools/build_docs.py
 
       - name: Verify the spec the site will serve
         run: |

@@ -1,0 +1,499 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>hitron-cli (Go) · hitron docs</title>
+<meta name="description" content="">
+<meta name="theme-color" content="#04050b">
+<link rel="canonical" href="https://hitron.netquor.dev/docs/hitron-cli.html">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><defs><linearGradient id='g' x1='0' y1='0' x2='1' y2='1'><stop offset='0' stop-color='%235eead4'/><stop offset='1' stop-color='%23a78bfa'/></linearGradient></defs><rect width='32' height='32' rx='9' fill='%2304050b'/><circle cx='16' cy='16' r='6.5' fill='none' stroke='url(%23g)' stroke-width='3'/></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500;600&amp;family=Space+Grotesk:wght@500;600;700&amp;display=swap">
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../assets/glass.css">
+<link rel="stylesheet" href="../assets/docs.css">
+<script>try{var t=localStorage.getItem('hitron.theme');if(t)document.documentElement.dataset.theme=t;else if(matchMedia('(prefers-color-scheme: light)').matches)document.documentElement.dataset.theme='light'}catch(e){}</script>
+<script src="../assets/fx.js" defer></script>
+<script src="../assets/docs.js" defer></script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="topbar">
+  <a class="brand" href="../index.html#top">
+    <span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 16 16" width="14" height="14"><circle cx="8" cy="8" r="5.5" fill="none" stroke="currentColor" stroke-width="2.2"/></svg></span>
+    <span>hitron<span class="dim">/docs</span></span>
+  </a>
+  <nav class="topnav">
+    <a href="index.html" class="active">Guides</a>
+    <a href="../index.html#cli">CLI</a>
+    <a href="../index.html#explorer">API console</a>
+    <a href="../index.html#dashboards">Grafana</a>
+    <a href="../openapi.json" class="nav-secondary">OpenAPI</a>
+    <a href="../llms.txt" class="nav-secondary">llms.txt</a>
+  </nav>
+  <div class="topbar-actions">
+    <button id="theme-toggle" class="icon-btn" type="button" title="Toggle theme" aria-label="Toggle theme">
+      <svg class="icon-sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M5.2 5.2l1.6 1.6M17.2 17.2l1.6 1.6M18.8 5.2l-1.6 1.6M6.8 17.2l-1.6 1.6"/></svg>
+      <svg class="icon-moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.4A8.6 8.6 0 0 1 9.6 4 8.6 8.6 0 1 0 20 14.4Z"/></svg>
+    </button>
+  </div>
+</header>
+<div class="docs-shell">
+  <aside class="docs-side" aria-label="Documentation">
+    <nav class="docs-nav">
+      <p class="docs-nav-label">Guides</p>
+      <a href="getting-started.html">Getting started</a>
+      <a href="hitron-cli.html" aria-current="page">hitron-cli</a>
+      <a href="grafana.html">Grafana</a>
+      <a href="local-proxy.html">Local proxy</a>
+      <a href="kb.html">Knowledge base</a>
+      <a href="verification.html">Verification</a>
+    </nav>
+    <nav class="docs-toc" aria-label="On this page">
+      <p class="docs-nav-label">On this page</p>
+        <a href="#build" class="toc-l2">Build</a>
+        <a href="#install-from-a-release" class="toc-l2">Install from a release</a>
+        <a href="#commands" class="toc-l2">Commands</a>
+        <a href="#flags" class="toc-l3">Flags</a>
+        <a href="#environment" class="toc-l3">Environment</a>
+        <a href="#authentication" class="toc-l2">Authentication</a>
+        <a href="#writes" class="toc-l2">Writes</a>
+        <a href="#live-view" class="toc-l2">Live view</a>
+        <a href="#spectrum-and-constellation" class="toc-l3">Spectrum and constellation</a>
+        <a href="#exit-codes" class="toc-l2">Exit codes</a>
+        <a href="#tests" class="toc-l2">Tests</a>
+    </nav>
+  </aside>
+  <main id="main" class="docs-main">
+<article class="doc">
+<h1 id="hitron-cli-go">hitron-cli (Go)</h1>
+<p><img alt="hitron-cli live summary" src="../assets/cli/summary.gif"></p>
+<p><em>Captured against a replay of a real CODA-60 with the serial, MACs and IPs replaced. <code>demo/</code> has the replay server and renderer.</em></p>
+<p>A standalone terminal client for the three Hitron families this repository
+documents. It is a single static binary with no runtime, no config file, and no
+dependencies outside the Go standard library.</p>
+<div class="table-scroll"><table>
+<thead>
+<tr>
+<th>Device</th>
+<th>API</th>
+<th>Detection probe</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>CODA6X (CODA-60)</td>
+<td><code>/1/Device/...</code> JSON</td>
+<td><code>GET /1/Device/CM/Version</code></td>
+</tr>
+<tr>
+<td>CODA-57</td>
+<td><code>/data/*.asp</code> JSON</td>
+<td><code>GET /data/getSysInfo.asp</code></td>
+</tr>
+<tr>
+<td>HT-EM5</td>
+<td><code>/ms/&lt;type&gt;/&lt;reg&gt;</code> MoCA RPC</td>
+<td><code>GET /index.html</code> + <code>POST /ms/1/0x302/GET</code></td>
+</tr>
+</tbody>
+</table></div>
+<p>The Python package in <code>src/hitron/</code> remains the exporter and library. This
+binary exists for the case where you want to walk up to a modem and read it
+from a laptop with nothing installed.</p>
+<h2 id="build">Build<a class="headerlink" href="#build" title="Link to this section">#</a></h2>
+<pre><code class="language-bash">cd cli
+go build -o hitron-cli ./cmd/hitron-cli
+./hitron-cli version
+</code></pre>
+<p>Go 1.22 or newer. Cross-compiling is the usual <code>GOOS</code>/<code>GOARCH</code> pair:</p>
+<pre><code class="language-bash">GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o hitron-cli-linux ./cmd/hitron-cli
+</code></pre>
+<p>Tagged releases (<code>cli/v*</code>) build Linux, macOS, and Windows binaries for amd64
+and arm64 in <code>.github/workflows/cli-release.yml</code>; each file ships with a
+<code>.sha256</code>.</p>
+<h2 id="install-from-a-release">Install from a release<a class="headerlink" href="#install-from-a-release" title="Link to this section">#</a></h2>
+<p>Download the file for your platform, then:</p>
+<pre><code class="language-bash">chmod +x hitron-cli_darwin_arm64
+sudo mv hitron-cli_darwin_arm64 /usr/local/bin/hitron-cli
+hitron-cli help
+</code></pre>
+<h2 id="commands">Commands<a class="headerlink" href="#commands" title="Link to this section">#</a></h2>
+<pre><code class="language-text">hitron-cli stats            one-shot report, or live TUI in a terminal (default)
+hitron-cli monitor          force the live TUI
+hitron-cli detect           identify CODA6X / CODA-57 / HT-EM5
+hitron-cli system           identity, provisioning, Ethernet ports
+hitron-cli channels         downstream and upstream RF detail
+hitron-cli logs             DOCSIS event log
+hitron-cli moca             HT-EM5 link, bands, nodes
+hitron-cli reboot           reboot (prompts, or --confirm)
+hitron-cli factory-reset    factory reset + reboot (CODA6X)
+hitron-cli hard-reset       immediate restoreReset + reboot (CODA6X)
+hitron-cli fec-reset        clear the downstream FEC counters (CODA6X)
+hitron-cli help [topic]     overview or one topic
+hitron-cli version          version
+</code></pre>
+<p>If the command is omitted, <code>stats</code> runs. Running <code>stats</code> in a real terminal
+opens the live view; piping it or using <code>--once</code>/<code>--json</code> prints one report and
+exits, which is what the TUI-less cases need.</p>
+<h3 id="flags">Flags<a class="headerlink" href="#flags" title="Link to this section">#</a></h3>
+<div class="table-scroll"><table>
+<thead>
+<tr>
+<th>Flag</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>-H</code>, <code>--host HOST</code></td>
+<td>gateway address, default <code>192.168.100.1</code></td>
+</tr>
+<tr>
+<td><code>-u</code>, <code>--user NAME</code></td>
+<td>username for authenticated reads and writes</td>
+</tr>
+<tr>
+<td><code>-p</code>, <code>--password PASS</code></td>
+<td>password</td>
+</tr>
+<tr>
+<td><code>--token TOKEN</code></td>
+<td>CODA6X <code>Ht-App-Auth</code> app token</td>
+</tr>
+<tr>
+<td><code>--timeout 10s</code></td>
+<td>per-request timeout</td>
+</tr>
+<tr>
+<td><code>--interval 5s</code></td>
+<td>live refresh interval</td>
+</tr>
+<tr>
+<td><code>--limit 20</code></td>
+<td>log lines in the one-shot report</td>
+</tr>
+<tr>
+<td><code>--once</code></td>
+<td>one report, never the TUI</td>
+</tr>
+<tr>
+<td><code>--json</code></td>
+<td>machine-readable snapshot</td>
+</tr>
+<tr>
+<td><code>--no-color</code></td>
+<td>disable ANSI color</td>
+</tr>
+<tr>
+<td><code>--confirm</code></td>
+<td>skip the y/N prompt on a destructive command</td>
+</tr>
+<tr>
+<td><code>--no-banner</code></td>
+<td>suppress the startup art</td>
+</tr>
+<tr>
+<td><code>-h</code>, <code>--help</code></td>
+<td>help</td>
+</tr>
+<tr>
+<td><code>-V</code>, <code>--version</code></td>
+<td>version</td>
+</tr>
+</tbody>
+</table></div>
+<p>The host can also be a positional argument, a hostname, or a URL with a port:
+<code>hitron-cli 192.168.100.1</code>, <code>hitron-cli 127.0.0.1:8080</code>,
+<code>hitron-cli http://192.168.100.1</code>.</p>
+<h3 id="environment">Environment<a class="headerlink" href="#environment" title="Link to this section">#</a></h3>
+<div class="table-scroll"><table>
+<thead>
+<tr>
+<th>Variable</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>HITRON_HOST</code> / <code>HITRON_DEVICE</code></td>
+<td>default host</td>
+</tr>
+<tr>
+<td><code>HITRON_USERNAME</code></td>
+<td>username</td>
+</tr>
+<tr>
+<td><code>HITRON_PASSWORD</code></td>
+<td>password</td>
+</tr>
+<tr>
+<td><code>HITRON_APP_TOKEN</code></td>
+<td>CODA6X app token</td>
+</tr>
+<tr>
+<td><code>HITRON_TIMEOUT</code></td>
+<td>timeout in seconds</td>
+</tr>
+<tr>
+<td><code>HITRON_INTERVAL</code></td>
+<td>refresh interval (<code>5s</code>, <code>500ms</code>, or seconds)</td>
+</tr>
+<tr>
+<td><code>NO_COLOR</code></td>
+<td>disable ANSI color</td>
+</tr>
+</tbody>
+</table></div>
+<p>Flags override the environment.</p>
+<h2 id="authentication">Authentication<a class="headerlink" href="#authentication" title="Link to this section">#</a></h2>
+<p>Reads answer anonymously on the analyzed CODA6X firmware and (per the captured
+unit) the CODA-57 <code>.asp</code> API. The CLI still handles the gates honestly:</p>
+<ul>
+<li><strong>CODA6X</strong>: writes <code>POST /1/Device/Users/Login</code> with the firmware's
+  <code>model={"username":...,"password":...}</code> form, then reuses the session cookie.
+  <code>--token</code> sends <code>Ht-App-Auth</code> instead.</li>
+<li><strong>CODA-57</strong>: <code>GET /login.html</code> primes a <code>PHPSESSID</code>. No credential POST has
+  been confirmed against real hardware, so the CLI does not invent one; a gated
+  device is reported, not guessed at.</li>
+<li><strong>HT-EM5</strong>: HTTP Basic on every request. The factory image defaults to
+  <code>admin</code>/<code>admin</code>, which the detector uses only when no credentials were
+  supplied. It fetches <code>/index.html</code> for the <code>csrf_token</code> cookie and echoes it
+  as <code>X-CSRF-TOKEN</code>.</li>
+</ul>
+<p>When a device asks for a login and stdin is a terminal, the CLI prompts once
+and retries. With <code>--json</code> or no terminal it exits with a clear error instead
+of hanging.</p>
+<h2 id="writes">Writes<a class="headerlink" href="#writes" title="Link to this section">#</a></h2>
+<p>Three destructive verbs, each requiring credentials:</p>
+<div class="table-scroll"><table>
+<thead>
+<tr>
+<th>Command</th>
+<th>CODA6X body</th>
+<th>HT-EM5</th>
+<th>CODA-57</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>reboot</code></td>
+<td><code>{"reboot":1,"factoryReset":0,"restoreReset":0}</code> to <code>CM/Reboot</code></td>
+<td><code>POST /ms/1/0xb00/PUT {"data":[1]}</code></td>
+<td>unsupported</td>
+</tr>
+<tr>
+<td><code>factory-reset</code></td>
+<td><code>{"reboot":0,"factoryReset":1,"restoreReset":0}</code></td>
+<td>unsupported</td>
+<td>unsupported</td>
+</tr>
+<tr>
+<td><code>hard-reset</code></td>
+<td><code>{"reboot":0,"factoryReset":0,"restoreReset":1}</code></td>
+<td>unsupported</td>
+<td>unsupported</td>
+</tr>
+</tbody>
+</table></div>
+<p>One non-destructive write needs no session, no prompt, and no credentials:</p>
+<div class="table-scroll"><table>
+<thead>
+<tr>
+<th>Command</th>
+<th>CODA6X</th>
+<th>HT-EM5</th>
+<th>CODA-57</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>fec-reset</code></td>
+<td>bare <code>PUT CM/DsInfo</code>, repeated bare <code>PUT CM/DsOfdm</code></td>
+<td>unsupported</td>
+<td>unsupported</td>
+</tr>
+</tbody>
+</table></div>
+<p><code>fec-reset</code> only zeroes counters, so it acts immediately; <code>--json</code> makes it
+scriptable. It is the command-line form of the TUI's <code>z</code> key.</p>
+<p>The handler reads all three reboot flags before choosing a branch, so the body is
+always the full triple; a partial body is a PHP 8 fatal (HTTP 500), not
+<code>errCode 001</code>. Only <code>hard-reset</code> has been measured working: the connection drops
+with no reply, the unit is unreachable ~5 s later and back ~122 s after that.</p>
+<p>Every one of the three verbs asks:</p>
+<pre><code class="language-text">Reboot CODA-60 / CODA6X at 192.168.100.1? This acts on the real device. [y/N]
+</code></pre>
+<p>Only <code>--confirm</code> (or <code>-y</code>) skips that question. It never removes the
+credential requirement, and the CLI calls <code>Login</code> immediately before acting so
+the write is one traceable operation. Answering no exits 1.</p>
+<p>CODA-57 has no confirmed write path in this repository. The CLI says so and
+stops; it does not try a plausible-looking URL on a live modem.</p>
+<h2 id="live-view">Live view<a class="headerlink" href="#live-view" title="Link to this section">#</a></h2>
+<p><code>monitor</code>, or <code>stats</code> in a terminal, draws a full-screen report and refreshes
+on <code>--interval</code> (default 5s; 1s on the CODA-57 and CODA-60).</p>
+<p>The summary opens with four big-number cards (downstream power, upstream
+power, weakest downstream SNR, uncorrectable codewords), then trend graphs, a
+device block (serial, RF MAC, CMTS MAC, firmware, config file), the DOCSIS
+provisioning steps, typed channel tables with a <code>CCWE/UCCWE</code> codeword column
+and a decoded, shortened event log. The mouse wheel scrolls.</p>
+<div class="table-scroll"><table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Action</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>q</code></td>
+<td>quit</td>
+</tr>
+<tr>
+<td><code>r</code>, <code>space</code></td>
+<td>refresh now</td>
+</tr>
+<tr>
+<td><code>a</code></td>
+<td>toggle automatic refresh</td>
+</tr>
+<tr>
+<td><code>g</code></td>
+<td>toggle trend graphs</td>
+</tr>
+<tr>
+<td><code>z</code></td>
+<td>reset the downstream FEC counters (3.0 + OFDM). Writes on the CODA6X; on other families it only zeroes the displayed counts.</td>
+</tr>
+<tr>
+<td><code>t</code></td>
+<td>next color theme, remembered for next time</td>
+</tr>
+<tr>
+<td><code>b</code></td>
+<td>toggle the gradient background (24-bit color terminals only)</td>
+</tr>
+<tr>
+<td><code>x</code>, the Reboot button</td>
+<td>reboot, after a confirmation (see below)</td>
+</tr>
+<tr>
+<td><code>j</code>, <code>k</code>, arrows</td>
+<td>scroll</td>
+</tr>
+<tr>
+<td><code>h</code>, <code>?</code></td>
+<td>help overlay</td>
+</tr>
+<tr>
+<td><code>1</code></td>
+<td>summary</td>
+</tr>
+<tr>
+<td><code>2</code>, <code>s</code></td>
+<td>live spectrum</td>
+</tr>
+<tr>
+<td><code>3</code>, <code>c</code></td>
+<td>constellation (I/Q)</td>
+</tr>
+<tr>
+<td><code>[</code>, <code>]</code></td>
+<td>previous / next analyzer channel</td>
+</tr>
+<tr>
+<td><code>,</code>, <code>.</code></td>
+<td>fine-tune the spectrum center by 1 MHz</td>
+</tr>
+</tbody>
+</table></div>
+<p>Themes are <code>neon</code> (default), <code>synthwave</code>, <code>dracula</code>, <code>nord</code>, <code>gruvbox</code> and
+<code>matrix</code>. Choose one with <code>--theme NAME</code> or <code>HITRON_THEME</code>; the <code>t</code> key saves
+your choice. <code>--no-bg</code> turns off the background and <code>--no-mouse</code> stops the
+mouse being captured so text can be selected normally.</p>
+<p><strong><code>z</code> (FEC counters)</strong> writes on the CODA6X: one bare <code>PUT /1/Device/CM/DsInfo</code>,
+then up to eight bare <code>PUT /1/Device/CM/DsOfdm</code> calls, re-reading the counters
+and putting the result on the status line. The 3.0 stop clears every busy
+channel in one call; the OFDM stop is unreliable on this build, so the report
+keeps the best observation and names any channel still counting. Channels that
+were already at zero are reported as already clean, not as cleared. On a
+family with no confirmed FEC endpoint, <code>z</code> falls back to zeroing the displayed
+counts without writing; pressing it again restores them.</p>
+<p><code>hitron-cli fec-reset</code> runs the same clear headlessly, with no credentials and
+no prompt, and prints the same counts (<code>--json</code> for scripts).</p>
+<p><strong>Reboot</strong> is the other write. <code>x</code> (or a click on the Reboot button) opens a
+dialog that asks you to type the word <code>reboot</code>; nothing is sent before that.
+The CODA6X accepts the reboot from the LAN without a login, so no credentials
+are requested; <code>--user</code> and <code>--password</code> are used only if the device refuses
+the anonymous call. The HT-EM5 asks for its login, and the CODA-57 has no
+reboot button. Factory reset and hard reset are not in the TUI; they stay
+separate commands with their own confirmation.</p>
+<h3 id="spectrum-and-constellation">Spectrum and constellation<a class="headerlink" href="#spectrum-and-constellation" title="Link to this section">#</a></h3>
+<p>Both views read <code>/1/Device/Spectrum</code> on the CODA6X and are unavailable on the
+other families. The firmware drives one shared hardware tuner, so the client
+keeps captures sequential and draws whatever the tuner actually returned:</p>
+<ul>
+<li><strong>Spectrum</strong> is a braille trace of one 6 MHz window (300 points at 20 kHz
+  spacing on a CODA-60). <code>[</code>/<code>]</code> jumps between the analyzer's downstream
+  channels, <code>,</code>/<code>.</code> tunes by 1 MHz. The header carries the raw min/max/average
+  dBmV; the vertical axis trims the tuner's 30–40 dB edge roll-off so the
+  channel itself fills the panel. The <code>RTData</code> power/MER snapshot sits below it.</li>
+<li><strong>Constellation</strong> plots the 256 I/Q samples for one analyzer port, auto-scaled
+  to the returned cloud, with modulation, bandwidth, MER, and power in the
+  header. Ports are the analyzer's own ids (a live CODA-60 reports <code>0, 25..31</code>
+  for eight downstream channels), not DOCSIS channel numbers.</li>
+</ul>
+<p><code>FreqPower</code> only accepts at most one non-zero fractional digit (<code>637.5</code>, never
+<code>637.500</code>); a value that misses the handler's regex silently falls back to the
+645/637.5/643.5 defaults. The client formats frequencies accordingly.</p>
+<p>An inactive constellation port, or a tuner that has not settled, answers <code>200</code>
+with an empty list. The TUI says so instead of treating it as an error.</p>
+<h2 id="exit-codes">Exit codes<a class="headerlink" href="#exit-codes" title="Link to this section">#</a></h2>
+<div class="table-scroll"><table>
+<thead>
+<tr>
+<th>Code</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>0</code></td>
+<td>success</td>
+</tr>
+<tr>
+<td><code>1</code></td>
+<td>device, network, or action error (including an aborted confirmation)</td>
+</tr>
+<tr>
+<td><code>2</code></td>
+<td>usage error (bad flag, missing credentials for a write)</td>
+</tr>
+</tbody>
+</table></div>
+<p>A single failed endpoint does not fail the run: the report prints what it got
+under <strong>Partial data</strong> and the JSON snapshot carries a <code>warnings</code> array.</p>
+<h2 id="tests">Tests<a class="headerlink" href="#tests" title="Link to this section">#</a></h2>
+<pre><code class="language-bash">cd cli
+go vet ./...
+go test ./...
+</code></pre>
+<p>The suite is offline. It uses <code>httptest</code> fixtures shaped like the captured
+CODA6X responses (null OFDM slots, <code>-inf</code> power sentinels, <code>"v6 / v4"</code> WAN
+addresses, newest-first logs) and checks detection, login, reboot bodies, and
+the parser edge cases.</p>
+</article>
+    <nav class="docs-pager" aria-label="Pages">
+      <a class="prev" href="getting-started.html"><span>Previous</span>Getting started</a>
+      <a class="next" href="grafana.html"><span>Next</span>Grafana</a>
+    </nav>
+    <p class="docs-edit"><a class="ext" href="https://github.com/Netquor/hitron/blob/main/cli/README.md">Edit this page on GitHub</a></p>
+  </main>
+</div>
+<footer class="footer">
+  <p>Not official Hitron documentation. Field names come from the device; mistakes are ours. <a href="../llms.txt">llms.txt</a> · <a href="../openapi.json">OpenAPI</a> · <a href="https://github.com/Netquor/hitron">Source</a></p>
+</footer>
+</body>
+</html>

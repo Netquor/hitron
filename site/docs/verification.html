@@ -1,0 +1,722 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CODA6X read-surface verification · hitron docs</title>
+<meta name="description" content="Live, GET-only measurement against a customer-owned CODA60 running firmware
+8.7.1.0.1b4, 2026-11-26. No write, reboot or reset endpoint was called.">
+<meta name="theme-color" content="#04050b">
+<link rel="canonical" href="https://hitron.netquor.dev/docs/verification.html">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><defs><linearGradient id='g' x1='0' y1='0' x2='1' y2='1'><stop offset='0' stop-color='%235eead4'/><stop offset='1' stop-color='%23a78bfa'/></linearGradient></defs><rect width='32' height='32' rx='9' fill='%2304050b'/><circle cx='16' cy='16' r='6.5' fill='none' stroke='url(%23g)' stroke-width='3'/></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500;600&amp;family=Space+Grotesk:wght@500;600;700&amp;display=swap">
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../assets/glass.css">
+<link rel="stylesheet" href="../assets/docs.css">
+<script>try{var t=localStorage.getItem('hitron.theme');if(t)document.documentElement.dataset.theme=t;else if(matchMedia('(prefers-color-scheme: light)').matches)document.documentElement.dataset.theme='light'}catch(e){}</script>
+<script src="../assets/fx.js" defer></script>
+<script src="../assets/docs.js" defer></script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="topbar">
+  <a class="brand" href="../index.html#top">
+    <span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 16 16" width="14" height="14"><circle cx="8" cy="8" r="5.5" fill="none" stroke="currentColor" stroke-width="2.2"/></svg></span>
+    <span>hitron<span class="dim">/docs</span></span>
+  </a>
+  <nav class="topnav">
+    <a href="index.html" class="active">Guides</a>
+    <a href="../index.html#cli">CLI</a>
+    <a href="../index.html#explorer">API console</a>
+    <a href="../index.html#dashboards">Grafana</a>
+    <a href="../openapi.json" class="nav-secondary">OpenAPI</a>
+    <a href="../llms.txt" class="nav-secondary">llms.txt</a>
+  </nav>
+  <div class="topbar-actions">
+    <button id="theme-toggle" class="icon-btn" type="button" title="Toggle theme" aria-label="Toggle theme">
+      <svg class="icon-sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M5.2 5.2l1.6 1.6M17.2 17.2l1.6 1.6M18.8 5.2l-1.6 1.6M6.8 17.2l-1.6 1.6"/></svg>
+      <svg class="icon-moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.4A8.6 8.6 0 0 1 9.6 4 8.6 8.6 0 1 0 20 14.4Z"/></svg>
+    </button>
+  </div>
+</header>
+<div class="docs-shell">
+  <aside class="docs-side" aria-label="Documentation">
+    <nav class="docs-nav">
+      <p class="docs-nav-label">Guides</p>
+      <a href="getting-started.html">Getting started</a>
+      <a href="hitron-cli.html">hitron-cli</a>
+      <a href="grafana.html">Grafana</a>
+      <a href="local-proxy.html">Local proxy</a>
+      <a href="kb.html">Knowledge base</a>
+      <a href="verification.html" aria-current="page">Verification</a>
+    </nav>
+    <nav class="docs-toc" aria-label="On this page">
+      <p class="docs-nav-label">On this page</p>
+        <a href="#summary" class="toc-l2">Summary</a>
+        <a href="#per-endpoint-results-coda60-plan" class="toc-l2">Per-endpoint results (CODA60 plan)</a>
+        <a href="#diagnostics" class="toc-l3">diagnostics</a>
+        <a href="#docsis" class="toc-l3">docsis</a>
+        <a href="#identity" class="toc-l3">identity</a>
+        <a href="#lan" class="toc-l3">lan</a>
+        <a href="#shell" class="toc-l3">shell</a>
+        <a href="#spectrum" class="toc-l3">spectrum</a>
+        <a href="#system" class="toc-l3">system</a>
+        <a href="#telemetry" class="toc-l3">telemetry</a>
+        <a href="#what-the-failures-are" class="toc-l2">What the failures are</a>
+        <a href="#write-path-measured-reboot-flags-and-fec-counters" class="toc-l2">Write path measured: reboot flags and FEC counters</a>
+        <a href="#post-1devicecmreboot--only-restorereset-reboots" class="toc-l3">POST /1/Device/CM/Reboot — only restoreReset reboots</a>
+        <a href="#put-1devicecmdsinfo-and-put-1devicecmdsofdm--fec-counters" class="toc-l3">PUT /1/Device/CM/DsInfo and PUT /1/Device/CM/DsOfdm — FEC counters</a>
+        <a href="#reproduce" class="toc-l2">Reproduce</a>
+    </nav>
+  </aside>
+  <main id="main" class="docs-main">
+<article class="doc">
+<h1 id="coda6x-read-surface-verification">CODA6X read-surface verification</h1>
+<p>Live, GET-only measurement against a customer-owned CODA60 running firmware
+<code>8.7.1.0.1b4</code>, 2026-11-26. No write, reboot or reset endpoint was called.</p>
+<p>The device self-identifies as <strong>CODA60</strong> via <code>GET /deviceinfo</code> (<code>hw_model</code>);
+TR-181 <code>modelName</code> is null on this build. Capability detection therefore resolved
+the <code>coda60</code> profile: DOCSIS 4.0, no WiFi, no voice, no MoCA, no USB, no router mode.</p>
+<h2 id="summary">Summary<a class="headerlink" href="#summary" title="Link to this section">#</a></h2>
+<div class="table-scroll"><table>
+<thead>
+<tr>
+<th>Result</th>
+<th style="text-align: right;">Count</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>ok</td>
+<td style="text-align: right;">30</td>
+</tr>
+<tr>
+<td>php8: missing key</td>
+<td style="text-align: right;">7</td>
+</tr>
+<tr>
+<td>rejected (400)</td>
+<td style="text-align: right;">3</td>
+</tr>
+<tr>
+<td>php8: type error</td>
+<td style="text-align: right;">1</td>
+</tr>
+<tr>
+<td>php8: missing function</td>
+<td style="text-align: right;">1</td>
+</tr>
+<tr>
+<td>ok (non-json)</td>
+<td style="text-align: right;">1</td>
+</tr>
+</tbody>
+</table></div>
+<p>Plan size: 43 endpoints, including known-broken ones because the verifier re-measures rather than trusts the registry.</p>
+<p>Registry states across all models: <code>ok</code> 52, <code>php8</code> 51, <code>session</code> 5, <code>untested</code> 3, <code>verb</code> 1.</p>
+<h2 id="per-endpoint-results-coda60-plan">Per-endpoint results (CODA60 plan)<a class="headerlink" href="#per-endpoint-results-coda60-plan" title="Link to this section">#</a></h2>
+<h3 id="diagnostics">diagnostics<a class="headerlink" href="#diagnostics" title="Link to this section">#</a></h3>
+<div class="table-scroll"><table>
+<thead>
+<tr>
+<th>id</th>
+<th>path</th>
+<th style="text-align: right;">HTTP</th>
+<th>result</th>
+<th style="text-align: right;">bytes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>diagnostics.root</code></td>
+<td><code>/1/Device/Diagnostics</code></td>
+<td style="text-align: right;">500</td>
+<td>php8: missing key — Undefined array key "info"</td>
+<td style="text-align: right;">388</td>
+</tr>
+<tr>
+<td><code>diag.input</code></td>
+<td><code>/1/Device/Diagnostics/Input</code></td>
+<td style="text-align: right;">200</td>
+<td>ok</td>
+<td style="text-align: right;">87</td>
+</tr>
+<tr>
+<td><code>diag.ping</code></td>
+<td><code>/1/Device/Diagnostics/Ping</code></td>
+<td style="text-align: right;">200</td>
+<td>ok</td>
+<td style="text-align: right;">245</td>
+</tr>
+<tr>
+<td><code>diag.traceroute</code></td>
+<td><code>/1/Device/Diagnostics/TraceRoute</code></td>
+<td style="text-align: right;">200</td>
+<td>ok</td>
+<td style="text-align: right;">201</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="docsis">docsis<a class="headerlink" href="#docsis" title="Link to this section">#</a></h3>
+<div class="table-scroll"><table>
+<thead>
+<tr>
+<th>id</th>
+<th>path</th>
+<th style="text-align: right;">HTTP</th>
+<th>result</th>
+<th style="text-align: right;">bytes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>cm.provision</code></td>
+<td><code>/1/Device/CM/DocsisProvision</code></td>
+<td style="text-align: right;">200</td>
+<td>ok</td>
+<td style="text-align: right;">253</td>
+</tr>
+<tr>
+<td><code>cm.ds</code></td>
+<td><code>/1/Device/CM/DsInfo</code></td>
+<td style="text-align: right;">200</td>
+<td>ok</td>
+<td style="text-align: right;">1390</td>
+</tr>
+<tr>
+<td><code>cm.us</code></td>
+<td><code>/1/Device/CM/UsInfo</code></td>
+<td style="text-align: right;">200</td>
+<td>ok</td>
+<td style="text-align: right;">324</td>
+</tr>
+<tr>
+<td><code>cm.ds.ofdm</code></td>
+<td><code>/1/Device/CM/DsOfdm</code></td>
+<td style="text-align: right;">200</td>
+<td>ok</td>
+<td style="text-align: right;">1091</td>
+</tr>
+<tr>
+<td><code>cm.us.ofdm</code></td>
+<td><code>/1/Device/CM/UsOfdm</code></td>
+<td style="text-align: right;">200</td>
+<td>ok</td>
+<td style="text-align: right;">1362</td>
+</tr>
+<tr>
+<td><code>cm.log</code></td>
+<td><code>/1/Device/CM/Log</code></td>
+<td style="text-align: right;">200</td>
+<td>ok</td>
+<td style="text-align: right;">4984</td>
+</tr>
+<tr>
+<td><code>cm.ready</code></td>
+<td><code>/1/Device/CM/Ready</code></td>
+<td style="text-align: right;">400</td>
+<td Paramters._ _errCode_:_001_errMsg_:_Invalid>rejected (400) —</td>
+<td style="text-align: right;">48</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="identity">identity<a class="headerlink" href="#identity" title="Link to this section">#</a></h3>
+<div class="table-scroll"><table>
+<thead>
+<tr>
+<th>id</th>
+<th>path</th>
+<th style="text-align: right;">HTTP</th>
+<th>result</th>
+<th style="text-align: right;">bytes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>deviceinfo</code></td>
+<td><code>/deviceinfo</code></td>
+<td style="text-align: right;">200</td>
+<td>ok</td>
+<td style="text-align: right;">273</td>
+</tr>
+<tr>
+<td><code>cm.version</code></td>
+<td><code>/1/Device/CM/Version</code></td>
+<td style="text-align: right;">200</td>
+<td>ok</td>
+<td style="text-align: right;">160</td>
+</tr>
+<tr>
+<td><code>cm.sysinfo</code></td>
+<td><code>/1/Device/CM/SysInfo</code></td>
+<td style="text-align: right;">200</td>
+<td>ok</td>
+<td style="text-align: right;">212</td>
+</tr>
+<tr>
+<td><code>router.sysinfo</code></td>
+<td><code>/1/Device/Router/SysInfo</code></td>
+<td style="text-align: right;">200</td>
+<td>ok</td>
+<td style="text-align: right;">259</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="lan">lan<a class="headerlink" href="#lan" title="Link to this section">#</a></h3>
+<div class="table-scroll"><table>
+<thead>
+<tr>
+<th>id</th>
+<th>path</th>
+<th style="text-align: right;">HTTP</th>
+<th>result</th>
+<th style="text-align: right;">bytes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ether.vlan</code></td>
+<td><code>/1/Device/Ether/VLAN</code></td>
+<td style="text-align: right;">200</td>
+<td>ok</td>
+<td style="text-align: right;">113</td>
+</tr>
+<tr>
+<td><code>advanced.switch</code></td>
+<td><code>/1/Device/Advanced/AdvancedSwitch</code></td>
+<td style="text-align: right;">200</td>
+<td>ok</td>
+<td style="text-align: right;">136</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="shell">shell<a class="headerlink" href="#shell" title="Link to this section">#</a></h3>
+<div class="table-scroll"><table>
+<thead>
+<tr>
+<th>id</th>
+<th>path</th>
+<th style="text-align: right;">HTTP</th>
+<th>result</th>
+<th style="text-align: right;">bytes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>menu.main</code></td>
+<td><code>/1/Device/Menu/Main</code></td>
+<td style="text-align: right;">200</td>
+<td>ok</td>
+<td style="text-align: right;">169</td>
+</tr>
+<tr>
+<td><code>menu.sub</code></td>
+<td><code>/1/Device/Menu/Sub</code></td>
+<td style="text-align: right;">200</td>
+<td>ok</td>
+<td style="text-align: right;">1049</td>
+</tr>
+<tr>
+<td><code>users.list</code></td>
+<td><code>/1/Device/Users</code></td>
+<td style="text-align: right;">500</td>
+<td>php8: missing key — Undefined array key "action"</td>
+<td style="text-align: right;">375</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="spectrum">spectrum<a class="headerlink" href="#spectrum" title="Link to this section">#</a></h3>
+<div class="table-scroll"><table>
+<thead>
+<tr>
+<th>id</th>
+<th>path</th>
+<th style="text-align: right;">HTTP</th>
+<th>result</th>
+<th style="text-align: right;">bytes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>spectrum</code></td>
+<td><code>/1/Device/Spectrum</code></td>
+<td style="text-align: right;">200</td>
+<td>ok</td>
+<td style="text-align: right;">64</td>
+</tr>
+<tr>
+<td><code>spectrum.freqlist</code></td>
+<td><code>/1/Device/Spectrum/FreqList</code></td>
+<td style="text-align: right;">200</td>
+<td>ok</td>
+<td style="text-align: right;">211</td>
+</tr>
+<tr>
+<td><code>spectrum.rtdata</code></td>
+<td><code>/1/Device/Spectrum/RTData</code></td>
+<td style="text-align: right;">200</td>
+<td>ok</td>
+<td style="text-align: right;">297</td>
+</tr>
+<tr>
+<td><code>spectrum.constellation</code></td>
+<td><code>/1/Device/Spectrum/Constellation</code></td>
+<td style="text-align: right;">200</td>
+<td>ok</td>
+<td style="text-align: right;">49</td>
+</tr>
+<tr>
+<td><code>spectrum.freqpower</code></td>
+<td><code>/1/Device/Spectrum/FreqPower</code></td>
+<td style="text-align: right;">200</td>
+<td>ok</td>
+<td style="text-align: right;">6811</td>
+</tr>
+</tbody>
+</table></div>
+<p>All four branches shell out to <code>/usr/sbin/hitrondec</code>. They share one hardware
+tuner, so captures are sequential; two sweeps in flight return interleaved or
+empty data.</p>
+<p>Measured capture behavior (<code>FreqPower</code>, repeated while the link was up):</p>
+<div class="table-scroll"><table>
+<thead>
+<tr>
+<th>Request</th>
+<th style="text-align: right;">Points</th>
+<th>Window actually returned</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>centFreq=267&amp;fromFreq=264&amp;toFreq=270</code></td>
+<td style="text-align: right;">300</td>
+<td>264.0–269.98 MHz</td>
+</tr>
+<tr>
+<td><code>centFreq=273&amp;fromFreq=270&amp;toFreq=276</code></td>
+<td style="text-align: right;">300</td>
+<td>270.0–275.98 MHz</td>
+</tr>
+<tr>
+<td><code>centFreq=291&amp;fromFreq=288&amp;toFreq=294</code></td>
+<td style="text-align: right;">300</td>
+<td>288.0–293.98 MHz</td>
+</tr>
+<tr>
+<td><code>centFreq=645&amp;fromFreq=637.5&amp;toFreq=643.5</code></td>
+<td style="text-align: right;">300</td>
+<td>637.5–643.48 MHz</td>
+</tr>
+<tr>
+<td><code>centFreq=645&amp;fromFreq=642&amp;toFreq=648</code></td>
+<td style="text-align: right;">300</td>
+<td>643.5–649.48 MHz</td>
+</tr>
+</tbody>
+</table></div>
+<ul>
+<li>300 points at 20 kHz spacing across 6 MHz. Requesting a wider window
+  (<code>fromFreq</code>/<code>toFreq</code> 12 MHz apart) returns an empty <code>spectrum</code> array.</li>
+<li>The window starts at <code>fromFreq</code> when that value sits on the tuner's raster,
+  and can shift by 1.5 MHz otherwise. Clients must plot the <code>f</code> values in the
+  payload, not the request.</li>
+<li>The handler's parameter regex
+  <code>^[1-9][0-9][0-9]?[0-9]?\.?[1-9]?$</code> allows at most one non-zero fractional
+  digit. <code>273.000</code> misses it and silently falls back to the 645/637.5/643.5
+  defaults, which returns an unrelated slice.</li>
+<li><code>Constellation?portId=N</code> returns 256 <code>{i,q}</code> points for the eight locked
+  downstream ports. <code>FreqList</code> reports those ports as <code>ri</code> 0 and 25..31;
+  ports 1..24 answer 200 with an empty array, not an error.</li>
+<li><code>RTData</code> returns a rolling buffer of timestamped frames (10 on this build,
+  eight channels each); <code>m</code> is MER in dB, not a max-hold power.</li>
+</ul>
+<h3 id="system">system<a class="headerlink" href="#system" title="Link to this section">#</a></h3>
+<div class="table-scroll"><table>
+<thead>
+<tr>
+<th>id</th>
+<th>path</th>
+<th style="text-align: right;">HTTP</th>
+<th>result</th>
+<th style="text-align: right;">bytes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>time</code></td>
+<td><code>/1/Device/Time</code></td>
+<td style="text-align: right;">500</td>
+<td>php8: missing key — Undefined array key "info"</td>
+<td style="text-align: right;">367</td>
+</tr>
+<tr>
+<td><code>advanced.root</code></td>
+<td><code>/1/Device/Advanced</code></td>
+<td style="text-align: right;">500</td>
+<td>php8: missing key — Undefined array key "info"</td>
+<td style="text-align: right;">379</td>
+</tr>
+<tr>
+<td><code>usb.root</code></td>
+<td><code>/1/Device/USB</code></td>
+<td style="text-align: right;">500</td>
+<td>php8: missing key — Undefined array key "info"</td>
+<td style="text-align: right;">364</td>
+</tr>
+<tr>
+<td><code>adminremote.root</code></td>
+<td><code>/1/Device/AdminRemoteManagement</code></td>
+<td style="text-align: right;">500</td>
+<td>php8: missing key — Undefined array key "info"</td>
+<td style="text-align: right;">418</td>
+</tr>
+<tr>
+<td><code>adminremote.status</code></td>
+<td><code>/1/Device/AdminRemoteManagement/Status</code></td>
+<td style="text-align: right;">200</td>
+<td>ok</td>
+<td style="text-align: right;">51</td>
+</tr>
+<tr>
+<td><code>adminremote.aclist</code></td>
+<td><code>/1/Device/AdminRemoteManagement/AcList</code></td>
+<td style="text-align: right;">500</td>
+<td>php8: type error — count(): Argument #1 ($value) must be of type Countable|array, RemoteAc given [</td>
+<td style="text-align: right;">78765</td>
+</tr>
+<tr>
+<td><code>adminremote.rlist</code></td>
+<td><code>/1/Device/AdminRemoteManagement/RList</code></td>
+<td style="text-align: right;">500</td>
+<td>php8: missing function — Call to undefined function getInstanceIDs() [/www/hitron/app/controllers/AdminRe</td>
+<td style="text-align: right;">78786</td>
+</tr>
+<tr>
+<td><code>health.root</code></td>
+<td><code>/1/Device/Health</code></td>
+<td style="text-align: right;">500</td>
+<td>php8: missing key — Undefined array key "info"</td>
+<td style="text-align: right;">382</td>
+</tr>
+<tr>
+<td><code>health.settings</code></td>
+<td><code>/1/Device/Health/Settings</code></td>
+<td style="text-align: right;">400</td>
+<td Paramters._ _errCode_:_001_errMsg_:_Invalid>rejected (400) —</td>
+<td style="text-align: right;">48</td>
+</tr>
+<tr>
+<td><code>tempaccess.status</code></td>
+<td><code>/1/Device/TempAccess/Status</code></td>
+<td style="text-align: right;">400</td>
+<td _errCode_:_005_errMsg_:_GET for is model_ not request supported this>rejected (400) —</td>
+<td style="text-align: right;">73</td>
+</tr>
+<tr>
+<td><code>addons.assia</code></td>
+<td><code>/1/Device/Addons/AssiaAgent</code></td>
+<td style="text-align: right;">200</td>
+<td>ok</td>
+<td style="text-align: right;">45</td>
+</tr>
+<tr>
+<td><code>manage.root</code></td>
+<td><code>/1/Device/Manage</code></td>
+<td style="text-align: right;">200</td>
+<td>ok (non-json)</td>
+<td style="text-align: right;">14</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="telemetry">telemetry<a class="headerlink" href="#telemetry" title="Link to this section">#</a></h3>
+<div class="table-scroll"><table>
+<thead>
+<tr>
+<th>id</th>
+<th>path</th>
+<th style="text-align: right;">HTTP</th>
+<th>result</th>
+<th style="text-align: right;">bytes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>telemetry.rfmetrics</code></td>
+<td><code>/rfmetrics</code></td>
+<td style="text-align: right;">200</td>
+<td>ok</td>
+<td style="text-align: right;">12880</td>
+</tr>
+<tr>
+<td><code>telemetry.pnm</code></td>
+<td><code>/pnm</code></td>
+<td style="text-align: right;">200</td>
+<td>ok</td>
+<td style="text-align: right;">121117</td>
+</tr>
+<tr>
+<td><code>telemetry.pnm.rxmer</code></td>
+<td><code>/pnm/rxmer</code></td>
+<td style="text-align: right;">200</td>
+<td>ok</td>
+<td style="text-align: right;">19128</td>
+</tr>
+<tr>
+<td><code>telemetry.pnm.ch_est_coef</code></td>
+<td><code>/pnm/ch_est_coef</code></td>
+<td style="text-align: right;">200</td>
+<td>ok</td>
+<td style="text-align: right;">75427</td>
+</tr>
+<tr>
+<td><code>telemetry.pnm.us_pre_eq</code></td>
+<td><code>/pnm/us_pre_eq</code></td>
+<td style="text-align: right;">200</td>
+<td>ok</td>
+<td style="text-align: right;">17122</td>
+</tr>
+<tr>
+<td><code>telemetry.pnm.mod_prof</code></td>
+<td><code>/pnm/mod_prof</code></td>
+<td style="text-align: right;">200</td>
+<td>ok</td>
+<td style="text-align: right;">9726</td>
+</tr>
+</tbody>
+</table></div>
+<h2 id="what-the-failures-are">What the failures are<a class="headerlink" href="#what-the-failures-are" title="Link to this section">#</a></h2>
+<ul>
+<li><strong>php8 / 500</strong> — a fatal in the shipped controller, reproduced identically in a
+  browser: <code>Undefined array key "info"</code> at the top of most <code>get()</code> handlers,
+  <code>getInstanceIds()</code> where the platform exports <code>getInstanceIDs()</code>,
+  <code>Optional parameter $radio declared before required parameter $f3</code>,
+  <code>count()</code> on a non-Countable, dynamic-property deprecations promoted to errors.</li>
+<li><strong>rejected (400)</strong> — <code>errCode 001</code> for session-gated reads (<code>CM/Ready</code>,
+  <code>Health/Settings</code>) and <code>errCode 005</code> for <code>TempAccess/Status</code> ("GET request is not
+  supported for this model").</li>
+<li><strong>ok (non-json)</strong> — <code>/1/Device/Manage</code> returns the literal text <code>cusadmin,false</code>:
+  the admin username, unauthenticated.</li>
+</ul>
+<h2 id="write-path-measured-reboot-flags-and-fec-counters">Write path measured: reboot flags and FEC counters<a class="headerlink" href="#write-path-measured-reboot-flags-and-fec-counters" title="Link to this section">#</a></h2>
+<p>Three writes were exercised on 8.7.1.0.1b4. All three are listed here with the
+payload that worked, because the controller's replies do not tell you what it did.</p>
+<h3 id="post-1devicecmreboot--only-restorereset-reboots"><code>POST /1/Device/CM/Reboot</code> — only <code>restoreReset</code> reboots<a class="headerlink" href="#post-1devicecmreboot--only-restorereset-reboots" title="Link to this section">#</a></h3>
+<p><code>doRebootAction()</code> inspects the flags in the order <code>reboot</code> → <code>factoryReset</code> →
+<code>restoreReset</code>, and it reads <strong>all three</strong> before choosing a branch. Under PHP 8 a
+missing key is a fatal, so every request must carry the full set.</p>
+<div class="table-scroll"><table>
+<thead>
+<tr>
+<th>body</th>
+<th>result</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>{"reboot":1}</code></td>
+<td>HTTP 200 <code>{"errCode":"000"}</code> and <strong>nothing happens</strong></td>
+</tr>
+<tr>
+<td><code>{"reboot":0,"factoryReset":0,"restoreReset":0}</code></td>
+<td>HTTP 400 <code>errCode 001</code> (all keys present, no branch taken)</td>
+</tr>
+<tr>
+<td><code>{"restoreReset":1}</code></td>
+<td>HTTP 500 <code>Undefined array key "reboot"</code> at <code>ModelInfo.php:297</code></td>
+</tr>
+<tr>
+<td><code>{"reboot":0}</code></td>
+<td>HTTP 500 <code>Undefined array key "factoryReset"</code></td>
+</tr>
+<tr>
+<td><code>{}</code></td>
+<td>HTTP 500 <code>Undefined array key "reboot"</code></td>
+</tr>
+<tr>
+<td><code>{"reboot":0,"factoryReset":0,"restoreReset":1}</code></td>
+<td><strong>reboots the unit</strong></td>
+</tr>
+</tbody>
+</table></div>
+<p>The inert <code>reboot</code> flag:</p>
+<pre><code class="language-bash">curl -sS -X POST http://192.168.100.1/1/Device/CM/Reboot \
+  -H 'Content-Type: application/x-www-form-urlencoded' \
+  --data-urlencode 'model={&quot;reboot&quot;:1}'
+# {&quot;errCode&quot;:&quot;000&quot;,&quot;errMsg&quot;:&quot;&quot;}   HTTP 200
+</code></pre>
+<ul>
+<li>ICMP keeps answering at the same latency for 40 s after the 200.</li>
+<li>The WAN DHCP lease is unchanged (<code>D: 05 H: 00 M: 00 S: 00</code>), so the link never
+  dropped and re-acquired.</li>
+<li>DOCSIS downstream octets keep incrementing across the call (about 3 MB in 30 s).</li>
+<li>No <code>CM Reboot Reason</code> entry appears in <code>/1/Device/CM/Log</code>.</li>
+</ul>
+<p>So <code>Device.DeviceInfo.X_HITRON_COM_MGMT.Reboot = true</code> is accepted by <code>setStr()</code>
+and then ignored by whatever is supposed to consume it. <code>factoryReset</code> sets a
+matching flag and was not run.</p>
+<p>The working payload, measured 2026-11-26 at 13:16:56:</p>
+<pre><code class="language-bash">curl -sS -X POST http://192.168.100.1/1/Device/CM/Reboot \
+  -H 'Content-Type: application/x-www-form-urlencoded' \
+  --data-urlencode 'model={&quot;reboot&quot;:0,&quot;factoryReset&quot;:0,&quot;restoreReset&quot;:1}'
+# curl: (52) Empty reply from server
+</code></pre>
+<ul>
+<li>The connection drops instead of returning a body, so a client must treat
+  "empty reply" and reset/EOF as success, not as a failure.</li>
+<li>ICMP is <strong>down 5 s</strong> after the POST and back <strong>127 s</strong> later (~122 s outage).</li>
+<li>The first downstream channel's octet counter resets (2,827,080,918 → 2,969,663).</li>
+<li><code>/1/Device/CM/Log</code> gains <code>CM Reboot Reason : POWER_ON</code> and entries at
+  13:18:08, 13:18:10 and 13:18:51.</li>
+<li>Hardware model, firmware, serial, WAN IP (<code>10.33.138.182</code>) and the config file
+  (<code>CBR8_Bundle2_Default-1.cfg</code>) are unchanged, and <code>/1/Device/Manage</code> still returns
+  <code>cusadmin,false</code>.</li>
+</ul>
+<p>The PHP branch itself is <code>returnBeforeCommit</code>, <code>sleep(2)</code>, then
+<code>exec('sync; ncpu_exec -e ht_reset_cmd.sh reboot'); exec('reboot')</code>.</p>
+<h3 id="put-1devicecmdsinfo-and-put-1devicecmdsofdm--fec-counters"><code>PUT /1/Device/CM/DsInfo</code> and <code>PUT /1/Device/CM/DsOfdm</code> — FEC counters<a class="headerlink" href="#put-1devicecmdsinfo-and-put-1devicecmdsofdm--fec-counters" title="Link to this section">#</a></h3>
+<p><code>ModelInfo.php::doClearDsFec()</code> runs on <code>PUT /1/Device/CM/DsInfo</code> and sets
+<code>Docsis.ClearAllDownstreamFECCounter = true</code>. The OFDM counters live behind a
+separate route, <code>PUT /1/Device/CM/DsOfdm</code>. Both ignore the body and the query
+string, both answer <code>{"errCode":"000","errMsg":""}</code> with HTTP 200, and neither
+needs a session. The vendor's own "Reset FEC Counters" button only calls the 3.0
+endpoint.</p>
+<ul>
+<li><strong>3.0 is deterministic.</strong> One bare <code>PUT CM/DsInfo</code> zeroes all eight channels
+  (corrected and uncorrected) immediately; a <code>Bogus</code> route on the same controller
+  answers 400 and leaves the counters alone, so the zeroing is that handler.</li>
+<li><strong>OFDM is not.</strong> One bare <code>PUT CM/DsOfdm</code> example, 300 ms apart:</li>
+</ul>
+<p><code>before     {1: 274, 2: 3, 3: 234, 4: 234}
+  put 1      {1: 0,   2: 3,  3: 0,   4: 456}
+  put 2      {1: 0,   2: 3,  3: 1,   4: 456}
+  put 3      {1: 0,   2: 3,  3: 2,   4: 457}
+  put 4      {1: 0,   2: 3,  3: 2,   4: 457}</code></p>
+<p>Each call zeroes zero to two channels, which ones vary, and one channel can sit
+  out several calls in a row before clearing. Sending <code>{"index":N}</code> serially for
+  N = 1..4 also only cleared some of them, so there is no per-channel targeting to
+  rely on. The handler reads nothing from the request.
+- The <code>NA</code> row (index 5) is an inactive OFDM receiver, not an error.</p>
+<p><code>hitron-cli monitor</code> binds this to <code>x</code>: one <code>PUT CM/DsInfo</code>, then up to eight
+<code>PUT CM/DsOfdm</code> calls, keeping the best observation and reporting how many of the
+channels that were counting before now read zero. <code>hitron-cli fec-reset</code> runs the
+same flow from a script, with <code>--json</code> for the counts. The library entry points
+are <code>Client.ResetFEC</code> in Go and <code>CODA60Client.reset_fec()</code> in Python.</p>
+<h2 id="reproduce">Reproduce<a class="headerlink" href="#reproduce" title="Link to this section">#</a></h2>
+<pre><code class="language-bash">hitron coda60-verify 192.168.100.1 --out verify.json
+hitron coda60-models coda60
+</code></pre>
+</article>
+    <nav class="docs-pager" aria-label="Pages">
+      <a class="prev" href="kb.html"><span>Previous</span>Knowledge base</a>
+      <span></span>
+    </nav>
+    <p class="docs-edit"><a class="ext" href="https://github.com/Netquor/hitron/blob/main/docs/VERIFICATION.md">Edit this page on GitHub</a></p>
+  </main>
+</div>
+<footer class="footer">
+  <p>Not official Hitron documentation. Field names come from the device; mistakes are ours. <a href="../llms.txt">llms.txt</a> · <a href="../openapi.json">OpenAPI</a> · <a href="https://github.com/Netquor/hitron">Source</a></p>
+</footer>
+</body>
+</html>
