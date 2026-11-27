@@ -297,6 +297,9 @@ func runAction(ctx context.Context, client *hitron.Client, opts options) int {
 		return 0
 	}
 	fmt.Printf("%s sent to %s (%s)\n", action, client.Addr(), client.Kind.Label())
+	if note, ok := result["result"].(string); ok && note != "" {
+		fmt.Println(note)
+	}
 	if code := fmt.Sprint(result["errCode"]); code != "" && code != "000" {
 		fmt.Printf("device answered errCode %s %v\n", code, result["errMsg"])
 	}
@@ -653,11 +656,29 @@ Only meaningful on an HT-EM5. Prints link state, MoCA versions, adapter
 name, beacon/LOF, TX power index, Ethernet frame counters, per-band
 supported/enabled/privacy state, and every node with its MAC and role.`
 	case "reboot":
-		return destructiveHelp("reboot", "CODA6X: POST /1/Device/CM/Reboot {\"reboot\":1}\nHT-EM5: PUT /ms/1/0xb00 {\"data\":[1]}\nCODA-57: no confirmed reboot endpoint.")
+		return destructiveHelp("reboot", `CODA6X: POST /1/Device/CM/Reboot
+  {"reboot":1,"factoryReset":0,"restoreReset":0}
+HT-EM5: PUT /ms/1/0xb00 {"data":[1]}
+CODA-57: no confirmed reboot endpoint.
+
+The body always carries all three flags: the handler reads each one before
+it picks a branch, so a partial body is a PHP 8 fatal, not errCode 001.
+Measured on 8.7.1.0.1b4 this call answers errCode 000 and the unit does not
+reboot; nothing on the box acts on the flag. Use hard-reset.`)
 	case "factory-reset":
-		return destructiveHelp("factory-reset", "CODA6X: POST /1/Device/CM/Reboot {\"factoryReset\":1}.\nDestroys the device configuration. CODA6X only.")
+		return destructiveHelp("factory-reset", `CODA6X: POST /1/Device/CM/Reboot
+  {"reboot":0,"factoryReset":1,"restoreReset":0}
+
+Destroys the device configuration. CODA6X only. Not measured: it sets the
+same TR-181 flag as reboot, which is inert on 8.7.1.0.1b4.`)
 	case "hard-reset":
-		return destructiveHelp("hard-reset", "CODA6X: POST /1/Device/CM/Reboot {\"restoreReset\":1}.\nThe firmware handler execs reboot directly; the most immediate variant.\nCODA6X only.")
+		return destructiveHelp("hard-reset", `CODA6X: POST /1/Device/CM/Reboot
+  {"reboot":0,"factoryReset":0,"restoreReset":1}
+
+The firmware handler execs reboot directly, so the socket closes with no
+reply; that empty reply is success, not an error. Measured on 8.7.1.0.1b4:
+the unit is down ~5 s after the call and back ~2 min later, with its local
+configuration reset. CODA6X only.`)
 	case "auth":
 		return `Authentication
 
@@ -726,13 +747,15 @@ snapshot's warnings array.`
 	case "safety", "writes":
 		return `Writes and safety
 
-Read commands never write. The three destructive commands are separate verbs:
+Read commands never write. The live TUI is the one exception: x clears the
+downstream FEC counters and needs no session on the analyzed build. Every
+other write is a separate verb:
 
-  reboot         ask the modem to reboot
-  factory-reset  clear configuration and reboot
-  hard-reset     immediate restoreReset + reboot (CODA6X)
+  reboot         ask the modem to reboot (inert on 8.7.1.0.1b4)
+  factory-reset  clear configuration and reboot (not measured)
+  hard-reset     immediate restoreReset + reboot (CODA6X, measured working)
 
-Each one asks a y/N question unless --confirm is given. It also requires
+Each verb asks a y/N question unless --confirm is given. It also requires
 --user and --password (or HITRON_USERNAME/HITRON_PASSWORD), because the
 firmware's write routes need a real session. --confirm removes only the
 question, never the credential requirement.
