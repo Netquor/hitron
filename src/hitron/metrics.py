@@ -28,6 +28,7 @@ __all__ = [
     "SpecRange",
     "coda60_samples",
     "coda57_samples",
+    "coda4x8x_samples",
     "ht_em5_samples",
     "parse_uptime",
     "parse_counter",
@@ -443,6 +444,16 @@ def coda60_samples(snapshot: dict[str, Any], source: str = "coda60") -> list[Sam
 # ---------------------------------------------------------------------------
 # CODA-57 legacy .asp API
 # ---------------------------------------------------------------------------
+
+
+def coda4x8x_samples(snapshot: dict[str, Any], source: str = "coda4x8x") -> list[Sample]:
+    """Turn a ``Coda4x8xClient.get_all()`` snapshot into samples.
+
+    Experimental: not verified on live hardware. The snapshot is shaped like the
+    CODA6X one on purpose (hypothesis: same data model, served from the root),
+    so this is the CODA6X mapper and the metric names are identical.
+    """
+    return coda60_samples(snapshot, source=source)
 
 
 def coda57_samples(data: dict[str, Any], source: str = "coda57", spec: SpecRange | None = None) -> list[Sample]:

@@ -1,5 +1,6 @@
 """hitron: golden-source clients, specs, and a metrics exporter for Hitron
-HT-EM5 MoCA bridges and CODA6X/CODA-57 DOCSIS gateways.
+HT-EM5 MoCA bridges and CODA6X/CODA-57 DOCSIS gateways (plus an
+experimental, read-only CODA 4x8x client).
 
 See ../../README.md and ../../docs/KB.md for the full writeup, and
 ../../docs/VERIFICATION.md for the measured read surface of firmware
@@ -7,10 +8,11 @@ See ../../README.md and ../../docs/KB.md for the full writeup, and
 """
 
 from .adapters import ENDPOINTS, plan, summary
+from .coda4x8x import Coda4x8xClient, detect_api_root
 from .coda57 import Coda57Client
 from .coda60 import Coda60Client
 from .ht_em5 import HitronMocaClient
-from .metrics import Sample, coda57_samples, coda60_samples, ht_em5_samples
+from .metrics import Sample, coda4x8x_samples, coda57_samples, coda60_samples, ht_em5_samples
 from .models import (
     ModelProfile,
     all_profiles,
@@ -23,9 +25,12 @@ __all__ = [
     "HitronMocaClient",
     "Coda60Client",
     "Coda57Client",
+    "Coda4x8xClient",
+    "detect_api_root",
     "Sample",
     "coda60_samples",
     "coda57_samples",
+    "coda4x8x_samples",
     "ht_em5_samples",
     "ModelProfile",
     "ENDPOINTS",
