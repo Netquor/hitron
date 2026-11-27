@@ -9,7 +9,7 @@ import (
 	"github.com/Netquor/hitron/cli/internal/hitron"
 )
 
-// The spectrum analyser lives on one shared hardware tuner, so these views are
+// The spectrum analyzer lives on one shared hardware tuner, so these views are
 // deliberately single-capture: one 6 MHz trace per refresh, never two sweeps
 // in flight. Everything is drawn from the points the firmware returned; the
 // requested window is only a hint.
@@ -36,7 +36,7 @@ func clipLines(lines []string, width, height int) []string {
 	return lines
 }
 
-// SpectrumFrame draws the live trace plus the analyser's channel table.
+// SpectrumFrame draws the live trace plus the analyzer's channel table.
 func SpectrumFrame(header string, centerMHz float64, sweep *hitron.SpectrumSweep, channels []hitron.SpectrumChannel, frames []hitron.RealTimeFrame, width, height int, errText string) []string {
 	lines := []string{header}
 	if errText != "" {
@@ -74,7 +74,7 @@ func SpectrumFrame(header string, centerMHz float64, sweep *hitron.SpectrumSweep
 	))
 	if actual := (sweep.FromMHz + sweep.ToMHz) / 2; math.Abs(actual-centerMHz) > 4 {
 		lines = append(lines, "  "+Yellow(fmt.Sprintf(
-			"capture is centred at %.1f MHz, not %.1f; the shared tuner may still be settling — press r",
+			"capture is centerd at %.1f MHz, not %.1f; the shared tuner may still be settling — press r",
 			actual, centerMHz)))
 	}
 
@@ -178,11 +178,11 @@ func spectrumStats(points []hitron.SpectrumPoint) (min, max, avg float64) {
 }
 
 // spectrumChart renders the trace as a braille line. Braille gives two dots
-// per column and four per row. The analyser returns 300 samples for a 6 MHz
+// per column and four per row. The analyzer returns 300 samples for a 6 MHz
 // window, which is far more than a terminal has sub-columns, so samples are
 // averaged into each sub-column first: connecting every raw sample would fill
 // the noise band with static and bury the shape of the channel.
-func spectrumChart(points []hitron.SpectrumPoint, plotWidth, rows int, labelled bool) []string {
+func spectrumChart(points []hitron.SpectrumPoint, plotWidth, rows int, labeled bool) []string {
 	if plotWidth < 1 || rows < 1 || len(points) == 0 {
 		return nil
 	}
@@ -254,15 +254,15 @@ func spectrumChart(points []hitron.SpectrumPoint, plotWidth, rows int, labelled 
 		}
 		value := ymax - (ymax-ymin)*float64(row)/float64(rows-1)
 		label := ""
-		if labelled && (row == 0 || row == rows-1 || row == rows/2) {
+		if labeled && (row == 0 || row == rows-1 || row == rows/2) {
 			label = fmt.Sprintf("%+5.0f │", value)
-		} else if labelled {
+		} else if labeled {
 			label = "      │"
 		}
 		lines = append(lines, "  "+Dim(label)+Cyan(trace.String()))
 	}
 
-	if labelled {
+	if labeled {
 		lines = append(lines, "  "+Dim("      └"+strings.Repeat("─", plotWidth)))
 		lines = append(lines, axisLabels(from, to, plotWidth))
 	}

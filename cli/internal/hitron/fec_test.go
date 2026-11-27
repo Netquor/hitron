@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-// fecServer mimics the measured 8.7.1.0.1b4 behaviour: PUT CM/DsInfo zeroes
+// fecServer mimics the measured 8.7.1.0.1b4 behavior: PUT CM/DsInfo zeroes
 // every 3.0 counter at once, while each PUT CM/DsOfdm zeroes only one OFDM
 // channel. `stubborn` names a channel that never clears.
 func fecServer(puts *[]string, stubborn string) http.HandlerFunc {

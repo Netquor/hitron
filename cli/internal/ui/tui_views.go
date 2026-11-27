@@ -24,7 +24,7 @@ func (m model) activeCmd() tea.Cmd {
 }
 
 // issue starts a read for the active view and marks one as in flight. The
-// analyser is one shared hardware tuner, so only one capture runs at a time.
+// analyzer is one shared hardware tuner, so only one capture runs at a time.
 // A FEC clear owns the device until it finishes, so reads wait for it.
 func (m model) issue() (model, tea.Cmd) {
 	if m.fecRunning {
@@ -160,7 +160,7 @@ func (m model) applyCons(msg consMsg) model {
 	return m
 }
 
-// stepChannel moves the shared selection to the previous or next analyser
+// stepChannel moves the shared selection to the previous or next analyzer
 // channel. Without a channel list it falls back to 6 MHz jumps.
 func (m model) stepChannel(delta int) model {
 	if len(m.channels) == 0 {

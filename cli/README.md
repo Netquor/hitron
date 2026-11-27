@@ -180,16 +180,16 @@ and a decoded, shortened event log. The mouse wheel scrolls.
 | `a` | toggle automatic refresh |
 | `g` | toggle trend graphs |
 | `z` | reset the downstream FEC counters (3.0 + OFDM). Writes on the CODA6X; on other families it only zeroes the displayed counts. |
-| `t` | next colour theme, remembered for next time |
-| `b` | toggle the gradient background (24-bit colour terminals only) |
+| `t` | next color theme, remembered for next time |
+| `b` | toggle the gradient background (24-bit color terminals only) |
 | `x`, the Reboot button | reboot, after a confirmation (see below) |
 | `j`, `k`, arrows | scroll |
 | `h`, `?` | help overlay |
 | `1` | summary |
 | `2`, `s` | live spectrum |
 | `3`, `c` | constellation (I/Q) |
-| `[`, `]` | previous / next analyser channel |
-| `,`, `.` | fine-tune the spectrum centre by 1 MHz |
+| `[`, `]` | previous / next analyzer channel |
+| `,`, `.` | fine-tune the spectrum center by 1 MHz |
 
 Themes are `neon` (default), `synthwave`, `dracula`, `nord`, `gruvbox` and
 `matrix`. Choose one with `--theme NAME` or `HITRON_THEME`; the `t` key saves
@@ -223,13 +223,13 @@ other families. The firmware drives one shared hardware tuner, so the client
 keeps captures sequential and draws whatever the tuner actually returned:
 
 - **Spectrum** is a braille trace of one 6 MHz window (300 points at 20 kHz
-  spacing on a CODA-60). `[`/`]` jumps between the analyser's downstream
+  spacing on a CODA-60). `[`/`]` jumps between the analyzer's downstream
   channels, `,`/`.` tunes by 1 MHz. The header carries the raw min/max/average
   dBmV; the vertical axis trims the tuner's 30–40 dB edge roll-off so the
   channel itself fills the panel. The `RTData` power/MER snapshot sits below it.
-- **Constellation** plots the 256 I/Q samples for one analyser port, auto-scaled
+- **Constellation** plots the 256 I/Q samples for one analyzer port, auto-scaled
   to the returned cloud, with modulation, bandwidth, MER, and power in the
-  header. Ports are the analyser's own ids (a live CODA-60 reports `0, 25..31`
+  header. Ports are the analyzer's own ids (a live CODA-60 reports `0, 25..31`
   for eight downstream channels), not DOCSIS channel numbers.
 
 `FreqPower` only accepts at most one non-zero fractional digit (`637.5`, never

@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-// Severity is a normalised DOCSIS event priority.
+// Severity is a normalized DOCSIS event priority.
 type Severity string
 
 const (
@@ -20,7 +20,7 @@ const (
 )
 
 // FriendlyEvent is a log line boiled down for reading: a short summary with
-// the repeated CM-MAC/CMTS-MAC/CM-QOS/CM-VER trailer removed, a normalised
+// the repeated CM-MAC/CMTS-MAC/CM-QOS/CM-VER trailer removed, a normalized
 // severity and a parsed time.
 type FriendlyEvent struct {
 	When       string // e.g. "Nov 26 09:19", empty when it cannot be parsed

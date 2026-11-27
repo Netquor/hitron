@@ -74,8 +74,8 @@ type snapMsg struct {
 	at   time.Time
 }
 
-// specMsg and consMsg carry one analyser capture. channels is set only when
-// the analyser channel list was fetched by this command.
+// specMsg and consMsg carry one analyzer capture. channels is set only when
+// the analyzer channel list was fetched by this command.
 type specMsg struct {
 	channels      []hitron.SpectrumChannel
 	channelsTried bool
@@ -162,7 +162,7 @@ type model struct {
 	dlgErr            error
 }
 
-// RunTUI runs the live dashboard until the user quits or ctx is cancelled.
+// RunTUI runs the live dashboard until the user quits or ctx is canceled.
 func RunTUI(ctx context.Context, o TUIOptions) error {
 	if !IsTerminal() {
 		return fmt.Errorf("stdin is not a terminal; use --once for a one-shot report")
@@ -752,10 +752,10 @@ func (m model) helpView() string {
 		{"r / space", "refresh now"},
 		{"a", "toggle automatic refresh"},
 		{"1 / 2 / 3", "summary / live spectrum / constellation (also s, c)"},
-		{"[ ]  p", "previous / next analyser channel"},
-		{", .", "fine-tune the spectrum centre by 1 MHz"},
+		{"[ ]  p", "previous / next analyzer channel"},
+		{", .", "fine-tune the spectrum center by 1 MHz"},
 		{"g", "toggle trend graphs"},
-		{"b", "toggle the gradient background (needs a 24-bit colour terminal)"},
+		{"b", "toggle the gradient background (needs a 24-bit color terminal)"},
 		{"z", "reset the downstream FEC counters (3.0 + OFDM; CODA6X)"},
 		{"t", "next theme (remembered for next time)"},
 		{"j / k, ↓ / ↑", "scroll (the mouse wheel works too)"},

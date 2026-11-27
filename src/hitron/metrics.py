@@ -191,7 +191,7 @@ def _samples_for_channels(
         if port:
             labels["port_id"] = port
         if kind == "ds":
-            out.append(Sample(f"{prefix}_downstream_channel_frequency_hz", _f(ch.get(frequency_key)) or 0.0, labels, "Downstream channel centre frequency", unit="Hz"))
+            out.append(Sample(f"{prefix}_downstream_channel_frequency_hz", _f(ch.get(frequency_key)) or 0.0, labels, "Downstream channel center frequency", unit="Hz"))
             if (v := _f(ch.get(power_key))) is not None:
                 out.append(Sample(f"{prefix}_downstream_channel_power_dbmv", v, labels, "Downstream channel power", unit="dBmV"))
             if (v := _f(ch.get(snr_key))) is not None:
@@ -207,7 +207,7 @@ def _samples_for_channels(
             if mod:
                 out.append(Sample(f"{prefix}_downstream_channel_info", 1.0, {**labels, "modulation": mod}, "Downstream channel labels"))
         else:
-            out.append(Sample(f"{prefix}_upstream_channel_frequency_hz", _f(ch.get(frequency_key)) or 0.0, labels, "Upstream channel centre frequency", unit="Hz"))
+            out.append(Sample(f"{prefix}_upstream_channel_frequency_hz", _f(ch.get(frequency_key)) or 0.0, labels, "Upstream channel center frequency", unit="Hz"))
             if (v := _f(ch.get(power_key))) is not None:
                 out.append(Sample(f"{prefix}_upstream_channel_power_dbmv", v, labels, "Upstream channel power", unit="dBmV"))
             if (v := _f(ch.get("bandwidth"))) is not None:
@@ -318,7 +318,7 @@ def coda60_samples(snapshot: dict[str, Any], source: str = "coda60") -> list[Sam
         disabled = state.upper().startswith("DISABLED")
         if not disabled:
             if (v := _f(ch.get("frequency"))) is not None:
-                out.append(Sample("modem_upstream_ofdm_channel_frequency_hz", v, labels, "OFDMA centre frequency", unit="Hz"))
+                out.append(Sample("modem_upstream_ofdm_channel_frequency_hz", v, labels, "OFDMA center frequency", unit="Hz"))
             if (v := _f(ch.get("channelBw"))) is not None:
                 out.append(Sample("modem_upstream_ofdm_channel_bandwidth_mhz", v, labels, "OFDMA channel bandwidth", unit="MHz"))
             for key, name, desc, unit in (
@@ -489,7 +489,7 @@ def coda57_samples(data: dict[str, Any], source: str = "coda57", spec: SpecRange
             for key, name, desc, unit in (
                 ("repPower", "modem_upstream_ofdm_channel_power_dbmv", "OFDMA reported power", "dBmV"),
                 ("repPower1_6", "modem_upstream_ofdm_channel_power_1_6_dbmv", "OFDMA DOCSIS-3.0-equivalent power", "dBmV"),
-                ("frequency", "modem_upstream_ofdm_channel_frequency_hz", "OFDMA centre frequency", "Hz"),
+                ("frequency", "modem_upstream_ofdm_channel_frequency_hz", "OFDMA center frequency", "Hz"),
                 ("channelBw", "modem_upstream_ofdm_channel_bandwidth_mhz", "OFDMA bandwidth", "MHz"),
                 ("digAtten", "modem_upstream_ofdm_channel_digital_attenuation_db", "OFDMA digital attenuation", "dB"),
             ):

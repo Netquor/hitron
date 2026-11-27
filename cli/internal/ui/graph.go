@@ -91,7 +91,7 @@ func floorColor(floor float64) func(v float64) func(string) string {
 	}
 }
 
-// graphRow is one labelled trend line:
+// graphRow is one labeled trend line:
 //
 //	label   sparkline   now  (min..max)
 func graphRow(label string, ser *series, width int, lo, hi float64, color func(float64) func(string) string, unit, format string) string {

@@ -24,7 +24,7 @@ func TestNextChannelWrapsAndFollowsTheDirectionOfTravel(t *testing.T) {
 		{267, -1, 279}, // and wraps backwards
 		{273, 1, 279},
 		{279, 1, 267},   // wraps forwards
-		{268, 1, 273},   // a fine-tuned centre lands on the next channel
+		{268, 1, 273},   // a fine-tuned center lands on the next channel
 		{268, -1, 267},  // or the previous one
 		{300, 1, 267},   // past the last channel, wrap
 		{260, -1, 279},  // before the first channel, wrap
@@ -45,7 +45,7 @@ func TestNextChannelWrapsAndFollowsTheDirectionOfTravel(t *testing.T) {
 	}
 }
 
-func TestNextChannelCarriesTheAnalyserPort(t *testing.T) {
+func TestNextChannelCarriesTheAnalyzerPort(t *testing.T) {
 	channels := []hitron.SpectrumChannel{
 		{FreqMHz: 267, PortID: 0},
 		{FreqMHz: 291, PortID: 25},
