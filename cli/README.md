@@ -59,6 +59,7 @@ hitron-cli moca             HT-EM5 link, bands, nodes
 hitron-cli reboot           reboot (prompts, or --confirm)
 hitron-cli factory-reset    factory reset + reboot (CODA6X)
 hitron-cli hard-reset       immediate restoreReset + reboot (CODA6X)
+hitron-cli fec-reset        clear the downstream FEC counters (CODA6X)
 hitron-cli help [topic]     overview or one topic
 hitron-cli version          version
 ```
@@ -126,15 +127,29 @@ of hanging.
 
 ## Writes
 
-Three separate verbs, each requiring credentials:
+Three destructive verbs, each requiring credentials:
 
 | Command | CODA6X body | HT-EM5 | CODA-57 |
 | --- | --- | --- | --- |
-| `reboot` | `{"reboot":1}` to `CM/Reboot` | `POST /ms/1/0xb00/PUT {"data":[1]}` | unsupported |
-| `factory-reset` | `{"factoryReset":1}` | unsupported | unsupported |
-| `hard-reset` | `{"restoreReset":1}` | unsupported | unsupported |
+| `reboot` | `{"reboot":1,"factoryReset":0,"restoreReset":0}` to `CM/Reboot` | `POST /ms/1/0xb00/PUT {"data":[1]}` | unsupported |
+| `factory-reset` | `{"reboot":0,"factoryReset":1,"restoreReset":0}` | unsupported | unsupported |
+| `hard-reset` | `{"reboot":0,"factoryReset":0,"restoreReset":1}` | unsupported | unsupported |
 
-Every one asks:
+One non-destructive write needs no session, no prompt, and no credentials:
+
+| Command | CODA6X | HT-EM5 | CODA-57 |
+| --- | --- | --- | --- |
+| `fec-reset` | bare `PUT CM/DsInfo`, repeated bare `PUT CM/DsOfdm` | unsupported | unsupported |
+
+`fec-reset` only zeroes counters, so it acts immediately; `--json` makes it
+scriptable. It is the command-line form of the TUI's `z` key.
+
+The handler reads all three reboot flags before choosing a branch, so the body is
+always the full triple; a partial body is a PHP 8 fatal (HTTP 500), not
+`errCode 001`. Only `hard-reset` has been measured working: the connection drops
+with no reply, the unit is unreachable ~5 s later and back ~122 s after that.
+
+Every one of the three verbs asks:
 
 ```text
 Reboot CODA-60 / CODA6X at 192.168.100.1? This acts on the real device. [y/N]
@@ -164,7 +179,7 @@ and a decoded, shortened event log. The mouse wheel scrolls.
 | `r`, `space` | refresh now |
 | `a` | toggle automatic refresh |
 | `g` | toggle trend graphs |
-| `z` | zero the FEC counters: show counts since pressed, press again to restore. The modem has no reset, so nothing is written to it. |
+| `z` | reset the downstream FEC counters (3.0 + OFDM). Writes on the CODA6X; on other families it only zeroes the displayed counts. |
 | `t` | next colour theme, remembered for next time |
 | `b` | toggle the gradient background (24-bit colour terminals only) |
 | `x`, the Reboot button | reboot, after a confirmation (see below) |
@@ -181,13 +196,25 @@ Themes are `neon` (default), `synthwave`, `dracula`, `nord`, `gruvbox` and
 your choice. `--no-bg` turns off the background and `--no-mouse` stops the
 mouse being captured so text can be selected normally.
 
-**Reboot** is the only write in the TUI. `x` (or a click on the Reboot button)
-opens a dialog that asks you to type the word `reboot`; nothing is sent before
-that. The CODA6X accepts the reboot from the LAN without a login, so no
-credentials are requested; `--user` and `--password` are used only if the
-device refuses the anonymous call. The HT-EM5 asks for its login, and the
-CODA-57 has no reboot button. Factory reset and hard reset are not in the TUI;
-they stay separate commands with their own confirmation.
+**`z` (FEC counters)** writes on the CODA6X: one bare `PUT /1/Device/CM/DsInfo`,
+then up to eight bare `PUT /1/Device/CM/DsOfdm` calls, re-reading the counters
+and putting the result on the status line. The 3.0 stop clears every busy
+channel in one call; the OFDM stop is unreliable on this build, so the report
+keeps the best observation and names any channel still counting. Channels that
+were already at zero are reported as already clean, not as cleared. On a
+family with no confirmed FEC endpoint, `z` falls back to zeroing the displayed
+counts without writing; pressing it again restores them.
+
+`hitron-cli fec-reset` runs the same clear headlessly, with no credentials and
+no prompt, and prints the same counts (`--json` for scripts).
+
+**Reboot** is the other write. `x` (or a click on the Reboot button) opens a
+dialog that asks you to type the word `reboot`; nothing is sent before that.
+The CODA6X accepts the reboot from the LAN without a login, so no credentials
+are requested; `--user` and `--password` are used only if the device refuses
+the anonymous call. The HT-EM5 asks for its login, and the CODA-57 has no
+reboot button. Factory reset and hard reset are not in the TUI; they stay
+separate commands with their own confirmation.
 
 ### Spectrum and constellation
 

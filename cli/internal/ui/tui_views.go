@@ -25,7 +25,11 @@ func (m model) activeCmd() tea.Cmd {
 
 // issue starts a read for the active view and marks one as in flight. The
 // analyser is one shared hardware tuner, so only one capture runs at a time.
+// A FEC clear owns the device until it finishes, so reads wait for it.
 func (m model) issue() (model, tea.Cmd) {
+	if m.fecRunning {
+		return m, nil
+	}
 	m.loading = true
 	return m, m.activeCmd()
 }

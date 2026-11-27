@@ -529,6 +529,23 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/DocsisDs"
+    put:
+      operationId: cm_ds_clear
+      summary: "Clear DOCSIS 3.0 downstream FEC counters"
+      tags:
+        - CM
+      x-hitron:
+        requires: []
+        state: ok
+        httpStatus: 200
+        verifiedOn: "8.7.1.0.1b4"
+        destructive: true
+        models: []
+      x-hitron-destructive: true
+      description: "ModelInfo::doClearDsFec sets Docsis.ClearAllDownstreamFECCounter. Bare PUT, no body and no session; the handler ignores both. Measured on 8.7.1.0.1b4: all eight channels read 0/0 immediately after one call. This is the only counter stop the vendor's Reset FEC Counters button calls."
+      responses:
+        "200":
+          description: "Envelope with errCode/errMsg plus the payload."
   "/1/Device/CM/UsInfo":
     get:
       operationId: cm_us
@@ -572,6 +589,24 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/DocsisDsOfdm"
+    put:
+      operationId: cm_ds_ofdm_clear
+      summary: "Clear OFDM downstream FEC counters"
+      tags:
+        - CM
+      x-hitron:
+        requires:
+          - docsis31
+        state: ok
+        httpStatus: 200
+        verifiedOn: "8.7.1.0.1b4"
+        destructive: true
+        models: []
+      x-hitron-destructive: true
+      description: "Bare PUT, no body or session. Measured on 8.7.1.0.1b4: unreliable - one call zeroes zero to two of the four live channels, which ones vary, and the body/query are ignored so there is no per-channel targeting. Repeat until the counters stop improving (Client.ResetFEC / CODA60Client.reset_fec do eight attempts)."
+      responses:
+        "200":
+          description: "Envelope with errCode/errMsg plus the payload."
   "/1/Device/CM/UsOfdm":
     get:
       operationId: cm_us_ofdm
@@ -2703,7 +2738,7 @@ paths:
         destructive: true
         models: []
       x-hitron-destructive: true
-      description: "Body {reboot:1}, {factoryReset:1} or {restoreReset:1}; the last one execs reboot directly."
+      description: "Body must carry all three flags: ModelInfo::doRebootAction reads reboot, factoryReset and restoreReset before choosing a branch, so a partial body is a PHP 8 fatal (HTTP 500). Measured on 8.7.1.0.1b4: {reboot:1,...} answers 200 {errCode:000} but the unit does not reboot (ICMP stays up, WAN lease and DOCSIS counters unchanged, no CM Reboot Reason log entry). {reboot:0,factoryReset:0,restoreReset:1} works: the connection drops with no reply, the unit is down ~5 s later and back ~122 s after that, with CM Reboot Reason : POWER_ON. factoryReset was not run."
       security:
         - cookieAuth: []
       responses:

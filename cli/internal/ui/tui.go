@@ -44,6 +44,10 @@ type TUIOptions struct {
 	RealTime      func(context.Context) ([]hitron.RealTimeFrame, error)
 	Constellation func(context.Context, int) (*hitron.Constellation, error)
 
+	// ResetFEC clears the downstream counters on the device. nil means the
+	// family has no confirmed endpoint, so z only zeroes the display.
+	ResetFEC func(context.Context) (hitron.FECReset, error)
+
 	NoMouse bool
 	// NoBackground turns the themed gradient background off.
 	NoBackground bool
@@ -96,6 +100,12 @@ type rebootMsg struct {
 	err  error
 }
 
+// fecMsg carries the outcome of the device-side counter clear.
+type fecMsg struct {
+	result hitron.FECReset
+	err    error
+}
+
 type model struct {
 	ctx      context.Context
 	fetch    FetchFunc
@@ -132,10 +142,15 @@ type model struct {
 	cons           *hitron.Constellation
 	consErr        error
 
-	// fecBase holds the codeword counters captured when the user pressed z.
-	// The modem has no reset, so counts shown are the change since then.
+	// fecBase is the local fallback for families with no FEC endpoint: z
+	// zeroes the display instead of writing to the device.
 	fecBase  map[string][2]uint64
 	fecSince time.Time
+
+	// fecRunning and fecStatus track the real counter clear on the device.
+	fecRunning bool
+	fecStatus  string
+	fecFailed  bool
 
 	reboot            RebootFunc
 	noLogin           bool
@@ -182,6 +197,15 @@ func (m model) fetchCmd() tea.Cmd {
 	return func() tea.Msg {
 		snap, err := m.fetch(m.ctx)
 		return snapMsg{snap: snap, err: err, at: time.Now()}
+	}
+}
+
+// fecResetCmd runs the device-side clear off the draw loop.
+func (m model) fecResetCmd() tea.Cmd {
+	reset := m.src.ResetFEC
+	return func() tea.Msg {
+		result, err := reset(m.ctx)
+		return fecMsg{result: result, err: err}
 	}
 }
 
@@ -241,11 +265,25 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		wipe(m.fPass)
 		m.fPass = nil
 		m.dlg, m.dlgText, m.dlgErr = dlgDone, msg.text, msg.err
+	case fecMsg:
+		m.fecRunning = false
+		if msg.err != nil {
+			m.fecStatus, m.fecFailed = "FEC reset failed: "+msg.err.Error(), true
+			return m, nil
+		}
+		m.fecStatus, m.fecFailed = msg.result.String(), false
+		// Re-read so the tables show the cleared counters. A poll that was
+		// already in flight will land on its own.
+		if m.loading {
+			return m, nil
+		}
+		m.loading = true
+		return m, m.fetchCmd()
 	case tickMsg:
 		// Always re-arm; only poll when auto-refresh is on, nothing is in
 		// flight and no dialog is open, so a slow modem can't stack requests
-		// and a reboot isn't racing a poll.
-		if m.auto && !m.loading && m.dlg == dlgNone {
+		// and a reboot isn't racing a poll. A FEC clear holds the same rule.
+		if m.auto && !m.loading && !m.fecRunning && m.dlg == dlgNone {
 			next, cmd := m.issue()
 			return next, tea.Batch(cmd, m.tickCmd())
 		}
@@ -294,7 +332,7 @@ func (m model) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, tea.Quit
 	case "r", " ":
-		if !m.loading {
+		if !m.loading && !m.fecRunning {
 			return m.issue()
 		}
 	case "1":
@@ -334,12 +372,20 @@ func (m model) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "b":
 		m.bg = !m.bg
 	case "z":
-		if m.snap != nil {
-			if m.fecBase != nil {
-				m.fecBase, m.fecSince = nil, time.Time{}
-			} else {
-				m.fecBase, m.fecSince = fecBaseline(m.snap), time.Now()
-			}
+		if m.snap == nil || m.fecRunning {
+			return m, nil
+		}
+		if m.src.ResetFEC != nil {
+			m.fecRunning = true
+			m.fecFailed = false
+			m.fecStatus = "FEC reset: clearing 3.0 and OFDM counters…"
+			return m, m.fecResetCmd()
+		}
+		// No confirmed device endpoint: zero the display locally.
+		if m.fecBase != nil {
+			m.fecBase, m.fecSince = nil, time.Time{}
+		} else {
+			m.fecBase, m.fecSince = fecBaseline(m.snap), time.Now()
 		}
 	case "x":
 		m = m.openDialog()
@@ -477,6 +523,8 @@ func (m model) statusText() string {
 	switch {
 	case m.err != nil:
 		return Red("✗ error")
+	case m.fecRunning:
+		return Yellow("● FEC reset")
 	case m.loading:
 		return Yellow("● polling")
 	case m.auto:
@@ -544,6 +592,15 @@ func (m model) headerLines() []string {
 			lines = append(lines, specLine(m.snap)...)
 		}
 	}
+	if m.fecStatus != "" {
+		text := " " + m.fecStatus
+		if m.fecFailed {
+			text = " " + Red(m.fecStatus)
+		} else {
+			text = " " + Green(m.fecStatus)
+		}
+		lines = append(lines, truncate(text, m.width))
+	}
 	return lines
 }
 
@@ -570,7 +627,7 @@ func (m model) rebootButtonRange() (int, int) {
 func (m model) footerLine() string {
 	hints := []string{
 		keycap("q", "quit"), keycap("r", "refresh"), keycap("a", "auto"), keycap("1 2 3", "views"),
-		keycap("g", "graphs"), keycap("z", "zero FEC"), keycap("t", "theme"), keycap("h", "help"),
+		keycap("g", "graphs"), keycap("z", "reset FEC"), keycap("t", "theme"), keycap("h", "help"),
 	}
 	left := " " + strings.Join(hints, "  ")
 	if m.reboot == nil {
@@ -699,7 +756,7 @@ func (m model) helpView() string {
 		{", .", "fine-tune the spectrum centre by 1 MHz"},
 		{"g", "toggle trend graphs"},
 		{"b", "toggle the gradient background (needs a 24-bit colour terminal)"},
-		{"z", "zero the FEC counters (toggle; shows counts since now)"},
+		{"z", "reset the downstream FEC counters (3.0 + OFDM; CODA6X)"},
 		{"t", "next theme (remembered for next time)"},
 		{"j / k, ↓ / ↑", "scroll (the mouse wheel works too)"},
 		{"x", "reboot the device, after a confirmation"},
@@ -731,7 +788,7 @@ func (m model) helpView() string {
 		"  · Factory reset and hard reset stay separate commands.",
 		"  · One hardware tuner serves every capture; requests stay sequential.",
 		"  · Inactive constellation ports answer empty; that is not an error.",
-		"  · The modem has no FEC reset; z only hides counts from before you pressed it.",
+		"  · On the CODA6X, z clears the real 3.0 and OFDM FEC counters; other families zero only the display.",
 		"  · With the mouse on, select text by holding Option (or Shift); --no-mouse turns it off.",
 	}
 	for i, note := range notes {
