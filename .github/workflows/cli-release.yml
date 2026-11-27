@@ -86,18 +86,35 @@ jobs:
             version="${GITHUB_REF_NAME#cli/v}"
           fi
           tag="cli/v${version}"
-          cat > notes.md <<EOF
-          Standalone \`hitron-cli\` binaries for Linux, macOS, and Windows.
-
-          No runtime, no dependencies: download the file for your platform, make it
-          executable, and run \`hitron-cli help\`.
-
-          | Platform | File |
-          | --- | --- |
-          $(cd dist && ls hitron-cli_* | grep -v '.sha256$' | sed 's/.*/| `&` |/')
-
-          Each binary has a matching \`.sha256\` file.
-          EOF
+          changes="$(awk -v ver="$version" '
+            index($0, "## [" ver "]") == 1 { inside = 1; next }
+            inside && index($0, "## [") == 1 { exit }
+            inside { print }
+          ' cli/CHANGELOG.md | sed -e '/./,$!d')"
+          if [ -z "$changes" ] && ! gh release view "$tag" >/dev/null 2>&1; then
+            echo "::error::cli/CHANGELOG.md has no '## [$version]' section; add the release notes before tagging"
+            exit 1
+          fi
+          {
+            echo 'Standalone `hitron-cli` binaries for Linux, macOS, and Windows.'
+            echo
+            echo 'No runtime, no dependencies: download the file for your platform, make it'
+            echo 'executable, and run `hitron-cli help`.'
+            if [ -n "$changes" ]; then
+              echo
+              echo "## What's changed"
+              echo
+              printf '%s\n' "$changes"
+            fi
+            echo
+            echo '## Downloads'
+            echo
+            echo '| Platform | File |'
+            echo '| --- | --- |'
+            (cd dist && ls hitron-cli_* | grep -v '.sha256$' | sed 's/.*/| `&` |/')
+            echo
+            echo 'Each binary has a matching `.sha256` file.'
+          } > notes.md
           if gh release view "$tag" >/dev/null 2>&1; then
             gh release upload "$tag" dist/* --clobber
           else

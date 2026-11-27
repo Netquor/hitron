@@ -18,6 +18,8 @@ The Python package in `src/hitron/` remains the exporter and library. This
 binary exists for the case where you want to walk up to a modem and read it
 from a laptop with nothing installed.
 
+Per-release changes and fixes: [`CHANGELOG.md`](CHANGELOG.md).
+
 ## Build
 
 ```bash
