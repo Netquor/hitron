@@ -9,7 +9,7 @@ Pillow. Needs: pyte, pillow, DejaVu Sans Mono.
 """
 import codecs, argparse, fcntl, os, pty, select, signal, struct, subprocess, sys, tempfile, termios, time
 import pyte
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 COLS, ROWS = 108, 44
 FONT = "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf"
@@ -59,7 +59,39 @@ class Painter:
         self.w = COLS * CW + PAD * 2
         self.h = ROWS * CH + PAD * 2
 
+    def chrome(self, content):
+        """Wrap a frame in a macOS-style window: title bar, traffic lights, shadow."""
+        if not hasattr(self, "_base"):
+            m, bar, rad = 44, 38, 12
+            w, h = content.width, content.height + bar
+            W, H = w + 2 * m, h + 2 * m + 10
+            bg = Image.new("RGB", (W, H), (24, 26, 40))
+            shadow = Image.new("L", (W, H), 0)
+            ImageDraw.Draw(shadow).rounded_rectangle([m, m + 14, m + w, m + 14 + h], rad, fill=170)
+            shadow = shadow.filter(ImageFilter.GaussianBlur(18))
+            bg.paste(Image.new("RGB", (W, H), (4, 5, 10)), (0, 0), shadow)
+            win = Image.new("RGB", (w, h), (44, 44, 50))
+            d = ImageDraw.Draw(win)
+            for i, c in enumerate([(255, 95, 86), (255, 189, 46), (39, 201, 63)]):
+                d.ellipse([16 + i * 26, 12, 16 + i * 26 + 13, 25], fill=c)
+            f = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 13)
+            title = "hitron-cli — monitor — %d×%d" % (COLS, ROWS)
+            d.text(((w - d.textlength(title, font=f)) / 2, 11), title, font=f, fill=(170, 170, 180))
+            d.line([0, bar - 1, w, bar - 1], fill=(20, 20, 24))
+            self._base = (bg, win, m, bar, rad)
+        bg, win, m, bar, rad = self._base
+        win = win.copy()
+        win.paste(content, (0, bar))
+        mask = Image.new("L", win.size, 0)
+        ImageDraw.Draw(mask).rounded_rectangle([0, 0, win.width - 1, win.height - 1], rad, fill=255)
+        out = bg.copy()
+        out.paste(win, (m, m), mask)
+        return out
+
     def draw(self, screen):
+        return self.chrome(self._draw(screen))
+
+    def _draw(self, screen):
         img = Image.new("RGB", (self.w, self.h), DEFAULT_BG)
         d = ImageDraw.Draw(img)
         for y in range(ROWS):

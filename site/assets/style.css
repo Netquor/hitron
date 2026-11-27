@@ -578,7 +578,7 @@ kbd {
 
 /* hitron-cli showcase */
 .shot { margin: 0; }
-.shot img { display: block; width: 100%; height: auto; border: 1px solid var(--line); border-radius: var(--radius); background: #0a0b14; }
+.shot img { display: block; width: 100%; height: auto; border-radius: var(--radius); background: #181a28; }
 .shot figcaption { margin-top: .5rem; font-size: .8rem; color: var(--ink-dim); }
 .hero-shot { max-width: 56rem; margin: 0 0 2rem; }
 .cli-grid { display: grid; gap: 1.2rem; grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr)); margin-bottom: 2.4rem; }
