@@ -232,8 +232,9 @@ readable report is `../specs/verification-coda60.json`. Headline:
 Executed against the real device so far: `{"reboot": 1}` (inert), the full
 `{"reboot":0,"factoryReset":0,"restoreReset":1}` body (reboots, verified), and both
 FEC clears. Nothing else here has — see the README's "Writes" section for the
-handling policy (explicit login, no auto-write, CLI requires
-`--yes-really-do-this` for the destructive ones).
+handling policy (explicit login, no auto-write; the destructive verbs require
+`--yes-really-do-this` on the Python CLI and `--confirm` on the Go CLI;
+`fec-reset` needs neither login nor confirmation).
 
 ### Quirks found in the firmware source (informational, none exploited)
 - Shipped with `DEBUG=5` (Fat-Free verbose-error mode) in `app/config.ini`.

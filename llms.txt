@@ -46,6 +46,7 @@ header.
 
     hitron-cli 192.168.100.1               # Go binary: live TUI
     hitron-cli monitor                     # TUI views: 1 stats, 2 spectrum, 3 constellation, x FEC reset
+    hitron-cli fec-reset --json            # clear 3.0 + OFDM FEC counters, no login
     hitron-cli stats --once --json         # one report, machine-readable
     hitron-cli reboot --confirm -u admin -p admin
 
@@ -90,10 +91,12 @@ Counters end in `_total`. Labels are bounded identifiers, never free text.
 body must carry all of them: `{"reboot":0,"factoryReset":0,"restoreReset":1}` is
 the only combination measured to reboot (the connection drops with no reply, the
 unit is back about two minutes later). `{"reboot":1}` answers `errCode 000` and
-does nothing; a partial body is a PHP 8 fatal. The CLI guards these behind
-`--yes-really-do-this`. `PUT /1/Device/CM/DsInfo` and `PUT /1/Device/CM/DsOfdm`
+does nothing; a partial body is a PHP 8 fatal. The Python CLI guards these
+behind `--yes-really-do-this`, the Go CLI behind `--confirm`.
+`PUT /1/Device/CM/DsInfo` and `PUT /1/Device/CM/DsOfdm`
 clear the 3.0 and OFDM FEC counters with no body and no session; the TUI binds
-both to `x`, and the OFDM stop is unreliable on this build.
+both to `x`, and `hitron-cli fec-reset` runs them headlessly; the OFDM stop is
+unreliable on this build.
 `/1/Device/Upload`,
 `/1/Device/AdminRemoteManagement/Restore`, and credential routes also mutate
 the device. The exporter never calls any of them.

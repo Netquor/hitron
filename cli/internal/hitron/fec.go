@@ -35,6 +35,12 @@ type FECReset struct {
 
 // String is the one-line summary the TUI prints.
 func (r FECReset) String() string {
+	return "FEC reset: " + r.Detail()
+}
+
+// Detail is the summary without the "FEC reset:" prefix, for callers that
+// already printed a header.
+func (r FECReset) Detail() string {
 	var parts []string
 	if r.DOCSISBusy == 0 {
 		parts = append(parts, "3.0 already clean")
@@ -46,7 +52,7 @@ func (r FECReset) String() string {
 	} else {
 		parts = append(parts, fmt.Sprintf("OFDM %d/%d cleared", r.OFDMCleared, r.OFDMBusy))
 	}
-	out := "FEC reset: " + strings.Join(parts, ", ")
+	out := strings.Join(parts, ", ")
 	if len(r.OFDMNotZero) > 0 {
 		out += fmt.Sprintf(" (OFDM %s still counting)", strings.Join(r.OFDMNotZero, ","))
 	}

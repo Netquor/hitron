@@ -43,7 +43,7 @@ var commands = map[string]bool{
 	"stats": true, "status": true,
 	"monitor": true, "tui": true,
 	"detect": true, "system": true, "channels": true, "logs": true, "moca": true,
-	"reboot": true, "factory-reset": true, "hard-reset": true,
+	"reboot": true, "factory-reset": true, "hard-reset": true, "fec-reset": true,
 	"help": true, "version": true,
 }
 
@@ -89,6 +89,8 @@ func run(argv []string) int {
 	switch opts.command {
 	case "reboot", "factory-reset", "hard-reset":
 		return runAction(ctx, client, opts)
+	case "fec-reset":
+		return runFECReset(ctx, client, opts)
 	case "monitor", "tui":
 		if opts.once || opts.json || !ui.IsTerminal() {
 			return runSnapshot(ctx, client, opts)
@@ -303,6 +305,40 @@ func runAction(ctx context.Context, client *hitron.Client, opts options) int {
 	if code := fmt.Sprint(result["errCode"]); code != "" && code != "000" {
 		fmt.Printf("device answered errCode %s %v\n", code, result["errMsg"])
 	}
+	return 0
+}
+
+func runFECReset(ctx context.Context, client *hitron.Client, opts options) int {
+	callCtx, cancel := context.WithTimeout(ctx, opts.timeout*3)
+	defer cancel()
+	result, err := client.ResetFEC(callCtx)
+	if err != nil {
+		return fail(err)
+	}
+	stillCounting := result.OFDMNotZero
+	if stillCounting == nil {
+		stillCounting = []string{}
+	}
+	if opts.json {
+		writeJSON(map[string]any{
+			"action": "fec-reset",
+			"host":   client.Addr(),
+			"device": client.Kind.Label(),
+			"docsis": map[string]int{
+				"busy":    result.DOCSISBusy,
+				"cleared": result.DOCSISCleared,
+			},
+			"ofdm": map[string]any{
+				"busy":           result.OFDMBusy,
+				"cleared":        result.OFDMCleared,
+				"still_counting": stillCounting,
+			},
+			"summary": result.String(),
+		})
+		return 0
+	}
+	fmt.Printf("FEC reset on %s (%s)\n", client.Addr(), client.Kind.Label())
+	fmt.Println("  " + result.Detail())
 	return 0
 }
 
@@ -595,9 +631,33 @@ clears every channel in one call; the OFDM stop is unreliable (one PUT often
 zeroes a single channel), so it is retried eight times and the best result is
 reported.
 
+hitron-cli fec-reset runs the same clear without the TUI, for scripts.
+
 Examples:
   hitron-cli monitor --host 192.168.100.1 --interval 3s
   hitron-cli monitor --once --no-color`
+	case "fec-reset":
+		return `hitron-cli fec-reset — clear the downstream FEC counters
+
+Usage:
+  hitron-cli fec-reset [host] [--json]
+
+CODA6X only. Sends one bare PUT /1/Device/CM/DsInfo (DOCSIS 3.0 counters) and
+then repeats a bare PUT /1/Device/CM/DsOfdm (OFDM counters), re-reading both.
+No body, no session, and no y/N question: it zeroes counters and changes
+nothing else.
+
+The report is relative to the channels that were counting before the clear, so
+an already-clean counter is never claimed as cleared. The 3.0 stop clears every
+busy channel in one call. The OFDM stop is unreliable on 8.7.1.0.1b4 - one PUT
+zeroes zero to two of the live channels and the handler ignores the body - so
+it is retried up to eight times and the best observation is kept.
+
+--json prints the counts, including the OFDM channels still counting.
+
+Examples:
+  hitron-cli fec-reset
+  hitron-cli fec-reset 192.168.100.1 --json | jq '.ofdm'`
 	case "detect":
 		return `hitron-cli detect — identify the device
 
@@ -736,6 +796,7 @@ snapshot's warnings array.`
   hitron-cli 192.168.100.1
   hitron-cli stats --host 192.168.100.1 --once --no-color
   hitron-cli monitor --interval 3s
+  hitron-cli fec-reset --json
   hitron-cli detect 192.168.100.1
   hitron-cli channels --json | jq '.downstream[] | {id, power_dbmv}'
   hitron-cli logs --limit 50
@@ -747,17 +808,24 @@ snapshot's warnings array.`
 	case "safety", "writes":
 		return `Writes and safety
 
-Read commands never write. The live TUI is the one exception: x clears the
-downstream FEC counters and needs no session on the analyzed build. Every
-other write is a separate verb:
+Read commands never write. Two exceptions, both the same counter clear:
+
+  x               in the live TUI, on the x key
+  fec-reset       the same clear as a command, for scripts
+
+Both send bare PUTs to CM/DsInfo and CM/DsOfdm and need no session on the
+analyzed build. They zero counters and change nothing else, so neither asks a
+confirmation question. --json makes fec-reset scriptable.
+
+Every other write is a separate destructive verb:
 
   reboot         ask the modem to reboot (inert on 8.7.1.0.1b4)
   factory-reset  clear configuration and reboot (not measured)
   hard-reset     immediate restoreReset + reboot (CODA6X, measured working)
 
-Each verb asks a y/N question unless --confirm is given. It also requires
---user and --password (or HITRON_USERNAME/HITRON_PASSWORD), because the
-firmware's write routes need a real session. --confirm removes only the
+Each destructive verb asks a y/N question unless --confirm is given. It also
+requires --user and --password (or HITRON_USERNAME/HITRON_PASSWORD), because
+the firmware's write routes need a real session. --confirm removes only the
 question, never the credential requirement.
 
 The CLI refuses CODA-57 writes: no write endpoint is confirmed for the legacy
@@ -806,6 +874,7 @@ Commands:
   reboot           reboot (prompts, or --confirm)
   factory-reset    factory reset + reboot (CODA6X)
   hard-reset       immediate restoreReset + reboot (CODA6X)
+  fec-reset        clear the downstream FEC counters (CODA6X)
   help [topic]     this text, or a topic
   version          print the version
 
@@ -827,7 +896,7 @@ Global flags:
 
 Help topics:
   stats monitor detect system channels logs moca
-  reboot factory-reset hard-reset
+  reboot factory-reset hard-reset fec-reset
   auth environment examples safety exit-codes
 
 Examples:
@@ -835,6 +904,7 @@ Examples:
   hitron-cli stats --once
   hitron-cli channels --json
   hitron-cli monitor --interval 3s
+  hitron-cli fec-reset --json
   hitron-cli help auth
 `
 }

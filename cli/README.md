@@ -55,6 +55,7 @@ hitron-cli moca             HT-EM5 link, bands, nodes
 hitron-cli reboot           reboot (prompts, or --confirm)
 hitron-cli factory-reset    factory reset + reboot (CODA6X)
 hitron-cli hard-reset       immediate restoreReset + reboot (CODA6X)
+hitron-cli fec-reset        clear the downstream FEC counters (CODA6X)
 hitron-cli help [topic]     overview or one topic
 hitron-cli version          version
 ```
@@ -122,14 +123,22 @@ of hanging.
 
 ## Writes
 
-Three separate verbs, each requiring credentials:
+Three destructive verbs, each requiring credentials:
 
 | Command | CODA6X body | HT-EM5 | CODA-57 |
 | --- | --- | --- | --- |
 | `reboot` | `{"reboot":1,"factoryReset":0,"restoreReset":0}` to `CM/Reboot` | `POST /ms/1/0xb00/PUT {"data":[1]}` | unsupported |
 | `factory-reset` | `{"reboot":0,"factoryReset":1,"restoreReset":0}` | unsupported | unsupported |
 | `hard-reset` | `{"reboot":0,"factoryReset":0,"restoreReset":1}` | unsupported | unsupported |
-| TUI `x` | `PUT CM/DsInfo` + `PUT CM/DsOfdm`, no body, no login | unsupported | unsupported |
+
+One non-destructive write needs no session, no prompt, and no credentials:
+
+| Command | CODA6X | HT-EM5 | CODA-57 |
+| --- | --- | --- | --- |
+| `fec-reset` | bare `PUT CM/DsInfo`, repeated bare `PUT CM/DsOfdm` | unsupported | unsupported |
+
+`fec-reset` only zeroes counters, so it acts immediately; `--json` makes it
+scriptable. It is the command-line form of the TUI's `x` key.
 
 The handler reads all three reboot flags before choosing a branch, so the body is
 always the full triple; a partial body is a PHP 8 fatal (HTTP 500), not
@@ -167,15 +176,18 @@ on `--interval`.
 | `,`, `.` | fine-tune the spectrum centre by 1 MHz |
 | `x` | reset the downstream FEC counters (3.0 + OFDM) |
 
-Everything except `x` is read-only. `x` is the one write bound to a key: it
+Everything except `x` is read-only. `x` is the only write bound to a key: it
 issues a bare `PUT /1/Device/CM/DsInfo` and then repeats a bare
 `PUT /1/Device/CM/DsOfdm`, re-reading the counters and printing how many of the
 channels that were counting before now read zero. The 3.0 counters clear in one
 call; the OFDM clear is unreliable on this build, so the status line keeps the
 best of eight attempts and names any channel still counting. Channels that were
-already at zero are reported as already clean, not as cleared. Destructive
-actions (reboot, resets) are still separate commands with their own
-confirmation.
+already at zero are reported as already clean, not as cleared.
+
+`hitron-cli fec-reset` runs the same clear headlessly, with no credentials and
+no prompt, and prints the same counts (`--json` for scripts). Destructive
+actions (reboot, factory-reset, hard-reset) stay separate commands with their
+own confirmation.
 
 ### Spectrum and constellation
 

@@ -139,6 +139,7 @@ cd cli && go build -o hitron-cli ./cmd/hitron-cli
 ./hitron-cli detect 192.168.100.1
 ./hitron-cli channels --json
 ./hitron-cli monitor --interval 3s
+./hitron-cli fec-reset --json        # clear 3.0 + OFDM FEC counters, no login
 ```
 
 It detects CODA6X, CODA-57, and HT-EM5 itself, reads CODA6X and CODA-57
@@ -147,8 +148,9 @@ the HT-EM5, and checks every RF reading against the Midco envelope. In the live
 view, `1` is the summary, `2` a live 6 MHz spectrum trace, and `3` the I/Q
 constellation for one downstream port; the last two exist only on the CODA6X.
 `x` is the one write bound to a key: it clears the DOCSIS 3.0 and OFDM
-downstream FEC counters together. Reboots and resets are separate verbs with a
-`y/N` prompt that `--confirm` skips:
+downstream FEC counters together. `hitron-cli fec-reset` does the same
+headlessly, without credentials, for scripts. Reboots and the two resets are
+separate destructive verbs with a `y/N` prompt that `--confirm` skips:
 
 ```bash
 ./hitron-cli reboot        192.168.100.1 -u admin -p admin

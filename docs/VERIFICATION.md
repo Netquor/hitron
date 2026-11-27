@@ -240,8 +240,9 @@ endpoint.
 
 `hitron-cli monitor` binds this to `x`: one `PUT CM/DsInfo`, then up to eight
 `PUT CM/DsOfdm` calls, keeping the best observation and reporting how many of the
-channels that were counting before now read zero. The same flow is
-`Client.ResetFEC` in Go and `CODA60Client.reset_fec()` in Python.
+channels that were counting before now read zero. `hitron-cli fec-reset` runs the
+same flow from a script, with `--json` for the counts. The library entry points
+are `Client.ResetFEC` in Go and `CODA60Client.reset_fec()` in Python.
 
 ## Reproduce
 
