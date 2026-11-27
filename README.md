@@ -140,6 +140,7 @@ cd cli && go build -o hitron-cli ./cmd/hitron-cli
 ./hitron-cli channels --json
 ./hitron-cli monitor --interval 3s
 ./hitron-cli fec-reset --json        # clear 3.0 + OFDM FEC counters, no login
+./hitron-cli pwod --seed 12345678    # password of the day, computed offline
 ```
 
 It detects CODA6X, CODA-57, and HT-EM5 itself, reads CODA6X and CODA-57
@@ -150,7 +151,9 @@ constellation for one downstream port; the last two exist only on the CODA6X.
 `z` resets the DOCSIS 3.0 and OFDM downstream FEC counters together on the
 CODA6X, and `x` opens the guarded reboot dialog; those are the live view's only
 writes. `hitron-cli fec-reset` does the counter clear headlessly, without
-credentials, for scripts. The destructive commands are separate verbs with a
+credentials, for scripts. `hitron-cli pwod` computes the CODA6X password of the
+day from the ISP seed — plaintext or the stored encrypted form — and never
+contacts the device. The destructive commands are separate verbs with a
 `y/N` prompt that `--confirm` skips:
 
 ```bash

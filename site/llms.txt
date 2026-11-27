@@ -47,6 +47,7 @@ header.
     hitron-cli 192.168.100.1               # Go binary: live TUI
     hitron-cli monitor                     # TUI views: 1 stats, 2 spectrum, 3 constellation, z FEC reset
     hitron-cli fec-reset --json            # clear 3.0 + OFDM FEC counters, no login
+    hitron-cli pwod --seed 12345678        # password of the day, computed offline
     hitron-cli stats --once --json         # one report, machine-readable
     hitron-cli reboot --confirm -u admin -p admin
 
@@ -97,6 +98,8 @@ behind `--yes-really-do-this`, the Go CLI behind `--confirm`.
 clear the 3.0 and OFDM FEC counters with no body and no session; the TUI binds
 both to `z`, and `hitron-cli fec-reset` runs them headlessly; the OFDM stop is
 unreliable on this build.
+`hitron-cli pwod` computes the CODA6X password of the day offline from the ISP
+seed (plaintext or the stored encrypted form) and never contacts the modem.
 `/1/Device/Upload`,
 `/1/Device/AdminRemoteManagement/Restore`, and credential routes also mutate
 the device. The exporter never calls any of them.

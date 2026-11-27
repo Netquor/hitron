@@ -236,6 +236,29 @@ handling policy (explicit login, no auto-write; the destructive verbs require
 `--yes-really-do-this` on the Python CLI and `--confirm` on the Go CLI;
 `fec-reset` needs neither login nor confirmation).
 
+### Password of the day (PWoD)
+
+`htx_pod_main`, with `libpodalgorithm`, rotates the uid-0 `mso` ("Default
+Admin") password shortly after local midnight. The ISP provisions the seed in
+DOCSIS TLV43 sub-option 242, so the value is deterministic only after that seed
+arrives:
+
+    msg = "Pa55w0RolHiTr0N" + YYYY + MM + DD + seed
+    h   = SHA1(msg)
+    pw  = charset_map(h[0:16])            # 16 characters, [0-9A-Za-z]
+
+The seed is stored as `base64(AES-128-ECB(seed))` under the fixed key
+`b5c4baa2c6dfcbeab6f8b6feb8e7b5c4`, in `uci general.podCfg.defseed`. Padding is
+added only when the seed is not already a 16-byte block, and the daemon unpads
+with a `strlen`-style rule, so an already-aligned seed can decode short. An
+empty seed gives the daemon nothing to rotate with.
+
+`hitron-cli pwod` implements this offline: a plaintext seed, the stored
+encrypted form, a date or a range of days, and `--json`. It never contacts the
+device and needs no credentials. The constants were recovered from the extracted
+CODA6X firmware image; the live unit here runs 8.7.1.0.1b4 and they were not
+re-derived from that build.
+
 ### Quirks found in the firmware source (informational, none exploited)
 - Shipped with `DEBUG=5` (Fat-Free verbose-error mode) in `app/config.ini`.
 - A debug line (`shell_exec("echo check_token > /tmp/app-debug.log")`) fires on every

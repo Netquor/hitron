@@ -40,6 +40,22 @@ type options struct {
 	noBg     bool
 	theme    string
 
+	// pwod runs offline. seed is the plaintext seed, or encryptedSeed holds
+	// the stored base64 form; encryptSeed/decryptSeed select the codec verbs.
+	// The *Set flags keep an explicitly empty value distinct from an absent
+	// flag, which matters because "" is a valid seed and a valid encoding.
+	seed          string
+	seedSet       bool
+	encryptedSeed string
+	encryptedSet  bool
+	encryptSeed   string
+	encryptSet    bool
+	decryptSeed   string
+	decryptSet    bool
+	date          string
+	days          int
+	utc           bool
+
 	command string
 	topic   string
 	hostSet bool
@@ -50,6 +66,7 @@ var commands = map[string]bool{
 	"monitor": true, "tui": true,
 	"detect": true, "system": true, "channels": true, "logs": true, "moca": true,
 	"reboot": true, "factory-reset": true, "hard-reset": true, "fec-reset": true,
+	"pwod": true, "pod": true,
 	"help": true, "version": true,
 }
 
@@ -76,6 +93,11 @@ func run(argv []string) int {
 			fmt.Println(helpText(opts.topic))
 		}
 		return 0
+	}
+	// pwod is arithmetic on a seed, not a request: it runs before the banner,
+	// the theme, and connect so it works with no device and no terminal.
+	if opts.command == "pwod" {
+		return runPWOD(opts)
 	}
 
 	ui.Color = !opts.noColor && os.Getenv("NO_COLOR") == "" && os.Getenv("TERM") != "dumb"
@@ -401,6 +423,112 @@ func runAction(ctx context.Context, client *hitron.Client, opts options) int {
 	return 0
 }
 
+// runPWOD computes the CODA6X password of the day. It is arithmetic on a seed,
+// so it runs before connect and needs no host, credentials, or terminal.
+func runPWOD(opts options) int {
+	if opts.days < 1 {
+		opts.days = 1
+	}
+	if err := checkPWOD(opts); err != nil {
+		fmt.Fprintln(os.Stderr, "hitron-cli: "+err.Error())
+		return 2
+	}
+	if opts.encryptSet {
+		encrypted, err := hitron.PWODEncryptSeed(opts.encryptSeed)
+		if err != nil {
+			return fail(err)
+		}
+		if opts.json {
+			writeJSON(map[string]any{"seed": opts.encryptSeed, "encrypted_seed": encrypted})
+		} else {
+			fmt.Println(encrypted)
+		}
+		return 0
+	}
+	if opts.decryptSet {
+		seed, err := hitron.PWODDecryptSeed(opts.decryptSeed)
+		if err != nil {
+			return fail(err)
+		}
+		if opts.json {
+			writeJSON(map[string]any{"encrypted_seed": opts.decryptSeed, "seed": seed})
+		} else {
+			fmt.Println(seed)
+		}
+		return 0
+	}
+
+	seed, encrypted := opts.seed, ""
+	if opts.encryptedSet {
+		decoded, err := hitron.PWODDecryptSeed(opts.encryptedSeed)
+		if err != nil {
+			return fail(err)
+		}
+		seed, encrypted = decoded, opts.encryptedSeed
+	}
+	start, err := pwodStart(opts)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "hitron-cli: "+err.Error())
+		return 2
+	}
+
+	type entry struct {
+		Date     string `json:"date"`
+		Password string `json:"password"`
+	}
+	entries := make([]entry, 0, opts.days)
+	for i := 0; i < opts.days; i++ {
+		date := start.AddDate(0, 0, i)
+		password, err := hitron.PWODPassword(seed, date)
+		if err != nil {
+			return fail(err)
+		}
+		entries = append(entries, entry{Date: date.Format("2006-01-02"), Password: password})
+	}
+	if opts.json {
+		payload := map[string]any{"seed": seed, "passwords": entries}
+		if encrypted != "" {
+			payload["encrypted_seed"] = encrypted
+		}
+		writeJSON(payload)
+		return 0
+	}
+	for _, entry := range entries {
+		fmt.Printf("%s  %s\n", entry.Date, entry.Password)
+	}
+	return 0
+}
+
+func checkPWOD(opts options) error {
+	if opts.encryptSet && opts.decryptSet {
+		return fmt.Errorf("--encrypt-seed and --decrypt-seed are mutually exclusive")
+	}
+	if opts.seedSet && opts.encryptedSet {
+		return fmt.Errorf("--seed and --encrypted-seed are mutually exclusive")
+	}
+	codec := opts.encryptSet || opts.decryptSet
+	if codec && (opts.seedSet || opts.encryptedSet || opts.date != "" || opts.utc || opts.days != 1) {
+		return fmt.Errorf("seed codec flags cannot be combined with --seed, --encrypted-seed, --date, --utc or --days")
+	}
+	return nil
+}
+
+// pwodStart is the first day to print: an explicit date, otherwise today on
+// the host clock the modem is expected to share.
+func pwodStart(opts options) (time.Time, error) {
+	if opts.date != "" {
+		parsed, err := time.Parse("2006-01-02", opts.date)
+		if err != nil {
+			return time.Time{}, fmt.Errorf("--date must be YYYY-MM-DD")
+		}
+		return parsed, nil
+	}
+	if opts.utc {
+		return time.Now().UTC(), nil
+	}
+	return time.Now(), nil
+}
+
 func runFECReset(ctx context.Context, client *hitron.Client, opts options) int {
 	callCtx, cancel := context.WithTimeout(ctx, opts.timeout*3)
 	defer cancel()
@@ -452,6 +580,7 @@ func parseArgs(argv []string) (options, error) {
 		timeout:  10 * time.Second,
 		interval: 5 * time.Second,
 		limit:    20,
+		days:     1,
 	}
 	if value := os.Getenv("HITRON_TIMEOUT"); value != "" {
 		if seconds, err := strconv.ParseFloat(value, 64); err == nil {
@@ -561,6 +690,48 @@ func parseArgs(argv []string) (options, error) {
 					return opts, err
 				}
 				opts.theme = got
+			case "--seed":
+				got, err := takeValue()
+				if err != nil {
+					return opts, err
+				}
+				opts.seed, opts.seedSet = got, true
+			case "--encrypted-seed":
+				got, err := takeValue()
+				if err != nil {
+					return opts, err
+				}
+				opts.encryptedSeed, opts.encryptedSet = got, true
+			case "--encrypt-seed":
+				got, err := takeValue()
+				if err != nil {
+					return opts, err
+				}
+				opts.encryptSeed, opts.encryptSet = got, true
+			case "--decrypt-seed":
+				got, err := takeValue()
+				if err != nil {
+					return opts, err
+				}
+				opts.decryptSeed, opts.decryptSet = got, true
+			case "--date":
+				got, err := takeValue()
+				if err != nil {
+					return opts, err
+				}
+				opts.date = got
+			case "--days":
+				got, err := takeValue()
+				if err != nil {
+					return opts, err
+				}
+				parsed, err := strconv.Atoi(got)
+				if err != nil || parsed < 1 {
+					return opts, fmt.Errorf("--days needs a positive number")
+				}
+				opts.days = parsed
+			case "--utc":
+				opts.utc = true
 			case "--help":
 				opts.command = "help"
 			case "--version":
@@ -629,6 +800,9 @@ func parseArgs(argv []string) (options, error) {
 	}
 	if opts.command == "tui" {
 		opts.command = "monitor"
+	}
+	if opts.command == "pod" {
+		opts.command = "pwod"
 	}
 	if opts.command == "help" && opts.topic == "" {
 		opts.topic = "overview"
@@ -783,6 +957,45 @@ it is retried up to eight times and the best observation is kept.
 Examples:
   hitron-cli fec-reset
   hitron-cli fec-reset 192.168.100.1 --json | jq '.ofdm'`
+	case "pwod", "pod":
+		return `hitron-cli pwod — password of the day (CODA6X)
+
+Usage:
+  hitron-cli pwod [--seed SEED | --encrypted-seed BASE64] [--date YYYY-MM-DD]
+                  [--utc] [--days N] [--json]
+  hitron-cli pwod --encrypt-seed SEED
+  hitron-cli pwod --decrypt-seed BASE64
+
+Runs offline: it computes the value htx_pod_main writes to the "Default Admin"
+(mso) account after local midnight. No host, no credentials, no request.
+
+The algorithm is SHA1("Pa55w0RolHiTr0N" + YYYY + MM + DD + seed), with the
+first 16 bytes mapped to [0-9A-Za-z]. The seed is the plaintext value from
+DOCSIS TLV43 sub-option 242; the device stores it as base64(AES-128-ECB(seed))
+in uci general.podCfg.defseed. Without a seed the date-only value is still
+computed, but a provisioned modem is not using it.
+
+The modem applies its own local date. If its clock or timezone differs from
+this host, use --utc or --date to name the day it will use.
+
+--encrypted-seed decrypts the stored form with the firmware's fixed key and
+--encrypt-seed prints that form for a plaintext seed. NUL truncation and the
+firmware's strlen-based unpad are reproduced, so an already-aligned seed can
+decode short; pass --seed when the plaintext is available.
+
+Flags:
+  --seed SEED            plaintext seed (default: empty)
+  --encrypted-seed B64   stored seed (general.podCfg.defseed)
+  --date YYYY-MM-DD      first day to print (default: today)
+  --utc                  take today from UTC instead of local time
+  --days N               print N consecutive days (default: 1)
+  --json                 date/password pairs as JSON
+
+Examples:
+  hitron-cli pwod
+  hitron-cli pwod --seed 12345678
+  hitron-cli pwod --seed 12345678 --date 2026-11-26 --days 7
+  hitron-cli pwod --encrypted-seed 'i19WhrZqaiiNNVC+oWsv3Q==' --json`
 	case "detect":
 		return `hitron-cli detect — identify the device
 
@@ -893,7 +1106,10 @@ Environment:
   HITRON_USERNAME, HITRON_PASSWORD, HITRON_APP_TOKEN
 
 Read routes never log in silently. A write subcommand calls Login explicitly
-right before it acts, so the action is one traceable operation.`
+right before it acts, so the action is one traceable operation.
+
+The password of the day (hitron-cli help pwod) is a separate offline
+computation over the ISP seed; it is not a web login.`
 	case "environment", "env":
 		return `Environment
 
@@ -925,6 +1141,7 @@ snapshot's warnings array.`
   hitron-cli stats --host 192.168.100.1 --once --no-color
   hitron-cli monitor --interval 3s
   hitron-cli fec-reset --json
+  hitron-cli pwod --seed 12345678 --date 2026-11-26 --days 7
   hitron-cli detect 192.168.100.1
   hitron-cli channels --json | jq '.downstream[] | {id, power_dbmv}'
   hitron-cli logs --limit 50
@@ -957,7 +1174,10 @@ firmware's write routes need a real session. --confirm removes only the
 question, never the credential requirement.
 
 The CLI refuses CODA-57 writes: no write endpoint is confirmed for the legacy
-.asp family, and guessing one against a live modem is not acceptable.`
+.asp family, and guessing one against a live modem is not acceptable.
+
+pwod is not a write and not a read: it computes a value from a seed on this
+host and never contacts the device.`
 	default:
 		return "No help topic " + strconv.Quote(topic) + ".\n\n" + overviewHelp()
 	}
@@ -1003,6 +1223,7 @@ Commands:
   factory-reset    factory reset + reboot (CODA6X)
   hard-reset       immediate restoreReset + reboot (CODA6X)
   fec-reset        clear the downstream FEC counters (CODA6X)
+  pwod             password of the day (CODA6X, offline)
   help [topic]     this text, or a topic
   version          print the version
 
@@ -1027,7 +1248,7 @@ Global flags:
 
 Help topics:
   stats monitor detect system channels logs moca
-  reboot factory-reset hard-reset fec-reset
+  reboot factory-reset hard-reset fec-reset pwod
   auth environment examples safety exit-codes
 
 Examples:
@@ -1036,6 +1257,7 @@ Examples:
   hitron-cli channels --json
   hitron-cli monitor --interval 3s
   hitron-cli fec-reset --json
+  hitron-cli pwod --seed 12345678
   hitron-cli help auth
 `
 }

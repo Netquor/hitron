@@ -60,6 +60,7 @@ hitron-cli reboot           reboot (prompts, or --confirm)
 hitron-cli factory-reset    factory reset + reboot (CODA6X)
 hitron-cli hard-reset       immediate restoreReset + reboot (CODA6X)
 hitron-cli fec-reset        clear the downstream FEC counters (CODA6X)
+hitron-cli pwod             password of the day (CODA6X, offline)
 hitron-cli help [topic]     overview or one topic
 hitron-cli version          version
 ```
@@ -161,6 +162,33 @@ the write is one traceable operation. Answering no exits 1.
 
 CODA-57 has no confirmed write path in this repository. The CLI says so and
 stops; it does not try a plausible-looking URL on a live modem.
+
+## Password of the day
+
+The CODA6X runs `htx_pod_main`, which rewrites the `mso` ("Default Admin")
+password shortly after local midnight from a seed the ISP provisions in DOCSIS
+TLV43 sub-option 242. `hitron-cli pwod` computes that value on this host:
+
+```bash
+hitron-cli pwod                                  # today, empty seed
+hitron-cli pwod --seed 12345678                  # today, with the seed
+hitron-cli pwod --seed 12345678 --date 2026-11-26 --days 7
+hitron-cli pwod --encrypted-seed 'i19WhrZqaiiNNVC+oWsv3Q==' --json
+```
+
+The algorithm is `SHA1("Pa55w0RolHiTr0N" + YYYY + MM + DD + seed)`, with the
+first 16 bytes mapped to `[0-9A-Za-z]`. The device stores the seed as
+`base64(AES-128-ECB(seed))` under the fixed key from `libpodalgorithm`
+(`uci general.podCfg.defseed`); `--encrypted-seed` takes that form, and
+`--encrypt-seed` / `--decrypt-seed` convert between the two. The firmware's NUL
+truncation and `strlen`-based unpad are reproduced, so a seed that is already
+block aligned can decode short; pass `--seed` when the plaintext is known.
+
+Nothing here contacts the modem, needs credentials, or writes anything. The
+date is the modem's local date, so use `--utc` or `--date` when its clock or
+timezone differs from this host. A unit with no provisioned seed has no daily
+password; the empty-seed value is only a baseline, not what a provisioned modem
+uses.
 
 ## Live view
 

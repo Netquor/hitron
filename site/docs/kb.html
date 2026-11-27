@@ -64,6 +64,7 @@ openapi-coda60.yaml, openapi-coda57-legacy.yaml">
         <a href="#live-verification-87101b4-customer-owned-coda60-2026-11-26" class="toc-l3">Live verification: 8.7.1.0.1b4 (customer-owned CODA60, 2026-11-26)</a>
         <a href="#radiochannel-deep-dive" class="toc-l3">Radio/channel deep dive</a>
         <a href="#writeaction-endpoints-confirmed-from-the-firmwares-own-php-source-implemented-in-coda60py" class="toc-l3">Write/action endpoints (confirmed from the firmware&#x27;s own PHP source, implemented in coda60.py)</a>
+        <a href="#password-of-the-day-pwod" class="toc-l3">Password of the day (PWoD)</a>
         <a href="#quirks-found-in-the-firmware-source-informational-none-exploited" class="toc-l3">Quirks found in the firmware source (informational, none exploited)</a>
         <a href="#3-coda-57--confirmed-the-legacy-asp-api" class="toc-l2">3. CODA-57 — confirmed: the legacy .asp API</a>
         <a href="#4-whats-still-open--next-steps" class="toc-l2">4. What&#x27;s still open / next steps</a>
@@ -332,6 +333,25 @@ FEC clears. Nothing else here has — see the README's "Writes" section for the
 handling policy (explicit login, no auto-write; the destructive verbs require
 <code>--yes-really-do-this</code> on the Python CLI and <code>--confirm</code> on the Go CLI;
 <code>fec-reset</code> needs neither login nor confirmation).</p>
+<h3 id="password-of-the-day-pwod">Password of the day (PWoD)<a class="headerlink" href="#password-of-the-day-pwod" title="Link to this section">#</a></h3>
+<p><code>htx_pod_main</code>, with <code>libpodalgorithm</code>, rotates the uid-0 <code>mso</code> ("Default
+Admin") password shortly after local midnight. The ISP provisions the seed in
+DOCSIS TLV43 sub-option 242, so the value is deterministic only after that seed
+arrives:</p>
+<pre><code>msg = "Pa55w0RolHiTr0N" + YYYY + MM + DD + seed
+h   = SHA1(msg)
+pw  = charset_map(h[0:16])            # 16 characters, [0-9A-Za-z]
+</code></pre>
+<p>The seed is stored as <code>base64(AES-128-ECB(seed))</code> under the fixed key
+<code>b5c4baa2c6dfcbeab6f8b6feb8e7b5c4</code>, in <code>uci general.podCfg.defseed</code>. Padding is
+added only when the seed is not already a 16-byte block, and the daemon unpads
+with a <code>strlen</code>-style rule, so an already-aligned seed can decode short. An
+empty seed gives the daemon nothing to rotate with.</p>
+<p><code>hitron-cli pwod</code> implements this offline: a plaintext seed, the stored
+encrypted form, a date or a range of days, and <code>--json</code>. It never contacts the
+device and needs no credentials. The constants were recovered from the extracted
+CODA6X firmware image; the live unit here runs 8.7.1.0.1b4 and they were not
+re-derived from that build.</p>
 <h3 id="quirks-found-in-the-firmware-source-informational-none-exploited">Quirks found in the firmware source (informational, none exploited)<a class="headerlink" href="#quirks-found-in-the-firmware-source-informational-none-exploited" title="Link to this section">#</a></h3>
 <ul>
 <li>Shipped with <code>DEBUG=5</code> (Fat-Free verbose-error mode) in <code>app/config.ini</code>.</li>

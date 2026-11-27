@@ -60,6 +60,7 @@
         <a href="#environment" class="toc-l3">Environment</a>
         <a href="#authentication" class="toc-l2">Authentication</a>
         <a href="#writes" class="toc-l2">Writes</a>
+        <a href="#password-of-the-day" class="toc-l2">Password of the day</a>
         <a href="#live-view" class="toc-l2">Live view</a>
         <a href="#spectrum-and-constellation" class="toc-l3">Spectrum and constellation</a>
         <a href="#exit-codes" class="toc-l2">Exit codes</a>
@@ -132,6 +133,7 @@ hitron-cli reboot           reboot (prompts, or --confirm)
 hitron-cli factory-reset    factory reset + reboot (CODA6X)
 hitron-cli hard-reset       immediate restoreReset + reboot (CODA6X)
 hitron-cli fec-reset        clear the downstream FEC counters (CODA6X)
+hitron-cli pwod             password of the day (CODA6X, offline)
 hitron-cli help [topic]     overview or one topic
 hitron-cli version          version
 </code></pre>
@@ -331,6 +333,27 @@ credential requirement, and the CLI calls <code>Login</code> immediately before 
 the write is one traceable operation. Answering no exits 1.</p>
 <p>CODA-57 has no confirmed write path in this repository. The CLI says so and
 stops; it does not try a plausible-looking URL on a live modem.</p>
+<h2 id="password-of-the-day">Password of the day<a class="headerlink" href="#password-of-the-day" title="Link to this section">#</a></h2>
+<p>The CODA6X runs <code>htx_pod_main</code>, which rewrites the <code>mso</code> ("Default Admin")
+password shortly after local midnight from a seed the ISP provisions in DOCSIS
+TLV43 sub-option 242. <code>hitron-cli pwod</code> computes that value on this host:</p>
+<pre><code class="language-bash">hitron-cli pwod                                  # today, empty seed
+hitron-cli pwod --seed 12345678                  # today, with the seed
+hitron-cli pwod --seed 12345678 --date 2026-11-26 --days 7
+hitron-cli pwod --encrypted-seed 'i19WhrZqaiiNNVC+oWsv3Q==' --json
+</code></pre>
+<p>The algorithm is <code>SHA1("Pa55w0RolHiTr0N" + YYYY + MM + DD + seed)</code>, with the
+first 16 bytes mapped to <code>[0-9A-Za-z]</code>. The device stores the seed as
+<code>base64(AES-128-ECB(seed))</code> under the fixed key from <code>libpodalgorithm</code>
+(<code>uci general.podCfg.defseed</code>); <code>--encrypted-seed</code> takes that form, and
+<code>--encrypt-seed</code> / <code>--decrypt-seed</code> convert between the two. The firmware's NUL
+truncation and <code>strlen</code>-based unpad are reproduced, so a seed that is already
+block aligned can decode short; pass <code>--seed</code> when the plaintext is known.</p>
+<p>Nothing here contacts the modem, needs credentials, or writes anything. The
+date is the modem's local date, so use <code>--utc</code> or <code>--date</code> when its clock or
+timezone differs from this host. A unit with no provisioned seed has no daily
+password; the empty-seed value is only a baseline, not what a provisioned modem
+uses.</p>
 <h2 id="live-view">Live view<a class="headerlink" href="#live-view" title="Link to this section">#</a></h2>
 <p><code>monitor</code>, or <code>stats</code> in a terminal, draws a full-screen report and refreshes
 on <code>--interval</code> (default 5s; 1s on the CODA-57 and CODA-60).</p>
