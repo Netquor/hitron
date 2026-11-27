@@ -98,8 +98,8 @@ behind `--yes-really-do-this`, the Go CLI behind `--confirm`.
 clear the 3.0 and OFDM FEC counters with no body and no session; the TUI binds
 both to `z`, and `hitron-cli fec-reset` runs them headlessly; the OFDM stop is
 unreliable on this build.
-`hitron-cli pwod` computes the CODA6X password of the day offline from the ISP
-seed (plaintext or the stored encrypted form) and never contacts the modem.
+`hitron-cli pwod` computes the CODA6X password of the day offline and never
+contacts the modem.
 `/1/Device/Upload`,
 `/1/Device/AdminRemoteManagement/Restore`, and credential routes also mutate
 the device. The exporter never calls any of them.
