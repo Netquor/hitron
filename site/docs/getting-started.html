@@ -1,0 +1,425 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Getting started, end to end · hitron docs</title>
+<meta name="description" content="This is the long path: from a checkout to a dashboard that shows downstream
+power, SNR, OFDM locks, and uncorrectable codewords. Every step is copy-paste.
+If you only want the API reference, open the">
+<meta name="theme-color" content="#04050b">
+<link rel="canonical" href="https://hitron.netquor.dev/docs/getting-started.html">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><defs><linearGradient id='g' x1='0' y1='0' x2='1' y2='1'><stop offset='0' stop-color='%235eead4'/><stop offset='1' stop-color='%23a78bfa'/></linearGradient></defs><rect width='32' height='32' rx='9' fill='%2304050b'/><circle cx='16' cy='16' r='6.5' fill='none' stroke='url(%23g)' stroke-width='3'/></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500;600&amp;family=Space+Grotesk:wght@500;600;700&amp;display=swap">
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../assets/glass.css">
+<link rel="stylesheet" href="../assets/docs.css">
+<script>try{var t=localStorage.getItem('hitron.theme');if(t)document.documentElement.dataset.theme=t;else if(matchMedia('(prefers-color-scheme: light)').matches)document.documentElement.dataset.theme='light'}catch(e){}</script>
+<script src="../assets/fx.js" defer></script>
+<script src="../assets/docs.js" defer></script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="topbar">
+  <a class="brand" href="../index.html#top">
+    <span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 16 16" width="14" height="14"><circle cx="8" cy="8" r="5.5" fill="none" stroke="currentColor" stroke-width="2.2"/></svg></span>
+    <span>hitron<span class="dim">/docs</span></span>
+  </a>
+  <nav class="topnav">
+    <a href="index.html" class="active">Guides</a>
+    <a href="../index.html#cli">CLI</a>
+    <a href="../index.html#explorer">API console</a>
+    <a href="../index.html#dashboards">Grafana</a>
+    <a href="../openapi.json" class="nav-secondary">OpenAPI</a>
+    <a href="../llms.txt" class="nav-secondary">llms.txt</a>
+  </nav>
+  <div class="topbar-actions">
+    <button id="theme-toggle" class="icon-btn" type="button" title="Toggle theme" aria-label="Toggle theme">
+      <svg class="icon-sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M5.2 5.2l1.6 1.6M17.2 17.2l1.6 1.6M18.8 5.2l-1.6 1.6M6.8 17.2l-1.6 1.6"/></svg>
+      <svg class="icon-moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.4A8.6 8.6 0 0 1 9.6 4 8.6 8.6 0 1 0 20 14.4Z"/></svg>
+    </button>
+  </div>
+</header>
+<div class="docs-shell">
+  <aside class="docs-side" aria-label="Documentation">
+    <nav class="docs-nav">
+      <p class="docs-nav-label">Guides</p>
+      <a href="getting-started.html" aria-current="page">Getting started</a>
+      <a href="hitron-cli.html">hitron-cli</a>
+      <a href="grafana.html">Grafana</a>
+      <a href="local-proxy.html">Local proxy</a>
+      <a href="kb.html">Knowledge base</a>
+      <a href="verification.html">Verification</a>
+    </nav>
+    <nav class="docs-toc" aria-label="On this page">
+      <p class="docs-nav-label">On this page</p>
+        <a href="#0-what-you-need" class="toc-l2">0. What you need</a>
+        <a href="#1-install" class="toc-l2">1. Install</a>
+        <a href="#2-prove-the-device-answers" class="toc-l2">2. Prove the device answers</a>
+        <a href="#firmware-quirks-you-will-meet" class="toc-l3">Firmware quirks you will meet</a>
+        <a href="#3-run-the-exporter" class="toc-l2">3. Run the exporter</a>
+        <a href="#one-shot-output-in-every-format" class="toc-l3">One-shot output in every format</a>
+        <a href="#4-prometheus" class="toc-l2">4. Prometheus</a>
+        <a href="#5-grafana" class="toc-l2">5. Grafana</a>
+        <a href="#option-a-import-by-hand" class="toc-l3">Option A: import by hand</a>
+        <a href="#option-b-provision-everything" class="toc-l3">Option B: provision everything</a>
+        <a href="#6-telegraf" class="toc-l2">6. Telegraf</a>
+        <a href="#7-opentelemetry" class="toc-l2">7. OpenTelemetry</a>
+        <a href="#8-the-static-site" class="toc-l2">8. The static site</a>
+        <a href="#9-verify-the-whole-chain" class="toc-l2">9. Verify the whole chain</a>
+        <a href="#10-troubleshooting" class="toc-l2">10. Troubleshooting</a>
+        <a href="#11-where-things-live" class="toc-l2">11. Where things live</a>
+    </nav>
+  </aside>
+  <main id="main" class="docs-main">
+<article class="doc">
+<h1 id="getting-started-end-to-end">Getting started, end to end</h1>
+<p>This is the long path: from a checkout to a dashboard that shows downstream
+power, SNR, OFDM locks, and uncorrectable codewords. Every step is copy-paste.
+If you only want the API reference, open the <a href="../index.html">static site</a>
+or read <a class="ext" href="https://github.com/Netquor/hitron/blob/main/specs/openapi-coda60.yaml"><code>specs/openapi-coda60.yaml</code></a>.</p>
+<blockquote>
+<p><strong>Scope.</strong> Read routes work on the analyzed CODA6X firmware without a login.
+Write routes include reboot, factory reset, credential changes, and config
+upload. The exporter never calls them. Do not run the <code>*-reboot</code>,
+<code>*-factory-reset</code>, or <code>*-hard-reset</code> subcommands on a connection you are not
+prepared to lose.</p>
+</blockquote>
+<hr>
+<h2 id="0-what-you-need">0. What you need<a class="headerlink" href="#0-what-you-need" title="Link to this section">#</a></h2>
+<div class="table-scroll"><table>
+<thead>
+<tr>
+<th>Thing</th>
+<th>Why</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Python 3.11+</td>
+<td>clients, exporter, docs server</td>
+</tr>
+<tr>
+<td>Network access to the gateway</td>
+<td>usually <code>192.168.100.1</code> on the LAN side</td>
+</tr>
+<tr>
+<td>Docker (optional)</td>
+<td>the one-command Prometheus + Grafana stack in <code>deploy/</code></td>
+</tr>
+<tr>
+<td>A device you are allowed to poll</td>
+<td>CODA6X, CODA-57, or HT-EM5</td>
+</tr>
+</tbody>
+</table></div>
+<p>You do <strong>not</strong> need Node, a bundler, or a build step. The site is plain HTML.</p>
+<hr>
+<h2 id="1-install">1. Install<a class="headerlink" href="#1-install" title="Link to this section">#</a></h2>
+<pre><code class="language-bash">git clone https://github.com/Netquor/hitron.git
+cd hitron
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -e &quot;.[dev]&quot;
+</code></pre>
+<p>Sanity check:</p>
+<pre><code class="language-bash">hitron --help
+hitron-exporter --help
+</code></pre>
+<p><code>hitron</code> has read subcommands (<code>coda60</code>, <code>coda57</code>, <code>ht-em5</code>) and guarded write
+subcommands (<code>coda60-reboot</code>, <code>coda60-set-password</code>, …). <code>hitron-exporter</code> is
+the long-running process.</p>
+<hr>
+<h2 id="2-prove-the-device-answers">2. Prove the device answers<a class="headerlink" href="#2-prove-the-device-answers" title="Link to this section">#</a></h2>
+<pre><code class="language-bash">hitron coda60 192.168.100.1
+</code></pre>
+<p>You should see a JSON snapshot with <code>cm_version</code>, <code>cm_dsinfo</code>, <code>cm_usinfo</code>,
+<code>cm_dsofdm</code>, and friends. If the JSON is empty or every field is <code>null</code>, the
+device is not a CODA6X or the address is wrong.</p>
+<p>Useful spot checks:</p>
+<pre><code class="language-bash">hitron coda60 192.168.100.1 | jq '.cm_dsinfo.Freq_List[0]'
+hitron coda60 192.168.100.1 | jq '.cm_dsofdm.Freq_List[0].SNR'
+hitron ht-em5 192.168.0.212
+hitron coda57 192.168.100.2 --spec-check
+</code></pre>
+<p>If the CODA6X is on a different subnet, move your machine onto that subnet or
+add a route. The console API has no cloud fallback.</p>
+<h3 id="firmware-quirks-you-will-meet">Firmware quirks you will meet<a class="headerlink" href="#firmware-quirks-you-will-meet" title="Link to this section">#</a></h3>
+<ul>
+<li><code>Raidos_List</code> (not <code>Radios_List</code>) is the radio array key.</li>
+<li>Numbers are strings, often with units or a multiplier suffix. The exporter
+  normalizes them; raw JSON keeps the firmware's text.</li>
+<li>A dead downstream channel can report <code>-inf</code>; the exporter drops those points
+  instead of plotting a spike.</li>
+<li><code>POST</code> bodies are a form field named <code>model</code> containing JSON. <code>_method</code> inside
+  that JSON can tunnel <code>PUT</code>/<code>DELETE</code>/<code>PATCH</code>.</li>
+<li><code>errCode == "000"</code> means success; anything else is usually HTTP 400.</li>
+</ul>
+<hr>
+<h2 id="3-run-the-exporter">3. Run the exporter<a class="headerlink" href="#3-run-the-exporter" title="Link to this section">#</a></h2>
+<pre><code class="language-bash">hitron-exporter \
+  --port 9877 \
+  --interval 30 \
+  --coda60 192.168.100.1 \
+  --coda57 192.168.100.2 \
+  --ht-em5 192.168.0.212
+</code></pre>
+<p>Give a target a friendly label with <code>name=host</code>:</p>
+<pre><code class="language-bash">hitron-exporter --coda60 edge=192.168.100.1
+</code></pre>
+<p>That label becomes the <code>source</code> (or <code>host</code>) label on every series.</p>
+<p>Endpoints served by the same process:</p>
+<div class="table-scroll"><table>
+<thead>
+<tr>
+<th>Path</th>
+<th>Use</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>/metrics</code></td>
+<td>Prometheus text exposition</td>
+</tr>
+<tr>
+<td><code>/healthz</code></td>
+<td>JSON: per-source up state, sample counts, errors</td>
+</tr>
+<tr>
+<td><code>/api/v1/samples</code></td>
+<td>last snapshot as JSON</td>
+</tr>
+<tr>
+<td><code>/api/v1/logs</code></td>
+<td>recent exporter log lines</td>
+</tr>
+</tbody>
+</table></div>
+<pre><code class="language-bash">curl -s http://127.0.0.1:9877/healthz | jq
+curl -s http://127.0.0.1:9877/metrics | grep modem_downstream_channel_power
+</code></pre>
+<p>Environment variables work too: <code>HITRON_CODA60_HOSTS</code>,
+<code>HITRON_CODA57_HOSTS</code>, <code>HITRON_HT_EM5_HOSTS</code> (comma-separated), plus
+<code>HITRON_EXPORTER_PORT</code>, <code>HITRON_EXPORTER_INTERVAL</code>, <code>HITRON_OTLP_ENDPOINT</code>.</p>
+<h3 id="one-shot-output-in-every-format">One-shot output in every format<a class="headerlink" href="#one-shot-output-in-every-format" title="Link to this section">#</a></h3>
+<pre><code class="language-bash"># Prometheus text
+hitron-exporter --coda60 192.168.100.1 --once
+
+# Influx line protocol (what Telegraf eats)
+hitron-exporter --coda60 192.168.100.1 --once --format telegraf
+
+# OTLP/HTTP JSON payload, for inspection
+hitron-exporter --coda60 192.168.100.1 --once --format otlp | jq '.resourceMetrics[0].scopeMetrics[0].metrics[0]'
+
+# Debug JSON
+hitron-exporter --coda60 192.168.100.1 --once --format json
+</code></pre>
+<hr>
+<h2 id="4-prometheus">4. Prometheus<a class="headerlink" href="#4-prometheus" title="Link to this section">#</a></h2>
+<p>Minimal scrape config:</p>
+<pre><code class="language-yaml">scrape_configs:
+  - job_name: hitron
+    scrape_interval: 30s
+    scrape_timeout: 25s
+    static_configs:
+      - targets: [&quot;192.168.1.10:9877&quot;]
+</code></pre>
+<p>Reload Prometheus, then check <strong>Status → Targets</strong>. The <code>hitron</code> job should be
+<code>UP</code>, and this query should return one series per downstream channel:</p>
+<pre><code class="language-promql">modem_downstream_channel_power_dbmv
+</code></pre>
+<p>Add the bundled alert rules:</p>
+<pre><code class="language-yaml">rule_files:
+  - /etc/prometheus/rules/hitron.rules.yml
+</code></pre>
+<p>The rules live in <code>deploy/grafana/prometheus/rules/hitron.rules.yml</code> and cover
+source down, provisioning failure, power outside −6…15 dBmV (downstream) or
+35…48 dBmV (upstream), low SNR, uncorrectable errors, MoCA link down, and slow
+scrapes. The power envelope is a starting point, not gospel — replace it with
+your carrier's published range.</p>
+<hr>
+<h2 id="5-grafana">5. Grafana<a class="headerlink" href="#5-grafana" title="Link to this section">#</a></h2>
+<p>Two dashboards ship in the repo, already generated from the same metric
+vocabulary:</p>
+<ul>
+<li><code>dashboards/hitron-coda6x.json</code> — RF, provisioning, OFDM/OFDMA, Wi-Fi,
+  hosts, MoCA, exporter health, optional Loki log stream.</li>
+<li><code>dashboards/hitron-ht-em5.json</code> — MoCA link, nodes, PHY rates, Ethernet
+  counters.</li>
+</ul>
+<h3 id="option-a-import-by-hand">Option A: import by hand<a class="headerlink" href="#option-a-import-by-hand" title="Link to this section">#</a></h3>
+<ol>
+<li>Grafana → <strong>Connections → Data sources → Prometheus</strong>, URL
+   <code>http://&lt;prometheus&gt;:9090</code>, Save &amp; test.</li>
+<li><strong>Dashboards → New → Import</strong>, upload <code>dashboards/hitron-coda6x.json</code>.</li>
+<li>When prompted for <code>DS</code>, pick the Prometheus datasource you just created.</li>
+<li>Set the <code>source</code> variable to your exporter target name.</li>
+</ol>
+<h3 id="option-b-provision-everything">Option B: provision everything<a class="headerlink" href="#option-b-provision-everything" title="Link to this section">#</a></h3>
+<pre><code class="language-bash">cd deploy
+cp .env.example .env          # set CODA60_HOST, etc.
+docker compose up -d
+</code></pre>
+<p>Open <a class="ext" href="http://localhost:3000">http://localhost:3000</a> (admin / admin). The datasource and both
+dashboards are provisioned into the <strong>Hitron</strong> folder. No import step.</p>
+<p>The full walkthrough, including panel-by-panel notes and Loki, is in
+<a href="grafana.html"><code>GRAFANA.md</code></a>.</p>
+<hr>
+<h2 id="6-telegraf">6. Telegraf<a class="headerlink" href="#6-telegraf" title="Link to this section">#</a></h2>
+<p>Telegraf needs no plugin: the exporter writes Influx line protocol to stdout and
+Telegraf parses it.</p>
+<pre><code class="language-toml">[[inputs.exec]]
+  commands = [&quot;/opt/hitron/bin/hitron-exporter --coda60 192.168.100.1 --once --format telegraf&quot;]
+  data_format = &quot;influx&quot;
+  interval = &quot;30s&quot;
+  timeout = &quot;25s&quot;
+
+[[outputs.influxdb_v2]]
+  urls = [&quot;http://influxdb:8086&quot;]
+  token = &quot;${INFLUX_TOKEN}&quot;
+  organization = &quot;home&quot;
+  bucket = &quot;hitron&quot;
+</code></pre>
+<p>A complete example is in <code>deploy/telegraf/telegraf.conf</code>. Counters are emitted
+as integers (<code>value=…i</code>), which InfluxDB stores as integers rather than floats.</p>
+<hr>
+<h2 id="7-opentelemetry">7. OpenTelemetry<a class="headerlink" href="#7-opentelemetry" title="Link to this section">#</a></h2>
+<p>Point the exporter at any OTLP/HTTP metrics endpoint:</p>
+<pre><code class="language-bash">hitron-exporter --coda60 192.168.100.1 \
+  --otlp-endpoint http://127.0.0.1:4318/v1/metrics \
+  --otlp-header &quot;authorization=Bearer $TOKEN&quot;
+</code></pre>
+<p>It posts OTLP <code>ExportMetricsServiceRequest</code> JSON. A collector config that
+receives it and re-exposes Prometheus on <code>:9464</code> is in
+<code>deploy/otel/collector.yaml</code>:</p>
+<pre><code class="language-bash">otelcol --config deploy/otel/collector.yaml
+</code></pre>
+<p>Gauges become OTLP gauges; monotonic counters become OTLP sums with
+<code>aggregationTemporality: 2</code>. Labels become datapoint attributes.</p>
+<hr>
+<h2 id="8-the-static-site">8. The static site<a class="headerlink" href="#8-the-static-site" title="Link to this section">#</a></h2>
+<pre><code class="language-bash">hitron site --device 192.168.100.1 --port 8000
+</code></pre>
+<p>Open <a class="ext" href="http://127.0.0.1:8000">http://127.0.0.1:8000</a>. You get:</p>
+<ul>
+<li>a filterable API console generated from <code>site/openapi.json</code>,</li>
+<li>live RF charts fed by the responses you fetch (history in <code>localStorage</code>),</li>
+<li>a DOCSIS event-log viewer,</li>
+<li>a request log you can download as JSON,</li>
+<li>the Grafana tutorials and downloads.</li>
+</ul>
+<p>The <code>--device</code> flag matters: the page calls <code>/proxy/...</code>, which the local server
+forwards to the gateway. GitHub Pages cannot do that (mixed content + CORS), so
+on Pages the console shows the error and points you back here.</p>
+<p>To publish the site, enable GitHub Pages with <strong>Source: GitHub Actions</strong> or
+<strong>Deploy from a branch → /site</strong>. Everything in <code>site/</code> is static.</p>
+<hr>
+<h2 id="9-verify-the-whole-chain">9. Verify the whole chain<a class="headerlink" href="#9-verify-the-whole-chain" title="Link to this section">#</a></h2>
+<pre><code class="language-bash"># 1. device answers
+hitron coda60 192.168.100.1 &gt;/dev/null &amp;&amp; echo device-ok
+
+# 2. exporter produces series
+hitron-exporter --coda60 192.168.100.1 --once | grep -c '^modem_'
+
+# 3. Prometheus sees the target
+curl -s http://localhost:9090/api/v1/targets | jq -r '.data.activeTargets[].health'
+
+# 4. the dashboard query returns data
+curl -sG http://localhost:9090/api/v1/query \
+  --data-urlencode 'query=count(modem_downstream_channel_info)' | jq '.data.result[0].value[1]'
+</code></pre>
+<p>If (1) works and (2) is zero, the device is a family the exporter does not
+recognize. If (2) works and (3) fails, it is networking between Prometheus and
+the exporter. If (3) works and (4) is empty, the dashboard variable <code>source</code>
+does not match your target label.</p>
+<hr>
+<h2 id="10-troubleshooting">10. Troubleshooting<a class="headerlink" href="#10-troubleshooting" title="Link to this section">#</a></h2>
+<div class="table-scroll"><table>
+<thead>
+<tr>
+<th>Symptom</th>
+<th>Likely cause</th>
+<th>Fix</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>hitron coda60</code> returns empty</td>
+<td>not a CODA6X, or wrong subnet</td>
+<td>confirm model with <code>curl http://IP/1/Device/CM/Version</code></td>
+</tr>
+<tr>
+<td>Login returns 400</td>
+<td>firmware has auth disabled, or wrong body shape</td>
+<td>read routes need no login; send <code>model={"username":…}</code> form-encoded</td>
+</tr>
+<tr>
+<td>Exporter says <code>up 0</code></td>
+<td>timeout, wrong port, device rebooted</td>
+<td>raise <code>--interval</code>, check <code>/healthz</code> error text</td>
+</tr>
+<tr>
+<td>Prometheus target down</td>
+<td>exporter not reachable from container</td>
+<td>use <code>host.docker.internal</code> or the LAN IP, not <code>127.0.0.1</code></td>
+</tr>
+<tr>
+<td>Dashboard panels empty</td>
+<td>variable <code>DS</code> points at the wrong datasource, or <code>source</code> filter mismatched</td>
+<td>re-pick the datasource; clear <code>source</code></td>
+</tr>
+<tr>
+<td>Power looks like <code>-inf</code></td>
+<td>channel is down</td>
+<td>expected; exporter drops the point</td>
+</tr>
+<tr>
+<td>OTLP push 415</td>
+<td>endpoint expects protobuf</td>
+<td>use a collector's HTTP receiver or a JSON-capable backend</td>
+</tr>
+<tr>
+<td>Site console blocked</td>
+<td>opened from GitHub Pages</td>
+<td>run <code>hitron site --device …</code></td>
+</tr>
+</tbody>
+</table></div>
+<p>Collect diagnostics for a bug report:</p>
+<pre><code class="language-bash">hitron coda60 192.168.100.1 &gt; /tmp/device.json 2&gt;/tmp/device.err
+curl -s http://127.0.0.1:9877/healthz &gt; /tmp/health.json
+curl -s http://127.0.0.1:9877/api/v1/logs &gt; /tmp/exporter-logs.json
+</code></pre>
+<p>Redact serial numbers, MAC addresses, and public IPs before attaching them.</p>
+<hr>
+<h2 id="11-where-things-live">11. Where things live<a class="headerlink" href="#11-where-things-live" title="Link to this section">#</a></h2>
+<pre><code>specs/openapi-coda60.yaml     full CODA6X API, 116 paths / 171 operations
+specs/openapi-ht-em5.yaml     HT-EM5 MoCA API
+specs/openapi-coda57-legacy.yaml  CODA-57 .asp API
+src/hitron/metrics.py         one normalized metric vocabulary
+src/hitron/formats.py         Prometheus / Influx / OTLP / JSON encoders
+src/hitron/exporter.py        poll loop, HTTP surface, OTLP push
+src/hitron/grafana.py         dashboard + provisioning generator
+src/hitron/site.py            static site server + gateway proxy
+dashboards/                   importable Grafana JSON
+deploy/                       compose, Prometheus, Telegraf, OTel, Loki
+site/                         GitHub Pages build-free docs
+docs/KB.md                    reverse-engineering notes
+</code></pre>
+<p>Next: <a href="grafana.html"><code>GRAFANA.md</code></a> for the dashboard tour, or
+<a href="kb.html"><code>KB.md</code></a> for how the API was reconstructed.</p>
+</article>
+    <nav class="docs-pager" aria-label="Pages">
+      <span></span>
+      <a class="next" href="hitron-cli.html"><span>Next</span>hitron-cli</a>
+    </nav>
+    <p class="docs-edit"><a class="ext" href="https://github.com/Netquor/hitron/blob/main/docs/GETTING-STARTED.md">Edit this page on GitHub</a></p>
+  </main>
+</div>
+<footer class="footer">
+  <p>Not official Hitron documentation. Field names come from the device; mistakes are ours. <a href="../llms.txt">llms.txt</a> · <a href="../openapi.json">OpenAPI</a> · <a href="https://github.com/Netquor/hitron">Source</a></p>
+</footer>
+</body>
+</html>

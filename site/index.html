@@ -35,6 +35,7 @@
     <a href="#dashboards">Grafana</a>
     <a href="#telemetry">Telemetry</a>
     <a href="#logs" class="nav-secondary">Logs</a>
+    <a href="docs/" class="nav-secondary">Guides</a>
     <a href="llms.txt" class="nav-secondary">llms.txt</a>
   </nav>
   <div class="topbar-actions">
@@ -114,7 +115,7 @@
       <p class="muted small">Needs Go 1.22+. Prefer a download? Binaries for Linux, macOS, and Windows are on <a href="https://github.com/Netquor/hitron/releases">Releases</a>.</p>
       <div class="cta-row">
         <a class="btn primary" href="#cli-start">Get started</a>
-        <a class="quiet-link" href="https://github.com/Netquor/hitron/tree/main/cli">Source and flags ↗</a>
+        <a class="quiet-link" href="docs/hitron-cli.html">Flags and full guide →</a>
       </div>
     </div>
     <figure class="shot glow">
@@ -197,13 +198,13 @@
     <figure class="shot"><img src="assets/cli/reboot.png" alt="The reboot confirmation dialog asking you to type the word reboot" width="1108" height="500" loading="lazy"></figure>
   </article>
 
-  <p class="muted small cli-foot">The dashboard only reads: it polls the same endpoints the modem's own status page uses. Full command list in <a href="https://github.com/Netquor/hitron/tree/main/cli">cli/README.md</a>.</p>
+  <p class="muted small cli-foot">The dashboard only reads: it polls the same endpoints the modem's own status page uses. Full command list in the <a href="docs/hitron-cli.html">hitron-cli guide</a>.</p>
 </section>
 
 <section id="quickstart" class="section">
   <div class="section-head">
     <h2>End-to-end in four commands</h2>
-    <p>From a clean checkout to a dashboard. The long version is in <a href="https://github.com/Netquor/hitron/blob/main/docs/GETTING-STARTED.md">docs/GETTING-STARTED.md</a>.</p>
+    <p>From a clean checkout to a dashboard. The long version is in <a href="docs/getting-started.html">the getting-started guide</a>.</p>
   </div>
   <ol class="steps">
     <li>
@@ -361,7 +362,7 @@ hitron coda60 192.168.100.1 | head</code></pre>
         <li><span class="checkout-label">Run</span><code>hitron site --device 192.168.100.1</code></li>
       </ol>
       <p class="local-alt-note">Needs Python 3.11 or newer. There is no <code>hitron</code> package on PyPI; that name belongs to another project.</p>
-      <p class="local-alt-link"><a href="https://github.com/Netquor/hitron/blob/main/docs/LOCAL-PROXY.md">Step-by-step guide and troubleshooting →</a></p>
+      <p class="local-alt-link"><a href="docs/local-proxy.html">Step-by-step guide and troubleshooting →</a></p>
     </div>
   </div>
 </section>
@@ -407,7 +408,7 @@ hitron coda60 192.168.100.1 | head</code></pre>
       <p>Downstream/upstream power and SNR, corrected and uncorrectable codewords, OFDM/OFDMA locks, Wi-Fi clients, host count, MoCA, and scrape errors.</p>
       <div class="card-actions">
         <a class="btn" href="dashboards/hitron-coda6x.json" download>Download JSON</a>
-        <a class="btn ghost" href="https://github.com/Netquor/hitron/blob/main/docs/GRAFANA.md">Step-by-step →</a>
+        <a class="btn ghost" href="docs/grafana.html">Step-by-step →</a>
       </div>
     </article>
     <article class="card">
@@ -523,9 +524,9 @@ curl -s http://127.0.0.1:9877/api/v1/samples | jq '.[0]'</code></pre>
     <h2>Read next</h2>
   </div>
   <div class="cards three">
-    <a class="card link" href="https://github.com/Netquor/hitron/blob/main/docs/GETTING-STARTED.md"><h3>End-to-end guide</h3><p>Install, verify, export, scrape, alert, and troubleshoot, in order.</p></a>
-    <a class="card link" href="https://github.com/Netquor/hitron/blob/main/docs/GRAFANA.md"><h3>Grafana tutorial</h3><p>Import or provision, pick panels, write alerts, and ship logs with Loki.</p></a>
-    <a class="card link" href="https://github.com/Netquor/hitron/blob/main/docs/KB.md"><h3>Reverse-engineering KB</h3><p>Auth model, firmware quirks, shell sinks, and open questions.</p></a>
+    <a class="card link" href="docs/getting-started.html"><h3>End-to-end guide</h3><p>Install, verify, export, scrape, alert, and troubleshoot, in order.</p></a>
+    <a class="card link" href="docs/grafana.html"><h3>Grafana tutorial</h3><p>Import or provision, pick panels, write alerts, and ship logs with Loki.</p></a>
+    <a class="card link" href="docs/kb.html"><h3>Reverse-engineering KB</h3><p>Auth model, firmware quirks, shell sinks, and open questions.</p></a>
   </div>
 </section>
 </main>

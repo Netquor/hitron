@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Guides · hitron docs</title>
+<meta name="description" content="Install guides, the Grafana tour, reverse-engineering notes, and verification results for hitron.">
+<meta name="theme-color" content="#04050b">
+<link rel="canonical" href="https://hitron.netquor.dev/docs/index.html">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><defs><linearGradient id='g' x1='0' y1='0' x2='1' y2='1'><stop offset='0' stop-color='%235eead4'/><stop offset='1' stop-color='%23a78bfa'/></linearGradient></defs><rect width='32' height='32' rx='9' fill='%2304050b'/><circle cx='16' cy='16' r='6.5' fill='none' stroke='url(%23g)' stroke-width='3'/></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500;600&amp;family=Space+Grotesk:wght@500;600;700&amp;display=swap">
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../assets/glass.css">
+<link rel="stylesheet" href="../assets/docs.css">
+<script>try{var t=localStorage.getItem('hitron.theme');if(t)document.documentElement.dataset.theme=t;else if(matchMedia('(prefers-color-scheme: light)').matches)document.documentElement.dataset.theme='light'}catch(e){}</script>
+<script src="../assets/fx.js" defer></script>
+<script src="../assets/docs.js" defer></script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="topbar">
+  <a class="brand" href="../index.html#top">
+    <span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 16 16" width="14" height="14"><circle cx="8" cy="8" r="5.5" fill="none" stroke="currentColor" stroke-width="2.2"/></svg></span>
+    <span>hitron<span class="dim">/docs</span></span>
+  </a>
+  <nav class="topnav">
+    <a href="index.html" class="active">Guides</a>
+    <a href="../index.html#cli">CLI</a>
+    <a href="../index.html#explorer">API console</a>
+    <a href="../index.html#dashboards">Grafana</a>
+    <a href="../openapi.json" class="nav-secondary">OpenAPI</a>
+    <a href="../llms.txt" class="nav-secondary">llms.txt</a>
+  </nav>
+  <div class="topbar-actions">
+    <button id="theme-toggle" class="icon-btn" type="button" title="Toggle theme" aria-label="Toggle theme">
+      <svg class="icon-sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M5.2 5.2l1.6 1.6M17.2 17.2l1.6 1.6M18.8 5.2l-1.6 1.6M6.8 17.2l-1.6 1.6"/></svg>
+      <svg class="icon-moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.4A8.6 8.6 0 0 1 9.6 4 8.6 8.6 0 1 0 20 14.4Z"/></svg>
+    </button>
+  </div>
+</header>
+<div class="docs-shell">
+  <aside class="docs-side" aria-label="Documentation">
+    <nav class="docs-nav">
+      <p class="docs-nav-label">Guides</p>
+      <a href="getting-started.html">Getting started</a>
+      <a href="hitron-cli.html">hitron-cli</a>
+      <a href="grafana.html">Grafana</a>
+      <a href="local-proxy.html">Local proxy</a>
+      <a href="kb.html">Knowledge base</a>
+      <a href="verification.html">Verification</a>
+    </nav>
+
+  </aside>
+  <main id="main" class="docs-main">
+<article class="doc">
+<p class="eyebrow">Documentation</p>
+<h1>Guides</h1>
+<p class="doc-lede">Everything that does not fit on the front page: install paths, the Grafana tour, the reverse-engineering notes, and what was verified on real hardware.</p>
+<div class="cards three doc-cards">
+  <a class="card link" href="getting-started.html"><h3>Getting started</h3><p>Install, verify, export, scrape, alert, and troubleshoot, in order.</p></a>
+  <a class="card link" href="hitron-cli.html"><h3>hitron-cli</h3><p>The terminal dashboard: install, keys, themes, and every command.</p></a>
+  <a class="card link" href="grafana.html"><h3>Grafana</h3><p>Import or provision dashboards, pick panels, write alerts, ship logs to Loki.</p></a>
+  <a class="card link" href="local-proxy.html"><h3>Local proxy</h3><p>Run the API console against your own modem with one command.</p></a>
+  <a class="card link" href="kb.html"><h3>Knowledge base</h3><p>Auth model, firmware quirks, shell sinks, and open questions.</p></a>
+  <a class="card link" href="verification.html"><h3>Verification</h3><p>What was measured on a real CODA-60, and how.</p></a>
+</div>
+</article>
+
+    <p class="docs-edit"><a class="ext" href="https://github.com/Netquor/hitron/tree/main/docs">Browse the docs folder on GitHub</a></p>
+  </main>
+</div>
+<footer class="footer">
+  <p>Not official Hitron documentation. Field names come from the device; mistakes are ours. <a href="../llms.txt">llms.txt</a> · <a href="../openapi.json">OpenAPI</a> · <a href="https://github.com/Netquor/hitron">Source</a></p>
+</footer>
+</body>
+</html>

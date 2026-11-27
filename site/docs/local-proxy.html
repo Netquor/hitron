@@ -1,0 +1,275 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Run the docs site and gateway proxy locally · hitron docs</title>
+<meta name="description" content="The published site at https://hitron.netquor.dev is static. It can show the
+API reference, dashboards, and llms.txt, but it cannot call your modem.
+A browser will not let a page served over https:// f">
+<meta name="theme-color" content="#04050b">
+<link rel="canonical" href="https://hitron.netquor.dev/docs/local-proxy.html">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><defs><linearGradient id='g' x1='0' y1='0' x2='1' y2='1'><stop offset='0' stop-color='%235eead4'/><stop offset='1' stop-color='%23a78bfa'/></linearGradient></defs><rect width='32' height='32' rx='9' fill='%2304050b'/><circle cx='16' cy='16' r='6.5' fill='none' stroke='url(%23g)' stroke-width='3'/></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500;600&amp;family=Space+Grotesk:wght@500;600;700&amp;display=swap">
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../assets/glass.css">
+<link rel="stylesheet" href="../assets/docs.css">
+<script>try{var t=localStorage.getItem('hitron.theme');if(t)document.documentElement.dataset.theme=t;else if(matchMedia('(prefers-color-scheme: light)').matches)document.documentElement.dataset.theme='light'}catch(e){}</script>
+<script src="../assets/fx.js" defer></script>
+<script src="../assets/docs.js" defer></script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="topbar">
+  <a class="brand" href="../index.html#top">
+    <span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 16 16" width="14" height="14"><circle cx="8" cy="8" r="5.5" fill="none" stroke="currentColor" stroke-width="2.2"/></svg></span>
+    <span>hitron<span class="dim">/docs</span></span>
+  </a>
+  <nav class="topnav">
+    <a href="index.html" class="active">Guides</a>
+    <a href="../index.html#cli">CLI</a>
+    <a href="../index.html#explorer">API console</a>
+    <a href="../index.html#dashboards">Grafana</a>
+    <a href="../openapi.json" class="nav-secondary">OpenAPI</a>
+    <a href="../llms.txt" class="nav-secondary">llms.txt</a>
+  </nav>
+  <div class="topbar-actions">
+    <button id="theme-toggle" class="icon-btn" type="button" title="Toggle theme" aria-label="Toggle theme">
+      <svg class="icon-sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M5.2 5.2l1.6 1.6M17.2 17.2l1.6 1.6M18.8 5.2l-1.6 1.6M6.8 17.2l-1.6 1.6"/></svg>
+      <svg class="icon-moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.4A8.6 8.6 0 0 1 9.6 4 8.6 8.6 0 1 0 20 14.4Z"/></svg>
+    </button>
+  </div>
+</header>
+<div class="docs-shell">
+  <aside class="docs-side" aria-label="Documentation">
+    <nav class="docs-nav">
+      <p class="docs-nav-label">Guides</p>
+      <a href="getting-started.html">Getting started</a>
+      <a href="hitron-cli.html">hitron-cli</a>
+      <a href="grafana.html">Grafana</a>
+      <a href="local-proxy.html" aria-current="page">Local proxy</a>
+      <a href="kb.html">Knowledge base</a>
+      <a href="verification.html">Verification</a>
+    </nav>
+    <nav class="docs-toc" aria-label="On this page">
+      <p class="docs-nav-label">On this page</p>
+        <a href="#the-fast-path-one-line" class="toc-l2">The fast path (one line)</a>
+        <a href="#is-it-pip3" class="toc-l2">Is it pip3?</a>
+        <a href="#manual-install-step-by-step" class="toc-l2">Manual install, step by step</a>
+        <a href="#what-the-proxy-does" class="toc-l2">What the proxy does</a>
+        <a href="#using-a-mock-instead-of-hardware" class="toc-l2">Using a mock instead of hardware</a>
+        <a href="#troubleshooting" class="toc-l2">Troubleshooting</a>
+        <a href="#fetch-failed-on-httpshitronnetquordev" class="toc-l3">&quot;fetch failed&quot; on https://hitron.netquor.dev</a>
+        <a href="#fetch-failed-locally" class="toc-l3">&quot;fetch failed&quot; locally</a>
+        <a href="#the-modem-is-not-reachable" class="toc-l3">The modem is not reachable</a>
+        <a href="#port-8000-is-already-in-use" class="toc-l3">Port 8000 is already in use</a>
+        <a href="#login-is-required" class="toc-l3">Login is required</a>
+        <a href="#updating-and-removing" class="toc-l3">Updating and removing</a>
+    </nav>
+  </aside>
+  <main id="main" class="docs-main">
+<article class="doc">
+<h1 id="run-the-docs-site-and-gateway-proxy-locally">Run the docs site and gateway proxy locally</h1>
+<p>The published site at <a class="ext" href="https://hitron.netquor.dev">https://hitron.netquor.dev</a> is static. It can show the
+API reference, dashboards, and <code>llms.txt</code>, but it <strong>cannot call your modem</strong>.
+A browser will not let a page served over <code>https://</code> fetch <code>http://192.168.100.1</code>
+(mixed content), and the CODA6X firmware sends no CORS headers either. The API
+console therefore calls <code>/proxy/...</code> on its own origin, and that path only
+exists when someone runs the small proxy in this repo.</p>
+<p>That is the whole reason for this guide. It takes about a minute.</p>
+<h2 id="the-fast-path-one-line">The fast path (one line)<a class="headerlink" href="#the-fast-path-one-line" title="Link to this section">#</a></h2>
+<pre><code class="language-bash">curl -fsSL https://hitron.netquor.dev/install.sh | bash -s -- --run --device 192.168.100.1
+</code></pre>
+<p>This installs into <code>~/.local/share/hitron</code> (an isolated virtualenv, no sudo,
+no system packages), links <code>~/.local/bin/hitron</code>, starts the site on
+<a class="ext" href="http://127.0.0.1:8000">http://127.0.0.1:8000</a>, and points the proxy at your gateway. Open the URL and
+leave the API console's base URL at <code>/proxy</code>.</p>
+<p>Stop it with Ctrl-C. Start it again later with:</p>
+<pre><code class="language-bash">~/.local/bin/hitron site --device 192.168.100.1
+</code></pre>
+<p>Prefer to browse without any chance of a write reaching the modem? Add
+<code>--read-only</code>:</p>
+<pre><code class="language-bash">curl -fsSL https://hitron.netquor.dev/install.sh | bash -s -- \
+  --run --device 192.168.100.1 --read-only
+</code></pre>
+<h2 id="is-it-pip3">Is it pip3?<a class="headerlink" href="#is-it-pip3" title="Link to this section">#</a></h2>
+<p>Not from PyPI — there is no published <code>hitron</code> package there, and installing
+this repo's Python package into the system interpreter is the least reliable
+path (macOS Homebrew Python refuses with <code>externally-managed-environment</code>, and
+the repo needs Python 3.11+). Use one of these instead:</p>
+<div class="table-scroll"><table>
+<thead>
+<tr>
+<th>You have</th>
+<th>Command</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Nothing yet</td>
+<td>the <code>curl … \| bash</code> line above</td>
+</tr>
+<tr>
+<td><code>pipx</code></td>
+<td><code>pipx install "git+https://github.com/Netquor/hitron"</code> then <code>hitron site --device 192.168.100.1</code></td>
+</tr>
+<tr>
+<td><code>uv</code></td>
+<td><code>uvx --from "git+https://github.com/Netquor/hitron" hitron site --device 192.168.100.1</code></td>
+</tr>
+<tr>
+<td>A checkout</td>
+<td><code>python3 -m venv .venv &amp;&amp; . .venv/bin/activate &amp;&amp; pip install -e .</code></td>
+</tr>
+</tbody>
+</table></div>
+<p><code>pip install hitron</code> alone will not do what you want: that name is unrelated on
+PyPI. The installer never uses <code>pip3 install</code> globally.</p>
+<h2 id="manual-install-step-by-step">Manual install, step by step<a class="headerlink" href="#manual-install-step-by-step" title="Link to this section">#</a></h2>
+<ol>
+<li><strong>Check Python.</strong> 3.11 or newer:</li>
+</ol>
+<p><code>bash
+   python3 --version</code></p>
+<p>macOS: <code>brew install python@3.12</code>. Debian/Ubuntu: <code>sudo apt install python3 python3-venv</code>.</p>
+<ol start="2">
+<li><strong>Get the code.</strong></li>
+</ol>
+<p><code>bash
+   git clone https://github.com/Netquor/hitron.git
+   cd hitron</code></p>
+<ol start="3">
+<li><strong>Make a virtualenv and install.</strong></li>
+</ol>
+<p><code>bash
+   python3 -m venv .venv
+   . .venv/bin/activate
+   pip install -e .</code></p>
+<ol start="4">
+<li><strong>Confirm the device answers.</strong> This is a plain HTTP read and needs no
+   login on the firmware analyzed here:</li>
+</ol>
+<p><code>bash
+   hitron coda60 192.168.100.1 | head -20
+   curl -s http://192.168.100.1/1/Device/CM/Version</code></p>
+<p>If that fails, the proxy cannot work either — fix reachability first (see
+   Troubleshooting).</p>
+<ol start="5">
+<li><strong>Start the site and proxy.</strong></li>
+</ol>
+<p><code>bash
+   hitron site --device 192.168.100.1 --port 8000</code></p>
+<p><code>hitron site: http://127.0.0.1:8000  (site=…/site, device=192.168.100.1, read/write)</code></p>
+<ol start="6">
+<li>
+<p><strong>Open <a class="ext" href="http://127.0.0.1:8000">http://127.0.0.1:8000</a>.</strong> The API console's base URL is <code>/proxy</code>.
+   Pick <code>GET /CM/Version</code>, press <strong>Send request</strong>, and expect <code>200</code> plus the
+   firmware/serial JSON.</p>
+</li>
+<li>
+<p><strong>Prove the proxy from the shell.</strong></p>
+</li>
+</ol>
+<p><code>bash
+   curl -s http://127.0.0.1:8000/proxy/1/Device/CM/Version
+   curl -s http://127.0.0.1:8000/proxy/1/Device/CM/DsInfo | head -c 300</code></p>
+<h2 id="what-the-proxy-does">What the proxy does<a class="headerlink" href="#what-the-proxy-does" title="Link to this section">#</a></h2>
+<p><code>hitron site</code> serves <code>site/</code> from the repository and forwards <code>/proxy/&lt;path&gt;</code>
+to <code>http://&lt;device&gt;/&lt;path&gt;</code>, preserving method, query string, request body, and
+response status. The page and the API share one origin, so the browser is happy
+and cookies work.</p>
+<p>Useful flags:</p>
+<div class="table-scroll"><table>
+<thead>
+<tr>
+<th>Flag</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--device HOST[:PORT]</code></td>
+<td>gateway the proxy targets (required for API calls)</td>
+</tr>
+<tr>
+<td><code>--port N</code></td>
+<td>listen port, default <code>8000</code></td>
+</tr>
+<tr>
+<td><code>--listen ADDR</code></td>
+<td>default <code>127.0.0.1</code>; use <code>0.0.0.0</code> only on a trusted LAN</td>
+</tr>
+<tr>
+<td><code>--read-only</code></td>
+<td><code>GET</code>/<code>HEAD</code> only; <code>POST</code>/<code>PUT</code>/<code>DELETE</code> return 403</td>
+</tr>
+<tr>
+<td><code>--dir PATH</code></td>
+<td>serve a different copy of the site</td>
+</tr>
+</tbody>
+</table></div>
+<p>The proxy forwards writes, including <code>POST /1/Device/CM/Reboot</code>. Use
+<code>--read-only</code> whenever you are exploring rather than administering.</p>
+<h2 id="using-a-mock-instead-of-hardware">Using a mock instead of hardware<a class="headerlink" href="#using-a-mock-instead-of-hardware" title="Link to this section">#</a></h2>
+<p>The repo ships an offline CODA6X UI in <code>mock/</code> (PHP and the firmware tree). It
+answers the same routes, so nothing above changes except the target:</p>
+<pre><code class="language-bash">./mock/run.sh            # terminal 1, serves 127.0.0.1:8080
+hitron site --device 127.0.0.1:8080   # terminal 2
+</code></pre>
+<h2 id="troubleshooting">Troubleshooting<a class="headerlink" href="#troubleshooting" title="Link to this section">#</a></h2>
+<h3 id="fetch-failed-on-httpshitronnetquordev">"fetch failed" on https://hitron.netquor.dev<a class="headerlink" href="#fetch-failed-on-httpshitronnetquordev" title="Link to this section">#</a></h3>
+<p>Expected: the static site has no <code>/proxy</code>, so the request is a 404 from GitHub
+Pages. Start the local proxy and use <a class="ext" href="http://127.0.0.1:8000">http://127.0.0.1:8000</a> instead. The
+console now says so explicitly when it detects a static host.</p>
+<h3 id="fetch-failed-locally">"fetch failed" locally<a class="headerlink" href="#fetch-failed-locally" title="Link to this section">#</a></h3>
+<p>Check the proxy's terminal. Then:</p>
+<pre><code class="language-bash">curl -i http://127.0.0.1:8000/proxy/1/Device/CM/Version
+</code></pre>
+<ul>
+<li><code>502 … proxy error: &lt;urlopen error timed out&gt;</code> — the device is unreachable
+  from this machine. See the next item.</li>
+<li><code>502 … Connection refused</code> — wrong <code>--device</code> port, or the modem's UI is off.</li>
+<li><code>404</code> — you are on the published site, not the local one, or <code>--dir</code> points
+  somewhere without <code>site/index.html</code>.</li>
+</ul>
+<h3 id="the-modem-is-not-reachable">The modem is not reachable<a class="headerlink" href="#the-modem-is-not-reachable" title="Link to this section">#</a></h3>
+<p><code>192.168.100.1</code> only answers from the modem's own LAN. Check:</p>
+<pre><code class="language-bash">ipconfig getifaddr en0          # macOS: is this 192.168.100.x?
+ping -c1 192.168.100.1
+curl -m 4 http://192.168.100.1/1/Device/CM/Version
+</code></pre>
+<p>If your Mac is on a different subnet, join the CODA's Wi-Fi or plug into a LAN
+port. There is no route through the internet.</p>
+<h3 id="port-8000-is-already-in-use">Port 8000 is already in use<a class="headerlink" href="#port-8000-is-already-in-use" title="Link to this section">#</a></h3>
+<pre><code class="language-bash">hitron site --device 192.168.100.1 --port 8080
+</code></pre>
+<p>Then open <a class="ext" href="http://127.0.0.1:8080">http://127.0.0.1:8080</a>. Do not pick 8080 if the mock is already
+using it.</p>
+<h3 id="login-is-required">Login is required<a class="headerlink" href="#login-is-required" title="Link to this section">#</a></h3>
+<p>Reads are unauthenticated on the firmware analyzed here. If yours is locked
+down, the console's <strong>Login via proxy</strong> button posts to
+<code>/proxy/1/Device/Users/Login</code> and keeps the session cookie. The CLI's read
+command is anonymous; write commands require credentials:</p>
+<pre><code class="language-bash">hitron coda60-reboot 192.168.100.1 --username admin --password '…'
+</code></pre>
+<h3 id="updating-and-removing">Updating and removing<a class="headerlink" href="#updating-and-removing" title="Link to this section">#</a></h3>
+<pre><code class="language-bash">curl -fsSL https://hitron.netquor.dev/install.sh | bash        # update
+curl -fsSL https://hitron.netquor.dev/install.sh | bash -s -- --uninstall
+</code></pre>
+<p>The installer removes only its own virtualenv and symlinks.</p>
+</article>
+    <nav class="docs-pager" aria-label="Pages">
+      <a class="prev" href="grafana.html"><span>Previous</span>Grafana</a>
+      <a class="next" href="kb.html"><span>Next</span>Knowledge base</a>
+    </nav>
+    <p class="docs-edit"><a class="ext" href="https://github.com/Netquor/hitron/blob/main/docs/LOCAL-PROXY.md">Edit this page on GitHub</a></p>
+  </main>
+</div>
+<footer class="footer">
+  <p>Not official Hitron documentation. Field names come from the device; mistakes are ours. <a href="../llms.txt">llms.txt</a> · <a href="../openapi.json">OpenAPI</a> · <a href="https://github.com/Netquor/hitron">Source</a></p>
+</footer>
+</body>
+</html>

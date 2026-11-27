@@ -1,0 +1,414 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hitron KB: HT-EM5 MoCA bridges + CODA6X (CODA-60) + CODA-57 (legacy .asp API) · hitron docs</title>
+<meta name="description" content="Everything we&#x27;ve reverse engineered about these Hitron product/API families. Read
+this first; the three OpenAPI specs in ../specs/ (openapi-ht-em5.yaml,
+openapi-coda60.yaml, openapi-coda57-legacy.yaml">
+<meta name="theme-color" content="#04050b">
+<link rel="canonical" href="https://hitron.netquor.dev/docs/kb.html">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><defs><linearGradient id='g' x1='0' y1='0' x2='1' y2='1'><stop offset='0' stop-color='%235eead4'/><stop offset='1' stop-color='%23a78bfa'/></linearGradient></defs><rect width='32' height='32' rx='9' fill='%2304050b'/><circle cx='16' cy='16' r='6.5' fill='none' stroke='url(%23g)' stroke-width='3'/></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500;600&amp;family=Space+Grotesk:wght@500;600;700&amp;display=swap">
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../assets/glass.css">
+<link rel="stylesheet" href="../assets/docs.css">
+<script>try{var t=localStorage.getItem('hitron.theme');if(t)document.documentElement.dataset.theme=t;else if(matchMedia('(prefers-color-scheme: light)').matches)document.documentElement.dataset.theme='light'}catch(e){}</script>
+<script src="../assets/fx.js" defer></script>
+<script src="../assets/docs.js" defer></script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="topbar">
+  <a class="brand" href="../index.html#top">
+    <span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 16 16" width="14" height="14"><circle cx="8" cy="8" r="5.5" fill="none" stroke="currentColor" stroke-width="2.2"/></svg></span>
+    <span>hitron<span class="dim">/docs</span></span>
+  </a>
+  <nav class="topnav">
+    <a href="index.html" class="active">Guides</a>
+    <a href="../index.html#cli">CLI</a>
+    <a href="../index.html#explorer">API console</a>
+    <a href="../index.html#dashboards">Grafana</a>
+    <a href="../openapi.json" class="nav-secondary">OpenAPI</a>
+    <a href="../llms.txt" class="nav-secondary">llms.txt</a>
+  </nav>
+  <div class="topbar-actions">
+    <button id="theme-toggle" class="icon-btn" type="button" title="Toggle theme" aria-label="Toggle theme">
+      <svg class="icon-sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M5.2 5.2l1.6 1.6M17.2 17.2l1.6 1.6M18.8 5.2l-1.6 1.6M6.8 17.2l-1.6 1.6"/></svg>
+      <svg class="icon-moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.4A8.6 8.6 0 0 1 9.6 4 8.6 8.6 0 1 0 20 14.4Z"/></svg>
+    </button>
+  </div>
+</header>
+<div class="docs-shell">
+  <aside class="docs-side" aria-label="Documentation">
+    <nav class="docs-nav">
+      <p class="docs-nav-label">Guides</p>
+      <a href="getting-started.html">Getting started</a>
+      <a href="hitron-cli.html">hitron-cli</a>
+      <a href="grafana.html">Grafana</a>
+      <a href="local-proxy.html">Local proxy</a>
+      <a href="kb.html" aria-current="page">Knowledge base</a>
+      <a href="verification.html">Verification</a>
+    </nav>
+    <nav class="docs-toc" aria-label="On this page">
+      <p class="docs-nav-label">On this page</p>
+        <a href="#why-this-repo-exists" class="toc-l2">Why this repo exists</a>
+        <a href="#1-ht-em5-moca-bridge" class="toc-l2">1. HT-EM5 (MoCA bridge)</a>
+        <a href="#hidden-oids-including-a-dormant-tr-069cwmp-client-config" class="toc-l3">Hidden OIDs, including a dormant TR-069/CWMP client config</a>
+        <a href="#2-coda6x--coda-60" class="toc-l2">2. CODA6X / CODA-60</a>
+        <a href="#model-identity-deviceinfo-not-tr-181" class="toc-l3">Model identity: /deviceinfo, not TR-181</a>
+        <a href="#capability-gating-and-why-a-200-is-not-proof" class="toc-l3">Capability gating, and why a 200 is not proof</a>
+        <a href="#live-verification-87101b4-customer-owned-coda60-2026-11-26" class="toc-l3">Live verification: 8.7.1.0.1b4 (customer-owned CODA60, 2026-11-26)</a>
+        <a href="#radiochannel-deep-dive" class="toc-l3">Radio/channel deep dive</a>
+        <a href="#writeaction-endpoints-confirmed-from-the-firmwares-own-php-source-implemented-in-coda60py" class="toc-l3">Write/action endpoints (confirmed from the firmware&#x27;s own PHP source, implemented in coda60.py)</a>
+        <a href="#quirks-found-in-the-firmware-source-informational-none-exploited" class="toc-l3">Quirks found in the firmware source (informational, none exploited)</a>
+        <a href="#3-coda-57--confirmed-the-legacy-asp-api" class="toc-l2">3. CODA-57 — confirmed: the legacy .asp API</a>
+        <a href="#4-whats-still-open--next-steps" class="toc-l2">4. What&#x27;s still open / next steps</a>
+    </nav>
+  </aside>
+  <main id="main" class="docs-main">
+<article class="doc">
+<h1 id="hitron-kb-ht-em5-moca-bridges--coda6x-coda-60--coda-57-legacy-asp-api">Hitron KB: HT-EM5 MoCA bridges + CODA6X (CODA-60) + CODA-57 (legacy .asp API)</h1>
+<p>Everything we've reverse engineered about these Hitron product/API families. Read
+this first; the three OpenAPI specs in <code>../specs/</code> (<code>openapi-ht-em5.yaml</code>,
+<code>openapi-coda60.yaml</code>, <code>openapi-coda57-legacy.yaml</code>) are the wire-level reference.
+This file is the aggregate — if you only read one thing, read this one.</p>
+<p><strong>Scope note on consent:</strong> the three HT-EM5 bridges are lab devices that can be
+tested destructively (default creds, not production). The CODA-60/CODA-57 is a
+<strong>real, in-service cable modem</strong> on a real ISP account (Midco) — treat its data as
+production. Never write/reboot/factory-reset it without being asked each time, and
+never commit real account credentials/tokens (the kind that lived in
+<code>netquor-sdn/aggregator/rebootmodem.txt</code>: a real name, email, account number, bearer
+tokens) into this or any repo. This KB and all three specs describe the <em>API shape</em>
+only.</p>
+<h2 id="why-this-repo-exists">Why this repo exists<a class="headerlink" href="#why-this-repo-exists" title="Link to this section">#</a></h2>
+<p>Before this repo, "talk to these Hitron devices" existed in three disconnected
+places: <code>netquor-sdn/aggregator/moca_client.py</code> (a complete HT-EM5 client with no
+consumer), <code>netquor-sdn/server/src/features/modem/service.ts</code> (a consumer with no
+client — it expects a sidecar to feed it <code>modem_metrics.json</code>), and
+<code>~/Documents/hitron-client/</code> (that sidecar, but a separate, unversioned project next
+to this product). This repo is the golden source that replaces all three: one
+package, <code>hitron</code>, with a client per device family, a unified Prometheus exporter,
+a CLI, and these specs — meant to be imported by <code>netquor-sdn</code> (or anything else)
+instead of re-derived or duplicated again.</p>
+<p>See <code>../README.md</code> for how to install and run it.</p>
+<h2 id="1-ht-em5-moca-bridge">1. HT-EM5 (MoCA bridge)<a class="headerlink" href="#1-ht-em5-moca-bridge" title="Link to this section">#</a></h2>
+<p>Full spec: <code>../specs/openapi-ht-em5.yaml</code>. Client: <code>../src/hitron/ht_em5.py</code>.</p>
+<ul>
+<li>Tiny RPC-over-HTTP API: <code>POST /ms/{type}/{reg}[/GET|/PUT]</code>, body <code>{"data":[...]}</code>,
+  values as 32-bit hex words. HTTP Basic auth (default <code>admin</code>/<code>admin</code>), <code>csrf_token</code>
+  cookie echoed as <code>X-CSRF-TOKEN</code>, single connection at a time (InterNiche embedded
+  stack — serialize every call; the client's <code>max_concurrency</code> defaults to 1).</li>
+<li>Per-band register families (MoCA password, scan mask/offset, primary-channel masks)
+  are <code>BASE + bandIdx</code> (0=D-Ext, 1=D-Low, 2=D-High), computed client-side — this isn't
+  three different endpoints, it's arithmetic on one.</li>
+<li><code>0xb00</code> reboot and <code>0xb01</code> factory-reset (string-table confirmed, factory-reset not
+  yet exercised live) have no server-side confirmation.</li>
+<li>Admin password (<code>0x20e</code>) and MoCA password (<code>0x1049</code>-family) are both returned in
+  plaintext to any authenticated reader — the client never reads <code>0x20e</code>.</li>
+</ul>
+<h3 id="hidden-oids-including-a-dormant-tr-069cwmp-client-config">Hidden OIDs, including a dormant TR-069/CWMP client config<a class="headerlink" href="#hidden-oids-including-a-dormant-tr-069cwmp-client-config" title="Link to this section">#</a></h3>
+<p>A read-only sweep of ~1,400 additional OIDs (type 0: <code>0x0</code>-<code>0xff</code>, <code>0x1000</code>-<code>0x11ff</code>;
+type 1: <code>0x100</code>-<code>0x4ff</code>; skipping <code>0xb00</code>-<code>0xbff</code> and the known password OIDs) against
+one HT-EM5 unit found 412 that answer, none referenced anywhere in the device's own
+HTML/JS — genuinely undocumented by the UI. The most significant block:</p>
+<div class="table-scroll"><table>
+<thead>
+<tr>
+<th>OID</th>
+<th>Decoded value</th>
+<th>What it is</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>0x267</code></td>
+<td><code>http://10.1.1.150:8080/tr069</code></td>
+<td><strong>A TR-069/CWMP ACS URL baked into the bridge.</strong></td>
+</tr>
+<tr>
+<td><code>0x268</code></td>
+<td><code>admin</code></td>
+<td>ACS connection-request username.</td>
+</tr>
+<tr>
+<td><code>0x269</code></td>
+<td><code>xaps</code> (partial — alignment not fully resolved)</td>
+<td>Likely the start of a ConnectionRequestPassword field; decode the full word run before trusting it.</td>
+</tr>
+<tr>
+<td><code>0x275</code></td>
+<td><code>10.1.1.150</code></td>
+<td>Same host as <code>0x267</code>, stored separately (likely a distinct TR-069 param).</td>
+</tr>
+<tr>
+<td><code>0x277</code> / <code>0x278</code></td>
+<td><code>stun_test</code> / <code>stun_pass</code></td>
+<td>STUN credentials for TR-069 NAT traversal — these read as <strong>placeholder/test values</strong>, not a real carrier's secrets.</td>
+</tr>
+<tr>
+<td><code>0x304</code></td>
+<td><code>ECA7ML3</code></td>
+<td>A sub-component/chip string.</td>
+</tr>
+<tr>
+<td><code>0x306</code></td>
+<td><code>1.0.0</code></td>
+<td>A sub-component firmware version.</td>
+</tr>
+<tr>
+<td><code>0x350</code></td>
+<td><code>111-999</code></td>
+<td>Looks like a placeholder serial/model pattern.</td>
+</tr>
+<tr>
+<td><code>0x360</code></td>
+<td><code>MaxLinear</code></td>
+<td>Confirms the chip vendor directly (expected — MXL371x).</td>
+</tr>
+</tbody>
+</table></div>
+<p>The other ~390 hits are mostly all-zero or small-integer config slots in the
+<code>0x1000</code>-<code>0x117f</code> MoCA-config block whose purpose isn't decoded (e.g. <code>0x116b</code>-<code>0x1173</code>
+all read <code>0x00000005</code>; <code>0x10a9</code>-<code>0x10c0</code> look like a table of small tx-power-ish
+values, possibly per-channel TX power — worth correlating against a channel-plan
+change).</p>
+<p><strong>Implication:</strong> this firmware ships with a dormant TR-069 management client pointing
+at what looks like a lab/dev ACS (<code>10.1.1.150</code>), not a live carrier endpoint. Treat
+"ever point it at a real ACS" as its own, separate decision — it's a carrier-grade
+remote-management channel, a different risk class from the <code>/ms/</code> register API.</p>
+<p><strong>Confirmed identical across all three physical bridges</strong> (<code>.212</code>, <code>.241</code>, <code>.60</code>):
+the same 412 OIDs answer on every unit, with byte-for-byte identical values for the
+entire TR-069 block (same ACS URL, same <code>admin</code> username, same <code>stun_test</code>/
+<code>stun_pass</code> placeholders) — this is a shared default baked into the firmware image,
+not per-device config. The only values that differ between units are exactly the
+ones that should: each bridge's own MAC (<code>0x103</code>), IP (<code>0x20b</code>), a per-device counter
+(<code>0x104</code>), and two config flags (<code>0x1002</code> preferred-NC, <code>0x1009</code> band mask) that
+simply happen to differ because these particular units were configured differently,
+not because the firmware build differs.</p>
+<h2 id="2-coda6x--coda-60">2. CODA6X / CODA-60<a class="headerlink" href="#2-coda6x--coda-60" title="Link to this section">#</a></h2>
+<p>Full spec: <code>../specs/openapi-coda60.yaml</code>. Client: <code>../src/hitron/coda60.py</code>.</p>
+<ul>
+<li>Real architecture: <code>lighttpd</code>+<code>php-fpm</code> serving a Fat-Free-Framework PHP app
+  (<code>www/hitron/app/</code>), whose controllers are thin wrappers over <code>extension=cosa.so</code> —
+  RDK-B's native bridge into the standard <code>Device.*</code> TR-181 object tree. The endpoint
+  names are Hitron's; the underlying data model is the same one CableLabs/RDK-B
+  publish for every DOCSIS gateway, not Hitron-proprietary.</li>
+<li>Base path <code>/1/Device/...</code>, ~50 routes covering DOCSIS status (<code>CM/DsInfo</code>,
+  <code>CM/UsInfo</code>, <code>CM/DsOfdm</code>, <code>CM/UsOfdm</code>, <code>CM/Log</code>, <code>CM/DocsisProvision</code>), MoCA
+  (<code>/1/Device/MoCA</code>, full field list confirmed from the firmware's own <code>MoCA.php</code>
+  model), WiFi radios/SSIDs/ATF, the on-board Ethernet switch (routed, misleadingly,
+  under <code>/Advanced/AdvancedSwitch</code>), firewall rules, DHCP/DDNS/WAN, voice (MTA) status,
+  and a <strong>full spectrum analyzer</strong> (see below).</li>
+<li>Two auth schemes: a cookie session (<code>SESSION.uid</code>, via <code>/1/Device/Users/Login</code>) for
+  the browser UI, and a separate RS256-JWT vendor-app registration flow
+  (<code>/1/Device/API/Register</code>) issuing a bearer token sent as a custom <code>ht-app-header</code>.</li>
+<li>Confirmed against the independently-derived <code>CODA_60.py</code> field names — they match,
+  strong corroboration this spec's shape is right.</li>
+<li>One firmware image is shared across the whole CODA family. <code>app/routes.ini</code> has 87
+  route patterns; the controllers' <code>@info</code> / <code>@ifname</code> branches expand them to 104
+  concrete read targets. Which of those a given SKU should be asked for is a
+  capability question, not a routing one — see the next two subsections.</li>
+</ul>
+<h3 id="model-identity-deviceinfo-not-tr-181">Model identity: <code>/deviceinfo</code>, not TR-181<a class="headerlink" href="#model-identity-deviceinfo-not-tr-181" title="Link to this section">#</a></h3>
+<p>On the live 8.7.1.0.1b4 unit both <code>CM/Version</code> and <code>Router/SysInfo</code> report
+<code>modelName: null</code>, so there is nothing in <code>/1/Device/*</code> to key a per-model adapter on.
+The root telemetry route does report it:</p>
+<pre><code>GET /deviceinfo
+{"errCode":"000","device_id":"...","hw_model":"CODA60","hw_manufacturer":"Hitron Technologies",
+ "hardware_version":"1A","software_version":"8.7.1.0.1b4","serial_number":"..."}
+</code></pre>
+<p><code>/deviceinfo</code> is not under <code>/1/Device/</code> — it maps to the root <code>@info</code> route handled by
+<code>TelemetryAssist</code>, alongside <code>/rfmetrics</code> and <code>/pnm</code> (plus <code>/pnm/{rxmer,ch_est_coef,
+us_pre_eq,mod_prof}</code>). Those are unauthenticated and were missed by the earlier
+<code>/1/Device</code>-only survey. <code>src/hitron/models.py</code> prefers <code>hw_model</code> over
+<code>Device.DeviceInfo.ModelName</code>, then falls back to a probe-refined generic profile.
+If a build reports a family label rather than a SKU, pass <code>--model</code> explicitly; probe
+evidence can still add WiFi/voice back, but it cannot detect router mode.</p>
+<h3 id="capability-gating-and-why-a-200-is-not-proof">Capability gating, and why a 200 is not proof<a class="headerlink" href="#capability-gating-and-why-a-200-is-not-proof" title="Link to this section">#</a></h3>
+<p><code>specs/models.json</code> is an 18-profile catalog (vendor portfolio rows plus the
+firmware-internal strings in <code>MenuCreater.php</code>: <code>CODA-4589-CGO</code>, <code>CODA-4589-RES</code>,
+<code>CHITA-MGC</code>, <code>CHITA-RES</code>, <code>CODA-4582-RES</code>). Each profile carries DOCSIS generation,
+WiFi bands, voice lines, MoCA, USB, battery and router-mode flags;
+<code>src/hitron/adapters.py</code> tags every endpoint with the capability it needs, and
+<code>plan(profile)</code> selects the intersection.</p>
+<p>The trap this design exists to avoid: the shared app answers <code>/1/Device/WiFi/WPS</code>
+and <code>/1/Device/MTA/StatusInfo</code> with <strong>200 on a wired-only CODA60</strong>, with empty strings
+and null hardware fields (<code>NumberOfSLIC: null</code>, all <code>LineNRegState: null</code>). A
+status-code-only prober concludes "WiFi + voice" and then alarms on hardware that does
+not exist. Probes are therefore evidence-based: a populated BSSID/SSID means a radio,
+a non-null SLIC count or line state means an EMTA. An empty USB list means an empty
+port, not an absent one, so it never removes the capability.</p>
+<h3 id="live-verification-87101b4-customer-owned-coda60-2026-11-26">Live verification: 8.7.1.0.1b4 (customer-owned CODA60, 2026-11-26)<a class="headerlink" href="#live-verification-87101b4-customer-owned-coda60-2026-11-26" title="Link to this section">#</a></h3>
+<p>GET-only, no writes, no reboot/reset. Full table in <code>VERIFICATION.md</code>; the machine
+readable report is <code>../specs/verification-coda60.json</code>. Headline:</p>
+<ul>
+<li>104 branch targets probed: <strong>43 ok, 7 rejected, 54 PHP-8 500s</strong>.</li>
+<li>The 500s are shipped-controller bugs, not request shaping: 37
+  <code>Undefined array key "info"</code>, 7 <code>getInstanceIds()</code> (platform defines
+  <code>getInstanceIDs</code>), 5 <code>Optional parameter $radio declared before required</code>, plus
+  dynamic-property/type errors. They fail identically in the browser.</li>
+<li>Every <code>/WiFi/Radios/*</code> and <code>/WiFi/SSIDs*</code> read is dead on this build: <code>RadioInfo</code>
+  fatals at class load, and <code>Utils::checkValidIfName()</code> does a <code>string + string</code>.</li>
+<li>Corrected shapes vs. the first pass: <code>/Menu/Main</code> and <code>/Menu/Sub</code> are
+  case-sensitive (lowercase <code>main</code> is rejected); SSID reads need
+  <code>/WiFi/SSIDs/{ifname}/version</code>, not a numeric index; the WiFi survey shape is
+  <code>/WiFi/Radios/Advanced</code>; telemetry lives at the root, not under <code>/1/Device</code>.</li>
+<li><code>/1/Device/Manage</code> returns <code>cusadmin,false</code> in plaintext to an unauthenticated
+  GET — the admin username, disclosed before login.</li>
+<li><code>/1/Device/AdminRemoteManagement/Backup</code> is exposed but 500s: <code>confPhp get</code> never
+  creates <code>/tmp/basic.cfg</code>.</li>
+<li><code>/1/Device/Upload</code> accepts a <code>.cfg</code> upload into <code>/var/tmp</code> without auth; the
+  restore handler builds <code>exec('confPhp restore '.$target)</code> from an unvalidated
+  filename. Neither was exercised.</li>
+</ul>
+<h3 id="radiochannel-deep-dive">Radio/channel deep dive<a class="headerlink" href="#radiochannel-deep-dive" title="Link to this section">#</a></h3>
+<ul>
+<li><strong>DOCSIS SC-QAM + OFDM, both directions</strong> are fully exposed with per-channel
+  frequency, modulation, signal strength, SNR, corrected/uncorrectable codewords
+  (<code>CM/DsInfo</code>, <code>CM/UsInfo</code>), plus OFDM-specific PLC/NCP/MDC1 lock status and PLC power
+  (<code>CM/DsOfdm</code>), and OFDMA digital attenuation / reported power / FFT value
+  (<code>CM/UsOfdm</code>). Everything needed for a real signal-quality dashboard or alerting.</li>
+<li><strong>Full-band spectrum analyzer, genuinely exposed via REST:</strong> <code>/1/Device/Spectrum/*</code>
+  shells out to <code>/usr/sbin/hitrondec</code> (a stripped native ELF binary) with four modes:
+  <code>-f centFreq fromFreq toFreq</code> (power sweep, 43-1794 MHz range enforced server-side),
+  <code>-l</code> (available frequency list), <code>-m</code> (real-time data), <code>-c portId</code> (QAM
+  <strong>constellation diagram</strong> points for one downstream port, 0-31). A carrier-grade
+  diagnostic normally locked to field techs, sitting behind the same session cookie as
+  everything else. Not yet wrapped in <code>coda60.py</code> (read-only, low risk to add).</li>
+<li><strong>WiFi radios</strong> are addressed by 1-based index (bounded by <code>Utils::getRadioNum()</code>,
+  itself driven by <code>SSID2GNum=4</code> / <code>SSID5GNum=4</code> in <code>app/config.ini</code>), support GET,
+  PUT (full, server-validates via <code>Utils::checkRadioValidate</code>), and PATCH (partial,
+  also accepts <code>athX</code>-style interface names remapped to the numeric index). Airtime
+  Fairness (ATF) is a first-class sibling resource, both globally and per-SSID/station.</li>
+<li><strong>MoCA fields</strong> (from the firmware's own model, the authoritative shape):
+  <code>moca_status</code>, <code>fs_mode</code> (channel plan), <code>fs_channel</code>, <code>fs_scan_start/end</code>,
+  <code>txpower</code>, <code>beaconpwr</code>, <code>nctype</code> (Preferred vs Auto Negotiated), <code>mocaNTSecurity</code>,
+  <code>password</code> (plaintext — not requested by this client), <code>fwVersion</code>, <code>mocaMac</code>,
+  <code>coaxTx</code>, <code>coaxRx</code>, <code>mocaLink</code>. Same underlying <code>Device.MoCA.Interface.1.*</code> TR-181
+  object the HT-EM5's own register map conceptually mirrors — two different
+  front-ends over the same kind of MoCA stack.</li>
+</ul>
+<h3 id="writeaction-endpoints-confirmed-from-the-firmwares-own-php-source-implemented-in-coda60py">Write/action endpoints (confirmed from the firmware's own PHP source, implemented in <code>coda60.py</code>)<a class="headerlink" href="#writeaction-endpoints-confirmed-from-the-firmwares-own-php-source-implemented-in-coda60py" title="Link to this section">#</a></h3>
+<ul>
+<li><strong>Login:</strong> <code>POST /1/Device/Users/Login</code>, body <code>model={"username":...,"password":...}</code>.
+  <code>UserAction.php::checkLogin()</code> is LAN-aware: on the LAN-side IP it checks one UCI
+  credential pair (<code>access-mgmt.cusadmin.*</code>), off-LAN it checks a different one
+  (<code>access-mgmt.userrole.*</code>) with a <code>crypt()</code>-hashed password — the same login call
+  can behave differently depending on which interface the request arrives on.</li>
+<li><strong>Reboot family — all three hit the same endpoint</strong>, <code>POST /1/Device/CM/Reboot</code>,
+  distinguished only by the body flag (<code>ModelInfo.php::doRebootAction</code>). The handler
+  reads <strong>all three</strong> keys before choosing a branch, and PHP 8 makes a missing key a
+  fatal, so a partial body is an HTTP 500, not <code>errCode 001</code>:</li>
+<li><code>{"reboot": 1}</code> → sets <code>Device.DeviceInfo.X_HITRON_COM_MGMT.Reboot = true</code> (a
+    TR-181 flag; some other backend process is expected to act on it). <strong>Measured
+    inert on 8.7.1.0.1b4</strong> — the call answers <code>errCode 000</code> and nothing happens.</li>
+<li><code>{"factoryReset": 1}</code> → sets the matching FactoryReset flag the same way. Not run.</li>
+<li><code>{"restoreReset": 1}</code> → <strong>no flag indirection at all</strong> — the PHP code itself runs
+    <code>exec('sync; ncpu_exec -e ht_reset_cmd.sh reboot'); exec('reboot')</code>. This is the
+    branch that works; measured with the full body
+    <code>{"reboot":0,"factoryReset":0,"restoreReset":1}</code>, which drops the TCP connection
+    (curl exit 52), takes the unit down ~5 s later and back ~122 s after that, with
+    <code>CM Reboot Reason : POWER_ON</code> in the log (see <code>docs/VERIFICATION.md</code>).</li>
+<li>Any body that reaches the end still answers <code>errCode 001</code> (HTTP 400), including
+    <code>{"reboot":0,"factoryReset":0,"restoreReset":0}</code>.</li>
+<li><strong>FEC counters:</strong> <code>PUT /1/Device/CM/DsInfo</code> clears the DOCSIS 3.0 downstream FEC
+  counters (<code>ModelInfo.php::doClearDsFec</code> → <code>Docsis.ClearAllDownstreamFECCounter</code>)
+  and <code>PUT /1/Device/CM/DsOfdm</code> clears the OFDM ones. Both take a bare PUT with no
+  body or session. The 3.0 clear is complete in one call; the OFDM clear zeroes only
+  some channels per call and needs repeating. The vendor's own "Reset FEC Counters"
+  button only hits the 3.0 endpoint.</li>
+<li><strong>Admin password/username:</strong> <code>AdminPassword.php</code> exposes <code>POST /1/Device/Manage/Password</code>
+  (body <code>{oldPassword, newPassword, newPasswordConfirm}</code>) and
+  <code>POST /1/Device/Manage/Username</code> (body <code>{newUsername}</code>).</li>
+<li><strong>WiFi radio:</strong> already documented above — <code>PUT /1/Device/WiFi/Radios/{index}</code>.</li>
+</ul>
+<p>Executed against the real device so far: <code>{"reboot": 1}</code> (inert), the full
+<code>{"reboot":0,"factoryReset":0,"restoreReset":1}</code> body (reboots, verified), and both
+FEC clears. Nothing else here has — see the README's "Writes" section for the
+handling policy (explicit login, no auto-write; the destructive verbs require
+<code>--yes-really-do-this</code> on the Python CLI and <code>--confirm</code> on the Go CLI;
+<code>fec-reset</code> needs neither login nor confirmation).</p>
+<h3 id="quirks-found-in-the-firmware-source-informational-none-exploited">Quirks found in the firmware source (informational, none exploited)<a class="headerlink" href="#quirks-found-in-the-firmware-source-informational-none-exploited" title="Link to this section">#</a></h3>
+<ul>
+<li>Shipped with <code>DEBUG=5</code> (Fat-Free verbose-error mode) in <code>app/config.ini</code>.</li>
+<li>A debug line (<code>shell_exec("echo check_token &gt; /tmp/app-debug.log")</code>) fires on every
+  app-token auth check, world-readable.</li>
+<li>A user-creation/reset code path sets a fallback password hash of <code>md5("password")</code> —
+  worth confirming whether that path is reachable without a prior factory reset.</li>
+<li>No CableLabs-signature bypass, no shell, no secondary backdoor credentials found in
+  the extracted filesystem's strings or source — the device's management surface
+  really is just this REST API plus whatever the native <code>cosa.so</code>/DOCSIS MAC stack
+  exposes.</li>
+</ul>
+<h2 id="3-coda-57--confirmed-the-legacy-asp-api">3. CODA-57 — confirmed: the legacy <code>.asp</code> API<a class="headerlink" href="#3-coda-57--confirmed-the-legacy-asp-api" title="Link to this section">#</a></h2>
+<p><code>~/Documents/hitron-client/main.py</code> + <code>test.py</code> is the CODA-57 client. It hits a
+distinct URL family:</p>
+<pre><code>GET /data/{endpoint}.asp          (dsinfo, usinfo, dsofdminfo, usofdminfo,
+                                    getCMInit, getLinkStatus, getCmDocsisWan,
+                                    getSysInfo)
+</code></pre>
+<p>Field names (<code>signalStrength</code>, <code>channelId</code>, <code>plcpower</code>, <code>Subcarr0freqFreq</code>,
+<code>repPower1_6</code>, <code>uschindex</code>) are identical to the CODA6X REST layer's — both sit on the
+same underlying DOCSIS/RDK-B data model; <code>.asp</code> is the CODA-57's own, older-generation
+endpoint convention, predating the <code>app/</code>-based PHP+REST rewrite seen in the CODA6X
+<code>8.5.0.0.x</code> firmware. Full spec: <code>../specs/openapi-coda57-legacy.yaml</code>. Client:
+<code>../src/hitron/coda57.py</code>, including a direct port of <code>main.py</code>'s Midco in-spec power
+check (DS -6..15 dBmV, US 35..48 dBmV, with a +6 dB DOCSIS-3.0-equivalent adjustment
+on OFDMA upstream readings).</p>
+<p>Auth differs again here: <code>test.py</code> primes a session via <code>GET /login.html</code> (a classic
+HTML login page), implying a PHPSESSID-style cookie rather than HTTP Basic (HT-EM5) or
+the JWT/<code>ht-app-header</code> flow (CODA6X REST). <code>main.py</code> itself doesn't authenticate at
+all currently and silently returns <code>[]</code> on any failure, so whether these endpoints are
+actually gated has not been confirmed live — the host was unreachable from the
+development machine during this pass (different subnet). Re-verify before relying on
+<code>coda57.py</code> unattended.</p>
+<h2 id="4-whats-still-open--next-steps">4. What's still open / next steps<a class="headerlink" href="#4-whats-still-open--next-steps" title="Link to this section">#</a></h2>
+<ol>
+<li><strong>Live-verify <code>coda57.py</code></strong> against a real CODA-57/CODA-60 unit on a reachable
+   network — confirm response shapes for <code>getCMInit</code>/<code>getLinkStatus</code>/<code>getCmDocsisWan</code>
+   (fetched by the original script but never rendered/decoded, so their shape is
+   unconfirmed) and whether <code>/login.html</code> actually gates anything.</li>
+<li><strong>HT-EM5:</strong> decode the remaining <code>0x10a9</code>-<code>0x1173</code> config block and the <code>0x269</code>
+   ACS-password word alignment. Both are read-only investigation, no device risk.</li>
+<li>~~<strong>HT-EM5:</strong> sweep the other two bridges to confirm the register map and TR-069
+   block are consistent across units.~~ <strong>Done.</strong> Confirmed identical on all three
+   physical bridges — see §1.</li>
+<li>~~<strong>CODA6X:</strong> confirm the exact <code>@info</code> routing convention (path segment vs.
+   querystring) against live traffic.~~ <strong>Done.</strong> Path segments; 104 concrete
+   targets measured on 8.7.1.0.1b4 — see <code>VERIFICATION.md</code>.</li>
+<li><strong>CODA6X:</strong> never exercise <code>/1/Device/Manage</code> (admin password), reboot, or factory
+   reset against a real unit without being asked each time.</li>
+<li><strong>Decide on the TR-069 finding</strong> — it's a firmware default shared across every
+   unit, not per-device config, which makes it more plausible this is an
+   intentionally-shipped management hook rather than a leftover. Leave it dormant, or
+   treat "does this bridge ever phone home to a real ACS" as its own investigation.</li>
+<li><strong>Wire this package into <code>netquor-sdn</code></strong> — replace <code>aggregator/moca_client.py</code> and
+   the external <code>hitron-client</code> sidecar with <code>pip install</code>-ing this repo (or vendoring
+   it) and pointing <code>server/src/features/modem</code> and the exporter at it. Not done as
+   part of writing this repo — a deliberate choice for whoever does that integration.</li>
+<li>~~<strong>Add the spectrum analyzer to <code>coda60.py</code></strong>~~ <strong>Partly done.</strong> Every Spectrum
+   GET is in the adapter registry and the verifier, and <code>/Spectrum</code>, <code>/FreqList</code> and
+   <code>/RTData</code> are measured working. <code>/Constellation</code> and <code>/FreqPower</code> 500 on this build
+   (the handler reads <code>$args['query']</code>, which the route never supplies), so they stay
+   out of the poller.</li>
+<li><strong>Fix upstream, not around:</strong> the PHP-8 fatals are a firmware bug. If Hitron ships a
+   build with <code>getInstanceIDs()</code> and the <code>$radio</code>/<code>$f3</code> signature corrected, most of
+   the 48 dead endpoints come back with no client change.</li>
+</ol>
+</article>
+    <nav class="docs-pager" aria-label="Pages">
+      <a class="prev" href="local-proxy.html"><span>Previous</span>Local proxy</a>
+      <a class="next" href="verification.html"><span>Next</span>Verification</a>
+    </nav>
+    <p class="docs-edit"><a class="ext" href="https://github.com/Netquor/hitron/blob/main/docs/KB.md">Edit this page on GitHub</a></p>
+  </main>
+</div>
+<footer class="footer">
+  <p>Not official Hitron documentation. Field names come from the device; mistakes are ours. <a href="../llms.txt">llms.txt</a> · <a href="../openapi.json">OpenAPI</a> · <a href="https://github.com/Netquor/hitron">Source</a></p>
+</footer>
+</body>
+</html>
