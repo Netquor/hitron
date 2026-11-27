@@ -88,73 +88,81 @@
   <div><strong>0</strong><span>extra Python deps</span></div>
 </section>
 
-<section id="cli" class="section">
-  <div class="section-head">
-    <h2>hitron-cli: a live dashboard in your terminal</h2>
-    <p>One static binary, no runtime, no login. It reads the modem's signal levels every second and shows them as big numbers, trend graphs, and a channel table that turns red when codewords go bad. Works on the CODA6X (CODA-60), CODA-57, and HT-EM5.</p>
+<section id="cli" class="section cli">
+  <div class="cli-hero">
+    <div class="cli-hero-copy">
+      <p class="eyebrow">hitron-cli</p>
+      <h2>Your modem's signal, live in the terminal.</h2>
+      <p class="lede">One static binary and no login. Power, SNR, and codeword errors update every second, with trend graphs and a channel table that turns red when something is wrong. Works on the CODA6X, CODA-57, and HT-EM5.</p>
+      <div class="cmd" role="group" aria-label="Install command">
+        <code id="cli-install-cmd">go install github.com/Netquor/hitron/cli/cmd/hitron-cli@latest</code>
+        <button class="copy" data-copy="#cli-install-cmd" type="button">Copy</button>
+      </div>
+      <p class="muted small">Needs Go 1.22+. Prefer a download? Binaries for Linux, macOS, and Windows are on <a href="https://github.com/Netquor/hitron/releases">Releases</a>.</p>
+      <div class="cta-row">
+        <a class="btn primary" href="#cli-start">Get started</a>
+        <a class="quiet-link" href="https://github.com/Netquor/hitron/tree/main/cli">Source and flags ↗</a>
+      </div>
+    </div>
+    <figure class="shot glow">
+      <img src="assets/cli/summary.gif" alt="hitron-cli live summary in a macOS terminal window: power and SNR tiles, trend graphs, device identity, DOCSIS steps, and a downstream channel table updating every second" width="1108" height="948">
+      <figcaption>A CODA-60 polled once a second. The identifiers are made up; the readings are real.</figcaption>
+    </figure>
   </div>
 
-  <figure class="shot hero-shot">
-    <img src="assets/cli/summary.gif" alt="hitron-cli live summary: power and SNR tiles, trend graphs, device identity, DOCSIS steps, and a downstream channel table updating once a second" width="1196" height="1044" loading="lazy">
-    <figcaption>The live summary on a CODA-60, polling once a second. Identifiers in these captures are made up; the readings are real.</figcaption>
-  </figure>
+  <ol id="cli-start" class="cli-steps">
+    <li>
+      <span class="step-num">1</span>
+      <h3>Install</h3>
+      <p>Use the command above, or download a release and put it on your <code>PATH</code>.</p>
+    </li>
+    <li>
+      <span class="step-num">2</span>
+      <h3>Run it on the modem's LAN</h3>
+      <pre class="mini"><code>hitron-cli monitor</code></pre>
+      <p>It tries <code>192.168.100.1</code> and detects the family. Another address: <code>hitron-cli monitor 192.168.0.1</code>.</p>
+    </li>
+    <li>
+      <span class="step-num">3</span>
+      <h3>Press <kbd>h</kbd></h3>
+      <p>Every action is one key and <kbd>q</kbd> quits. For scripts, <code>hitron-cli stats --once</code> prints text and <code>--json</code> a snapshot.</p>
+    </li>
+  </ol>
 
-  <div class="cli-grid">
-    <div class="install cli-install">
-      <h3>Get started</h3>
-      <ol class="cli-steps">
-        <li>
-          <strong>Install</strong>
-          <p class="muted small">Grab a binary from <a href="https://github.com/Netquor/hitron/releases">Releases</a> (Linux, macOS, Windows; amd64 and arm64), or build it with Go 1.22+:</p>
-          <pre class="install-code"><span class="prompt" aria-hidden="true">$</span><code id="cli-install-cmd">go install github.com/Netquor/hitron/cli/cmd/hitron-cli@latest</code></pre>
-          <button class="btn copy" type="button" data-copy="#cli-install-cmd">Copy</button>
-        </li>
-        <li>
-          <strong>Run it from any machine on the modem's LAN</strong>
-          <pre class="install-code"><span class="prompt" aria-hidden="true">$</span><code id="cli-run-cmd">hitron-cli monitor</code></pre>
-          <button class="btn copy" type="button" data-copy="#cli-run-cmd">Copy</button>
-          <p class="muted small">It finds the modem at <code>192.168.100.1</code>, works out which family it is, and starts the live view. Another address: <code>hitron-cli monitor 192.168.0.1</code>. No terminal UI wanted: <code>hitron-cli stats --once</code> prints a text report and <code>--json</code> a snapshot.</p>
-        </li>
-        <li>
-          <strong>Press <kbd>h</kbd> for help</strong>
-          <p class="muted small">Everything is one key. <kbd>q</kbd> quits.</p>
-        </li>
-      </ol>
-    </div>
-    <div class="keys-card">
-      <h3>Keys</h3>
-      <dl class="keys">
-        <div><dt><kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd></dt><dd>summary · live spectrum · constellation</dd></div>
-        <div><dt><kbd>[</kbd> <kbd>]</kbd></dt><dd>previous / next channel in the analyser views</dd></div>
-        <div><dt><kbd>g</kbd></dt><dd>show or hide trend graphs</dd></div>
-        <div><dt><kbd>z</kbd></dt><dd>zero the FEC counters (counts since you pressed it)</dd></div>
-        <div><dt><kbd>t</kbd></dt><dd>next theme, remembered for next time</dd></div>
-        <div><dt><kbd>r</kbd> <kbd>a</kbd></dt><dd>refresh now · toggle automatic refresh</dd></div>
-        <div><dt><kbd>j</kbd> <kbd>k</kbd></dt><dd>scroll (the mouse wheel works too)</dd></div>
-        <div><dt><kbd>x</kbd></dt><dd>reboot, behind a typed confirmation</dd></div>
-      </dl>
-    </div>
-  </div>
+  <dl class="keys">
+    <div><dt><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd></dt><dd>summary, spectrum, constellation</dd></div>
+    <div><dt><kbd>[</kbd><kbd>]</kbd></dt><dd>step through analyser channels</dd></div>
+    <div><dt><kbd>g</kbd></dt><dd>trend graphs on or off</dd></div>
+    <div><dt><kbd>z</kbd></dt><dd>zero the FEC counters</dd></div>
+    <div><dt><kbd>t</kbd></dt><dd>next theme, remembered</dd></div>
+    <div><dt><kbd>r</kbd><kbd>a</kbd></dt><dd>refresh now, auto refresh</dd></div>
+    <div><dt><kbd>j</kbd><kbd>k</kbd></dt><dd>scroll; the mouse wheel too</dd></div>
+    <div><dt><kbd>x</kbd></dt><dd>reboot, behind a typed confirm</dd></div>
+  </dl>
 
-  <div class="cli-feature">
+  <article class="cli-feature">
     <div class="cli-feature-copy">
+      <p class="eyebrow">Errors</p>
       <h3>Codewords you can read at a glance</h3>
-      <p>Every channel shows corrected and uncorrectable codewords as one column, <code>13/711 98.20%</code>, coloured green when clean and red when not. The big tile at the top rolls the whole modem into one number. Lease and uptime read as <em>5 days</em> and <em>1 h 58 m</em>, and the event log is rewritten into plain sentences, such as a profile change shown as <em>12 → 6</em>.</p>
+      <p>Corrected and uncorrectable counts share one column, <code>13/711 98.20%</code>, green when clean and red when not. The tile at the top rolls the whole modem into one number. Lease and uptime read as <em>5 days</em> and <em>1 h 58 m</em>, and the event log becomes plain sentences, a profile change shown as <em>12 → 6</em>.</p>
     </div>
-  </div>
+    <figure class="shot"><img src="assets/cli/codewords.png" alt="The downstream channel table with a CCWE/UCCWE column showing corrected and uncorrectable codewords with percentages, coloured green or red" width="1108" height="360" loading="lazy"></figure>
+  </article>
 
-  <div class="cli-feature">
+  <article class="cli-feature flip">
     <div class="cli-feature-copy">
+      <p class="eyebrow">Analyser</p>
       <h3>A spectrum analyser and constellation, built in</h3>
-      <p>On CODA6X modems the cable modem's own tuner is exposed. Press <kbd>2</kbd> for a 6 MHz live spectrum capture around any downstream channel, or <kbd>3</kbd> for the I/Q constellation with MER. The modem has one tuner, so captures run one at a time; use <kbd>[</kbd> and <kbd>]</kbd> to step through channels.</p>
+      <p>CODA6X modems expose their own tuner. Press <kbd>2</kbd> for a live 6 MHz capture around any downstream channel, or <kbd>3</kbd> for the I/Q constellation with MER. There is one tuner, so captures run one at a time; <kbd>[</kbd> and <kbd>]</kbd> step through channels.</p>
     </div>
-    <figure class="shot"><img src="assets/cli/analyser.gif" alt="Spectrum view of a 6 MHz window, then the 256-QAM constellation for a downstream channel, stepping through channels" width="1196" height="1044" loading="lazy"></figure>
-  </div>
+    <figure class="shot"><img src="assets/cli/analyser.gif" alt="A 6 MHz spectrum capture, then the 256-QAM constellation, stepping through downstream channels" width="1108" height="694" loading="lazy"></figure>
+  </article>
 
-  <div class="cli-feature">
+  <article class="cli-feature">
     <div class="cli-feature-copy">
+      <p class="eyebrow">Themes</p>
       <h3>Six themes, one key</h3>
-      <p>Press <kbd>t</kbd> to cycle neon, synthwave, dracula, nord, gruvbox, and matrix. The gradient background needs a 24-bit colour terminal and turns itself off otherwise; <kbd>b</kbd> toggles it.</p>
+      <p>Press <kbd>t</kbd> to cycle them. The gradient background needs a 24-bit colour terminal and switches itself off otherwise; <kbd>b</kbd> toggles it.</p>
       <div class="theme-picker" role="group" aria-label="Theme preview">
         <button type="button" data-theme-shot="neon" aria-pressed="true">neon</button>
         <button type="button" data-theme-shot="synthwave" aria-pressed="false">synthwave</button>
@@ -164,18 +172,19 @@
         <button type="button" data-theme-shot="matrix" aria-pressed="false">matrix</button>
       </div>
     </div>
-    <figure class="shot"><img id="theme-shot" src="assets/cli/theme-neon.png" alt="hitron-cli summary in the neon theme" width="1196" height="1044" loading="lazy"></figure>
-  </div>
+    <figure class="shot"><img id="theme-shot" src="assets/cli/theme-neon.png" alt="hitron-cli summary in the neon theme" width="1108" height="948" loading="lazy"></figure>
+  </article>
 
-  <div class="cli-feature">
+  <article class="cli-feature flip">
     <div class="cli-feature-copy">
-      <h3>Reboot that cannot happen by accident</h3>
-      <p>Press <kbd>x</kbd> (or click the Reboot button) and a dialog asks you to type the word <code>reboot</code>. Nothing is sent before that, and <kbd>Esc</kbd> cancels. The CODA6X needs no username or password from the LAN, so the dialog does not ask for one. Factory reset and hard reset are deliberately not in the dashboard; they stay as separate commands.</p>
+      <p class="eyebrow">Safety</p>
+      <h3>A reboot that cannot happen by accident</h3>
+      <p>Press <kbd>x</kbd>, or click the Reboot button, and a dialog asks you to type <code>reboot</code>. Nothing is sent before that and <kbd>Esc</kbd> cancels. The CODA6X needs no username or password from the LAN, so the dialog asks for none. Factory reset and hard reset are not in the dashboard; they stay separate commands.</p>
     </div>
-    <figure class="shot"><img src="assets/cli/reboot.png" alt="The reboot confirmation dialog asking the user to type the word reboot" width="1196" height="1044" loading="lazy"></figure>
-  </div>
+    <figure class="shot"><img src="assets/cli/reboot.png" alt="The reboot confirmation dialog asking you to type the word reboot" width="1108" height="500" loading="lazy"></figure>
+  </article>
 
-  <p class="muted small">Source, flags, and the full command list: <a href="https://github.com/Netquor/hitron/tree/main/cli">cli/README.md</a>. Read-only by design: the dashboard polls the same endpoints the modem's own status page uses.</p>
+  <p class="muted small cli-foot">The dashboard only reads: it polls the same endpoints the modem's own status page uses. Full command list in <a href="https://github.com/Netquor/hitron/tree/main/cli">cli/README.md</a>.</p>
 </section>
 
 <section id="quickstart" class="section">
