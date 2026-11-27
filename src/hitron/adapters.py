@@ -350,7 +350,7 @@ ENDPOINTS: tuple[Endpoint, ...] = (
       summary="Constellation points for one downstream port", requires=("spectrum",),
       group="spectrum", state=_OK, http_status=200,
       query={"portId": 24},
-      note="portId is the analyser's own id, not the DOCSIS channel id: a live CODA-60 "
+      note="portId is the analyzer's own id, not the DOCSIS channel id: a live CODA-60 "
            "reports points for 0 and 25..31 only. Inactive ports answer 200 with an empty "
            "array. The handler parses the query with Utils::getUrlParams(), whose unquoted "
            "$_SERVER[HTTP_HOST] is a PHP 8 undefined-constant fatal; this build answers "

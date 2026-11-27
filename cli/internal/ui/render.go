@@ -361,7 +361,7 @@ func severityCell(sev hitron.Severity) string {
 	}
 }
 
-// eventText colours the summary by severity and highlights the arrow in
+// eventText colors the summary by severity and highlights the arrow in
 // "from → to" changes.
 func eventText(ev hitron.FriendlyEvent) string {
 	text := strings.ReplaceAll(ev.Summary, " → ", " "+AccentBold("→")+" ")

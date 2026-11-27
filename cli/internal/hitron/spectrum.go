@@ -10,11 +10,11 @@ import (
 	"time"
 )
 
-// The CODA6X ships a spectrum analyser behind /1/Device/Spectrum. Three of its
+// The CODA6X ships a spectrum analyzer behind /1/Device/Spectrum. Three of its
 // four branches shell out to /usr/sbin/hitrondec, so every payload is a thin
 // JSON wrapper around the tool's output:
 //
-//	FreqList      -l        the downstream channels the analyser can tune to
+//	FreqList      -l        the downstream channels the analyzer can tune to
 //	RTData        -m        per-channel power and MER snapshots
 //	FreqPower     -f c f t  a frequency/power trace for one capture window
 //	Constellation -c port   I/Q points for one downstream port
@@ -24,8 +24,8 @@ import (
 // an unrelated slice, so the client always asks for center±3 MHz and never
 // fires two captures concurrently.
 
-// SpectrumChannel is one downstream channel the analyser can tune to. PortID
-// is the analyser's own port index ("ri" in FreqList); it is not the DOCSIS
+// SpectrumChannel is one downstream channel the analyzer can tune to. PortID
+// is the analyzer's own port index ("ri" in FreqList); it is not the DOCSIS
 // channel id and the ids are not sequential (a live CODA-60 reports 0,25..31).
 type SpectrumChannel struct {
 	FreqMHz float64 `json:"freq_mhz"`
@@ -87,7 +87,7 @@ func (c *Client) spectrumOnly(what string) error {
 	return nil
 }
 
-// SpectrumChannels reads the analyser's frequency list.
+// SpectrumChannels reads the analyzer's frequency list.
 func (c *Client) SpectrumChannels(ctx context.Context) ([]SpectrumChannel, error) {
 	if err := c.spectrumOnly("spectrum channels"); err != nil {
 		return nil, err
@@ -111,7 +111,7 @@ func (c *Client) SpectrumChannels(ctx context.Context) ([]SpectrumChannel, error
 	return channels, nil
 }
 
-// SpectrumSweep captures a 6 MHz window centred on centerMHz. The firmware
+// SpectrumSweep captures a 6 MHz window centerd on centerMHz. The firmware
 // validates 49..1788 MHz; a center outside that range is clamped rather than
 // rejected, because the panel may be pointed at an arbitrary frequency.
 func (c *Client) SpectrumSweep(ctx context.Context, centerMHz float64) (*SpectrumSweep, error) {
@@ -187,7 +187,7 @@ func (c *Client) RealTimeSpectrum(ctx context.Context) ([]RealTimeFrame, error) 
 	return frames, nil
 }
 
-// Constellation reads the I/Q cloud for one analyser port. Inactive ports
+// Constellation reads the I/Q cloud for one analyzer port. Inactive ports
 // answer 200 with an empty constellation; that is not an error.
 func (c *Client) Constellation(ctx context.Context, portID int) (*Constellation, error) {
 	if err := c.spectrumOnly("constellation"); err != nil {

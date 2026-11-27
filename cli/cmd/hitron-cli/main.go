@@ -243,29 +243,29 @@ func runMonitor(ctx context.Context, client *hitron.Client, opts options) int {
 	fetch := func(runCtx context.Context) (*hitron.Snapshot, error) {
 		return snapshotWithTimeout(runCtx, client, opts.timeout)
 	}
-	// Analyser reads share one hardware tuner on the modem, so each gets its
+	// Analyzer reads share one hardware tuner on the modem, so each gets its
 	// own generous timeout and the TUI never runs two at once.
-	analyser := func(runCtx context.Context) (context.Context, context.CancelFunc) {
+	analyzer := func(runCtx context.Context) (context.Context, context.CancelFunc) {
 		return context.WithTimeout(runCtx, opts.timeout*2)
 	}
 	tui := ui.TUIOptions{
 		Channels: func(runCtx context.Context) ([]hitron.SpectrumChannel, error) {
-			callCtx, cancel := analyser(runCtx)
+			callCtx, cancel := analyzer(runCtx)
 			defer cancel()
 			return client.SpectrumChannels(callCtx)
 		},
 		Sweep: func(runCtx context.Context, centerMHz float64) (*hitron.SpectrumSweep, error) {
-			callCtx, cancel := analyser(runCtx)
+			callCtx, cancel := analyzer(runCtx)
 			defer cancel()
 			return client.SpectrumSweep(callCtx, centerMHz)
 		},
 		RealTime: func(runCtx context.Context) ([]hitron.RealTimeFrame, error) {
-			callCtx, cancel := analyser(runCtx)
+			callCtx, cancel := analyzer(runCtx)
 			defer cancel()
 			return client.RealTimeSpectrum(callCtx)
 		},
 		Constellation: func(runCtx context.Context, portID int) (*hitron.Constellation, error) {
-			callCtx, cancel := analyser(runCtx)
+			callCtx, cancel := analyzer(runCtx)
 			defer cancel()
 			return client.Constellation(callCtx, portID)
 		},
@@ -715,7 +715,7 @@ Keys:
   g        toggle trend graphs
   z        reset the downstream FEC counters (3.0 + OFDM; CODA6X)
   t        next theme (remembered for next time)
-  b        toggle the gradient background (24-bit colour terminals only)
+  b        toggle the gradient background (24-bit color terminals only)
   j / k    scroll (the mouse wheel works too)
   x        reboot, after a confirmation (also the Reboot button)
   space    refresh now
@@ -723,8 +723,8 @@ Keys:
   1        summary
   2 / s    live spectrum (6 MHz capture)
   3 / c    constellation (I/Q)
-  [ ]      previous / next analyser channel
-  , .      fine-tune the spectrum centre by 1 MHz
+  [ ]      previous / next analyzer channel
+  , .      fine-tune the spectrum center by 1 MHz
 
 Themes: neon (default), synthwave, dracula, nord, gruvbox, matrix.
 Pick one with --theme NAME or HITRON_THEME; the t key saves your choice.
@@ -738,7 +738,7 @@ Flags:
   --theme NAME   color theme
   --no-mouse     do not capture the mouse (lets you select text normally)
   --no-bg        no gradient background (it is also skipped unless the terminal
-                 reports 24-bit colour via COLORTERM; b toggles it live)
+                 reports 24-bit color via COLORTERM; b toggles it live)
 
 The TUI needs a real terminal. Use --once to get the same report as text, or
 --json for a snapshot.

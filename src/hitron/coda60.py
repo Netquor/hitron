@@ -347,7 +347,7 @@ ENDPOINTS: list[dict[str, Any]] = [
 def select_endpoints(profile: ModelProfile | None) -> list[dict[str, Any]]:
     """The subset of ENDPOINTS that ``profile`` can actually answer.
 
-    ``profile=None`` returns everything (the historical behaviour). A profile
+    ``profile=None`` returns everything (the historical behavior). A profile
     with no WiFi drops ``WiFi/WPS``; no voice drops ``MTA/StatusInfo``; no MoCA
     drops ``MoCA``; no battery/LTE drops those too. The capability requirement
     itself lives once, in ``adapters.ENDPOINTS``.

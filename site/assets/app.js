@@ -640,7 +640,7 @@ async function login() {
 const CHART_IDS = ['rf-ds-power', 'rf-ds-snr', 'rf-us-power', 'latency'];
 
 function chartColors(count) {
-  const palette = ['#2f9e8f', '#5b7fd1', '#c98a2e', '#b25b8c', '#6f9a3d', '#a8614a', '#7a6bc4', '#3d8fa8'];
+  const palette = ['#5eead4', '#a78bfa', '#ff7ad9', '#7dd3fc', '#ffc857', '#6ef0a8', '#ff9e7a', '#93a5ff'];
   return Array.from({ length: count }, (_, i) => palette[i % palette.length]);
 }
 
@@ -649,6 +649,7 @@ function ensureChart(id) {
   const canvas = document.getElementById(id);
   if (!canvas) return null;
   const isLatency = id === 'latency';
+  Chart.defaults.color = document.documentElement.dataset.theme === 'light' ? '#3f4766' : '#aab2d0';
   state.charts[id] = new Chart(canvas.getContext('2d'), {
     type: 'line',
     data: { labels: [], datasets: [] },

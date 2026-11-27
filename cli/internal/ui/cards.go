@@ -15,7 +15,7 @@ const minCardsWidth = 84
 
 type card struct {
 	label  string
-	status string // short coloured word next to the label, may be empty
+	status string // short colored word next to the label, may be empty
 	value  string // text drawn in the big font
 	unit   string
 	paint  func(string) string

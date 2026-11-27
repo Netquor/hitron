@@ -336,7 +336,7 @@ func (c *Client) Reboot(ctx context.Context) (map[string]any, error) {
 
 // FactoryReset is the flag-based factory reset (CODA6X only). It uses the same
 // X_HITRON_COM_MGMT.FactoryReset flag as Reboot uses for reboot, so expect the
-// same inert behaviour on 8.7.1.0.1b4; this variant has not been measured.
+// same inert behavior on 8.7.1.0.1b4; this variant has not been measured.
 func (c *Client) FactoryReset(ctx context.Context) (map[string]any, error) {
 	if c.Kind != KindCoda6X {
 		return nil, fmt.Errorf("factory reset on %s: %w (CODA6X only)", c.Kind.Label(), ErrUnsupported)

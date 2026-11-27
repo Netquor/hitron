@@ -15,8 +15,8 @@ const (
 	viewConstellation
 )
 
-// nextChannel picks the analyser channel delta steps away from centerMHz. An
-// exact match advances from that channel; a fine-tuned centre lands on the
+// nextChannel picks the analyzer channel delta steps away from centerMHz. An
+// exact match advances from that channel; a fine-tuned center lands on the
 // first channel in the direction of travel, wrapping at both ends.
 func nextChannel(channels []hitron.SpectrumChannel, centerMHz float64, delta int) (hitron.SpectrumChannel, bool) {
 	if len(channels) == 0 {

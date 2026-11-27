@@ -83,7 +83,7 @@ All four branches shell out to `/usr/sbin/hitrondec`. They share one hardware
 tuner, so captures are sequential; two sweeps in flight return interleaved or
 empty data.
 
-Measured capture behaviour (`FreqPower`, repeated while the link was up):
+Measured capture behavior (`FreqPower`, repeated while the link was up):
 
 | Request | Points | Window actually returned |
 | --- | ---: | --- |

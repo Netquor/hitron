@@ -302,7 +302,7 @@ func (c *Client) loginCoda6X(ctx context.Context) error {
 }
 
 // primeCoda57 GETs /login.html so the device can set its PHPSESSID cookie,
-// matching the confirmed behaviour of the legacy client.
+// matching the confirmed behavior of the legacy client.
 func (c *Client) primeCoda57(ctx context.Context) error {
 	_, _, err := c.do(ctx, requestOptions{method: http.MethodGet, path: "/login.html", accept: "text/html,*/*"})
 	if err != nil {

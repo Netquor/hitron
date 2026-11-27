@@ -12,9 +12,13 @@ import pyte
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 COLS, ROWS = 108, 44
-FONT = "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf"
-FONT_SYM = "/usr/share/fonts/truetype/freefont/FreeMono.ttf"
-FONT_B = "/usr/share/fonts/truetype/dejavu/DejaVuSansMono-Bold.ttf"
+FONT_DIR = os.environ.get("HITRON_FONT_DIR", "/usr/share/fonts/truetype/dejavu")
+FONT = os.path.join(FONT_DIR, "DejaVuSansMono.ttf")
+FONT_SYM = os.environ.get("HITRON_FONT_SYM", "/usr/share/fonts/truetype/freefont/FreeMono.ttf")
+if not os.path.exists(FONT_SYM):
+    FONT_SYM = os.path.join(FONT_DIR, "DejaVuSans.ttf")  # carries the braille block
+FONT_B = os.path.join(FONT_DIR, "DejaVuSansMono-Bold.ttf")
+FONT_UI = os.path.join(FONT_DIR, "DejaVuSans.ttf")
 SIZE, CW, CH, PAD = 16, 10, 20, 14
 DEFAULT_BG, DEFAULT_FG = (10, 11, 20), (214, 218, 232)
 NAMED = {"black": (0, 0, 0), "red": (205, 49, 49), "green": (13, 188, 121), "brown": (229, 229, 16),
@@ -78,7 +82,7 @@ class Painter:
             d.ellipse([cx - rr + 2 * S, cy - rr + S, cx + rr - 2 * S, cy], fill=hi)
         win = win.resize((w, h), Image.LANCZOS)
         d = ImageDraw.Draw(win)
-        f = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 13)
+        f = ImageFont.truetype(FONT_UI, 13)
         title = "hitron-cli \u2014 monitor \u2014 %d\u00d7%d" % (COLS, ROWS)
         d.text(((w - d.textlength(title, font=f)) / 2, bar // 2 - 8), title, font=f, fill=(165, 167, 180, 255))
         mask = Image.new("L", (w * S, h * S), 0)
@@ -202,7 +206,7 @@ def save_gif(frames, path, fps=5):
 def scenario(name, binary, host, out, extra=None):
     home = tempfile.mkdtemp()
     s = Session(binary, host, home, extra or [])
-    s.painter.rows = {"analyser": (0, 32), "reboot": (10, 33)}.get(name)
+    s.painter.rows = {"analyzer": (0, 32), "reboot": (10, 33)}.get(name)
     shots = {}
     try:
         s.pump(5, record=False)  # let the history build and the layout settle
@@ -219,7 +223,7 @@ def scenario(name, binary, host, out, extra=None):
                 shots["theme-" + theme] = s.painter.draw(s.screen)
                 s.key(b"t")
             s.pump(1.5)
-        elif name == "analyser":
+        elif name == "analyzer":
             s.key(b"2", 2)
             s.pump(4)
             shots["spectrum"] = s.painter.draw(s.screen)
@@ -260,6 +264,6 @@ if __name__ == "__main__":
     p.add_argument("--out", default="out")
     p.add_argument("--only", default="")
     a = p.parse_args()
-    names = [n for n in ("summary", "themes", "analyser", "reboot", "help") if not a.only or n in a.only.split(",")]
+    names = [n for n in ("summary", "themes", "analyzer", "reboot", "help") if not a.only or n in a.only.split(",")]
     for n in names:
         print(n, scenario(n, os.path.abspath(a.binary), a.host, a.out), flush=True)

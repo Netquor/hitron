@@ -5,7 +5,7 @@ reboot POST is acknowledged and ignored.
 
 The sample is a real capture with the serial number, MAC addresses, CMTS MAC
 and IP addresses replaced. The live signal endpoints step through 80
-one-second polls so the numbers move the way a real modem's do; the analyser
+one-second polls so the numbers move the way a real modem's do; the analyzer
 (spectrum, constellation) answers with real captures.
 
     python3 replay.py --port 8080

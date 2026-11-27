@@ -8,7 +8,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-// Dark top and bottom colours of the vertical background gradient, per theme.
+// Dark top and bottom colors of the vertical background gradient, per theme.
 var bgColors = map[string][2]string{
 	"neon":      {"#07081A", "#1B0A30"},
 	"synthwave": {"#14072A", "#33104F"},
@@ -18,8 +18,8 @@ var bgColors = map[string][2]string{
 	"matrix":    {"#000802", "#00260C"},
 }
 
-// TrueColor reports whether the terminal advertises 24-bit colour. The
-// gradient is skipped elsewhere because 256 colours would band visibly.
+// TrueColor reports whether the terminal advertises 24-bit color. The
+// gradient is skipped elsewhere because 256 colors would band visibly.
 func TrueColor() bool {
 	c := strings.ToLower(os.Getenv("COLORTERM"))
 	return Color && (strings.Contains(c, "truecolor") || strings.Contains(c, "24bit"))

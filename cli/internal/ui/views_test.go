@@ -38,7 +38,7 @@ func TestViewKeysSwitchModeAndQueueBehindInFlightRead(t *testing.T) {
 	if m.mode != viewSpectrum || cmd == nil || !m.loading {
 		t.Fatalf("2: mode=%v loading=%v cmd=%v", m.mode, m.loading, cmd != nil)
 	}
-	// A second request while the first is in flight must wait: the analyser
+	// A second request while the first is in flight must wait: the analyzer
 	// is one shared tuner.
 	m, cmd = press(m, "3")
 	if m.mode != viewConstellation || cmd != nil || !m.dirty {
@@ -74,6 +74,6 @@ func TestChannelStepAndTune(t *testing.T) {
 	before := m.centerMHz
 	m, _ = press(m, "]")
 	if m.centerMHz != before {
-		t.Fatal("] must not move the centre on the summary view")
+		t.Fatal("] must not move the center on the summary view")
 	}
 }
