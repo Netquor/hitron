@@ -11,8 +11,8 @@ import (
 )
 
 const (
-	fecDOCSISPath = "/1/Device/CM/DsInfo"
-	fecOFDMPath   = "/1/Device/CM/DsOfdm"
+	fecDOCSISPath = "/CM/DsInfo"
+	fecOFDMPath   = "/CM/DsOfdm"
 )
 
 // FECReset reports what a downstream-FEC counter clear actually cleared.
@@ -73,7 +73,7 @@ func (c *Client) fecRead(ctx context.Context, path string) (any, error) {
 			case <-time.After(150 * time.Millisecond):
 			}
 		}
-		value, err := c.getJSON(ctx, path)
+		value, err := c.getJSON(ctx, c.api(path))
 		if err == nil {
 			return value, nil
 		}
@@ -139,6 +139,9 @@ func (c *Client) fecOFDMBusy(ctx context.Context) (map[string]bool, error) {
 // The vendor's own "Reset FEC Counters" button only calls the 3.0 endpoint, so
 // it misses OFDM entirely.
 func (c *Client) ResetFEC(ctx context.Context) (FECReset, error) {
+	if c.Kind == KindCoda4x8x {
+		return FECReset{}, fmt.Errorf("FEC reset: %w", ErrCoda4x8xReadOnly)
+	}
 	if c.Kind != KindCoda6X {
 		return FECReset{}, fmt.Errorf("FEC reset on %s: %w (CODA6X only)", c.Kind.Label(), ErrUnsupported)
 	}
@@ -200,7 +203,10 @@ func (c *Client) ResetFEC(ctx context.Context) (FECReset, error) {
 // putClear issues a bare PUT. The handlers ignore the body, and the vendor page
 // sends none, so there is no model envelope to build.
 func (c *Client) putClear(ctx context.Context, path string) error {
-	resp, body, err := c.do(ctx, requestOptions{method: http.MethodPut, path: path, accept: "application/json, */*"})
+	if err := c.readOnlyGuard(); err != nil {
+		return err
+	}
+	resp, body, err := c.do(ctx, requestOptions{method: http.MethodPut, path: c.api(path), accept: "application/json, */*"})
 	if err != nil {
 		return err
 	}

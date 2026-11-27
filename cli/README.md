@@ -11,8 +11,26 @@ dependencies outside the Go standard library.
 | Device | API | Detection probe |
 | --- | --- | --- |
 | CODA6X (CODA-60) | `/1/Device/...` JSON | `GET /1/Device/CM/Version` |
+| CODA 4x8x (CODA-4582, CODA-4680; **experimental, read-only**) | CODA6X-style JSON from the site root, no `/1/Device` prefix (hypothesis) | `GET /CM/Version` |
 | CODA-57 | `/data/*.asp` JSON | `GET /data/getSysInfo.asp` |
 | HT-EM5 | `/ms/<type>/<reg>` MoCA RPC | `GET /index.html` + `POST /ms/1/0x302/GET` |
+
+Detection tries the CODA6X, then the CODA 4x8x, then the CODA-57, then the
+HT-EM5. The CODA 4x8x probe never sends credentials, so a unit that gates its
+reads behind a login is not auto-detected.
+
+**CODA 4x8x status: experimental, not verified on live hardware.** The working
+hypothesis is that these modems serve the same REST data model the CODA6X
+client already parses (`/CM/DsInfo`, `/CM/UsInfo`, `/CM/DsOfdm`, `/CM/UsOfdm`,
+`/CM/Log`, `/CM/SysInfo`, ...) from the site root. The route names and the
+login shape match; the field names are reconstructed, not confirmed. The
+family is read-only by policy: reboot, factory reset, hard reset, FEC reset,
+and the spectrum and constellation views return "not supported on CODA 4x8x
+(experimental, read-only)" and send nothing to the device. The endpoint list
+and login flow come from the MIT-licensed
+[hairyhenderson/hitron_coda](https://github.com/hairyhenderson/hitron_coda)
+project (facts only, no code); credit to it. Login, if a unit wants one, is
+`POST /Users/Login` with the same `model=<json>` form body.
 
 The Python package in `src/hitron/` remains the exporter and library. This
 binary exists for the case where you want to walk up to a modem and read it
@@ -53,7 +71,7 @@ hitron-cli help
 ```text
 hitron-cli stats            one-shot report, or live TUI in a terminal (default)
 hitron-cli monitor          force the live TUI
-hitron-cli detect           identify CODA6X / CODA-57 / HT-EM5
+hitron-cli detect           identify CODA6X / CODA 4x8x / CODA-57 / HT-EM5
 hitron-cli system           identity, provisioning, Ethernet ports
 hitron-cli channels         downstream and upstream RF detail
 hitron-cli logs             DOCSIS event log
@@ -163,7 +181,9 @@ credential requirement, and the CLI calls `Login` immediately before acting so
 the write is one traceable operation. Answering no exits 1.
 
 CODA-57 has no confirmed write path in this repository. The CLI says so and
-stops; it does not try a plausible-looking URL on a live modem.
+stops; it does not try a plausible-looking URL on a live modem. The same is
+true of the experimental CODA 4x8x, where every write command fails with the
+typed read-only error before any request is made.
 
 ## Live view
 

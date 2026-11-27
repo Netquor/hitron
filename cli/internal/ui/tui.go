@@ -375,6 +375,10 @@ func (m model) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.snap == nil || m.fecRunning {
 			return m, nil
 		}
+		if m.src.ResetFEC == nil && m.snap.Kind == hitron.KindCoda4x8x {
+			m.fecStatus, m.fecFailed = "FEC reset: "+hitron.ErrCoda4x8xReadOnly.Error(), true
+			return m, nil
+		}
 		if m.src.ResetFEC != nil {
 			m.fecRunning = true
 			m.fecFailed = false
@@ -388,6 +392,10 @@ func (m model) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.fecBase, m.fecSince = fecBaseline(m.snap), time.Now()
 		}
 	case "x":
+		if m.reboot == nil && m.snap != nil && m.snap.Kind == hitron.KindCoda4x8x {
+			m.fecStatus, m.fecFailed = "Reboot: "+hitron.ErrCoda4x8xReadOnly.Error(), true
+			return m, nil
+		}
 		m = m.openDialog()
 	case "h", "?":
 		m.showHelp = !m.showHelp
@@ -789,6 +797,7 @@ func (m model) helpView() string {
 		"  · One hardware tuner serves every capture; requests stay sequential.",
 		"  · Inactive constellation ports answer empty; that is not an error.",
 		"  · On the CODA6X, z clears the real 3.0 and OFDM FEC counters; other families zero only the display.",
+		"  · CODA 4x8x is experimental and read-only: reads only, no reboot, analyzer or FEC reset.",
 		"  · With the mouse on, select text by holding Option (or Shift); --no-mouse turns it off.",
 	}
 	for i, note := range notes {

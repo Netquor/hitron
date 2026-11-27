@@ -258,7 +258,8 @@ func chooseTheme(flagValue string) error {
 
 func runMonitor(ctx context.Context, client *hitron.Client, opts options) int {
 	// The CODA-57 and CODA-60 answer local reads quickly, so they refresh every
-	// second unless the user picked an interval.
+	// second unless the user picked an interval. The experimental CODA 4x8x is
+	// deliberately left at the default: an unverified device is not polled fast.
 	if !opts.intervalSet && (client.Kind == hitron.KindCoda6X || client.Kind == hitron.KindCoda57) {
 		opts.interval = time.Second
 	}
@@ -298,6 +299,8 @@ func runMonitor(ctx context.Context, client *hitron.Client, opts options) int {
 		NoBackground: opts.noBg,
 	}
 	if client.Kind == hitron.KindCoda6X {
+		// The 4x8x gets no ResetFEC: the TUI answers z with the read-only
+		// message itself, before any status suggests a clear is running.
 		tui.ResetFEC = func(runCtx context.Context) (hitron.FECReset, error) {
 			callCtx, cancel := context.WithTimeout(runCtx, opts.timeout*3)
 			defer cancel()
@@ -306,7 +309,7 @@ func runMonitor(ctx context.Context, client *hitron.Client, opts options) int {
 	}
 	// Reboot is offered where the CLI's own reboot command works. The CODA-57
 	// has no confirmed write endpoint, so it gets no button at all.
-	if client.Kind != hitron.KindCoda57 {
+	if client.Kind != hitron.KindCoda57 && client.Kind != hitron.KindCoda4x8x {
 		// On the CODA6X the reboot call is accepted from the LAN with no
 		// login, and customers are usually never given one, so the dialog
 		// asks for none. A login supplied with --user/--password is only used
@@ -363,6 +366,9 @@ func runMonitor(ctx context.Context, client *hitron.Client, opts options) int {
 
 func runAction(ctx context.Context, client *hitron.Client, opts options) int {
 	action := opts.command
+	if client.Kind == hitron.KindCoda4x8x {
+		return fail(fmt.Errorf("%s: %w", action, hitron.ErrCoda4x8xReadOnly))
+	}
 	if (!client.Creds.Complete() && client.Creds.AppToken == "") || client.DefaultCreds {
 		fmt.Fprintf(os.Stderr, "hitron-cli: %s needs explicit credentials; pass --user and --password (the HT-EM5 factory default is used for reads only)\n", action)
 		return 2
@@ -1003,9 +1009,10 @@ Usage:
   hitron-cli detect [host] [flags]
 
 Detection order:
-  1. CODA6X   GET /1/Device/CM/Version
-  2. CODA-57  GET /data/getSysInfo.asp
-  3. HT-EM5   GET /index.html then POST /ms/1/0x302/GET
+  1. CODA6X     GET /1/Device/CM/Version
+  2. CODA 4x8x  GET /CM/Version (experimental, read-only; never logs in)
+  3. CODA-57    GET /data/getSysInfo.asp
+  4. HT-EM5     GET /index.html then POST /ms/1/0x302/GET
 
 A 401 or a login page on the first matching path means the device needs
 credentials; the CLI prompts once when stdin is a terminal. CODA6X and

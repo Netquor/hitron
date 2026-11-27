@@ -2,6 +2,7 @@ package ui
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -109,5 +110,19 @@ func TestFECMsgReportsWhatCleared(t *testing.T) {
 	}
 	if cmd == nil || !m.loading {
 		t.Fatal("a successful reset should re-read the snapshot")
+	}
+}
+
+func TestZAndXAreReadOnlyOnTheCoda4x8x(t *testing.T) {
+	for _, key := range []rune{'z', 'x'} {
+		m := model{snap: &hitron.Snapshot{Kind: hitron.KindCoda4x8x}}
+		next, cmd := m.key(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{key}})
+		m = next.(model)
+		if cmd != nil || m.fecRunning || !m.fecFailed {
+			t.Fatalf("%c: cmd=%v running=%v failed=%v", key, cmd, m.fecRunning, m.fecFailed)
+		}
+		if !strings.Contains(m.fecStatus, "read-only") || strings.Contains(m.fecStatus, "clearing") {
+			t.Fatalf("%c: status = %q", key, m.fecStatus)
+		}
 	}
 }

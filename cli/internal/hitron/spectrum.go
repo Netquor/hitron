@@ -81,6 +81,9 @@ type Constellation struct {
 }
 
 func (c *Client) spectrumOnly(what string) error {
+	if c.Kind == KindCoda4x8x {
+		return fmt.Errorf("%s: %w", what, ErrCoda4x8xReadOnly)
+	}
 	if c.Kind != KindCoda6X {
 		return fmt.Errorf("%s: %w (CODA6X only)", what, ErrUnsupported)
 	}
@@ -92,7 +95,7 @@ func (c *Client) SpectrumChannels(ctx context.Context) ([]SpectrumChannel, error
 	if err := c.spectrumOnly("spectrum channels"); err != nil {
 		return nil, err
 	}
-	value, err := c.getJSON(ctx, "/1/Device/Spectrum/FreqList")
+	value, err := c.getJSON(ctx, c.api("/Spectrum/FreqList"))
 	if err != nil {
 		return nil, err
 	}
@@ -124,8 +127,8 @@ func (c *Client) SpectrumSweep(ctx context.Context, centerMHz float64) (*Spectru
 	centerMHz = math.Max(49, math.Min(1788, centerMHz))
 	from := centerMHz - 3
 	to := centerMHz + 3
-	path := fmt.Sprintf("/1/Device/Spectrum/FreqPower?centFreq=%s&fromFreq=%s&toFreq=%s",
-		formatFreq(centerMHz), formatFreq(from), formatFreq(to))
+	path := c.api(fmt.Sprintf("/Spectrum/FreqPower?centFreq=%s&fromFreq=%s&toFreq=%s",
+		formatFreq(centerMHz), formatFreq(from), formatFreq(to)))
 	value, err := c.getJSON(ctx, path)
 	if err != nil {
 		return nil, err
@@ -159,7 +162,7 @@ func (c *Client) RealTimeSpectrum(ctx context.Context) ([]RealTimeFrame, error) 
 	if err := c.spectrumOnly("real-time spectrum"); err != nil {
 		return nil, err
 	}
-	value, err := c.getJSON(ctx, "/1/Device/Spectrum/RTData")
+	value, err := c.getJSON(ctx, c.api("/Spectrum/RTData"))
 	if err != nil {
 		return nil, err
 	}
@@ -196,7 +199,7 @@ func (c *Client) Constellation(ctx context.Context, portID int) (*Constellation,
 	if portID < 0 || portID > 31 {
 		portID = 24
 	}
-	path := fmt.Sprintf("/1/Device/Spectrum/Constellation?portId=%d", portID)
+	path := c.api(fmt.Sprintf("/Spectrum/Constellation?portId=%d", portID))
 	value, err := c.getJSON(ctx, path)
 	if err != nil {
 		return nil, err

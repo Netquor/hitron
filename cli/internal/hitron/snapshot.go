@@ -11,7 +11,9 @@ func (c *Client) Snapshot(ctx context.Context) (*Snapshot, error) {
 	var snap *Snapshot
 	var err error
 	switch c.Kind {
-	case KindCoda6X:
+	case KindCoda6X, KindCoda4x8x:
+		// The 4x8x reuses the CODA6X parsers through its own API root; the
+		// shared data model is a hypothesis, not a verified fact.
 		snap, err = c.snapshotCoda6X(ctx)
 	case KindCoda57:
 		snap, err = c.snapshotCoda57(ctx)
