@@ -725,13 +725,21 @@ func (m model) helpView() string {
 		b.WriteString(mark + " " + name)
 	}
 	b.WriteString("\n\n" + panelHeading("Notes") + "\n")
-	b.WriteString(MutedText("  · Reads never log in on the analyzed firmware.\n"))
-	b.WriteString(MutedText("  · Reboot asks you to type the word “reboot”; clicking the button only opens that dialog.\n"))
-	b.WriteString(MutedText("  · Factory reset and hard reset stay separate commands.\n"))
-	b.WriteString(MutedText("  · One hardware tuner serves every capture; requests stay sequential.\n"))
-	b.WriteString(MutedText("  · Inactive constellation ports answer empty; that is not an error.\n"))
-	b.WriteString(MutedText("  · The modem has no FEC reset; z only hides counts from before you pressed it.\n"))
-	b.WriteString(MutedText("  · With the mouse on, select text by holding Option (or Shift); --no-mouse turns it off."))
+	notes := []string{
+		"  · Reads never log in on the analyzed firmware.",
+		"  · Reboot asks you to type the word “reboot”; clicking the button only opens that dialog.",
+		"  · Factory reset and hard reset stay separate commands.",
+		"  · One hardware tuner serves every capture; requests stay sequential.",
+		"  · Inactive constellation ports answer empty; that is not an error.",
+		"  · The modem has no FEC reset; z only hides counts from before you pressed it.",
+		"  · With the mouse on, select text by holding Option (or Shift); --no-mouse turns it off.",
+	}
+	for i, note := range notes {
+		if i > 0 {
+			b.WriteString("\n")
+		}
+		b.WriteString(MutedText(note))
+	}
 	return panelBox(0).Render(b.String())
 }
 

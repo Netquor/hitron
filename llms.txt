@@ -18,7 +18,7 @@ firmware's own, including typos such as `Raidos_List`.
 - [Static site](https://hitron.netquor.dev/): API console, live charts, logs.
 - [Run the site and gateway proxy locally](https://github.com/Netquor/hitron/blob/main/docs/LOCAL-PROXY.md): one-line installer, pipx/uv alternatives, troubleshooting.
 - Installer script: https://hitron.netquor.dev/install.sh (`curl -fsSL ... | bash`); Windows: https://hitron.netquor.dev/install.ps1.
-- Standalone Go client, no runtime: https://github.com/Netquor/hitron/tree/main/cli (releases at /releases).
+- Standalone Go client and live terminal dashboard (`hitron-cli monitor`), no runtime: https://github.com/Netquor/hitron/tree/main/cli (releases at /releases). Showcase and getting started: https://hitron.netquor.dev/#cli
 - [Source](https://github.com/Netquor/hitron)
 
 ## API specifications
