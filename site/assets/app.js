@@ -1019,3 +1019,18 @@ loadSpec().catch((error) => {
 window.addEventListener('load', () => {
   for (const id of CHART_IDS) if (state.history[id]) redrawChart(id);
 });
+
+
+// hitron-cli theme preview buttons
+(function () {
+  const img = document.getElementById('theme-shot');
+  if (!img) return;
+  document.querySelectorAll('[data-theme-shot]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const name = btn.dataset.themeShot;
+      img.src = `assets/cli/theme-${name}.png`;
+      img.alt = `hitron-cli summary in the ${name} theme`;
+      document.querySelectorAll('[data-theme-shot]').forEach((b) => b.setAttribute('aria-pressed', String(b === btn)));
+    });
+  });
+})();

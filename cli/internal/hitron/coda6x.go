@@ -157,8 +157,26 @@ func parseProvision(snap *Snapshot, data map[string]any) {
 		}
 		seen[step.name] = true
 		ok, _ = flag(raw)
+		if step.key == "bpiStatus" {
+			if text := strings.ToLower(str(raw)); strings.Contains(text, ":") {
+				ok = bpiOK(text)
+			}
+		}
 		snap.Steps = append(snap.Steps, ProvisionStep{Name: step.name, OK: ok})
 	}
+}
+
+// bpiOK reads the modem's BPI line, which arrives as a pair such as
+// "AUTH:authorized, TEK:operational" rather than a single word. It is healthy
+// when authorization is granted and nothing in it says otherwise.
+func bpiOK(text string) bool {
+	t := strings.ToLower(text)
+	for _, bad := range []string{"unauthorized", "reject", "fail", "wait", "start", "none", "disable"} {
+		if strings.Contains(t, bad) {
+			return false
+		}
+	}
+	return strings.Contains(t, "authorized") || strings.Contains(t, "operational")
 }
 
 func parseCodaDS(snap *Snapshot, data map[string]any) {
@@ -204,6 +222,9 @@ func parseCodaOFDM(snap *Snapshot, data map[string]any) {
 	for _, item := range listItems(data, "Freq_List") {
 		power, hasPower := signal(item["plcpower"])
 		snr, hasSNR := signal(item["SNR"])
+		// The modem reports 0 (or NA) between measurements; 0 dB is not a
+		// real reading on a locked OFDM channel.
+		hasSNR = hasSNR && snr > 0
 		channel := OFDMChannel{
 			Index:       str(item["index"]),
 			FFTType:     str(item["ffttype"]),

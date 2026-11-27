@@ -1,5 +1,9 @@
 # hitron-cli (Go)
 
+![hitron-cli live summary](../site/assets/cli/summary.gif)
+
+_Captured against a replay of a real CODA-60 with the serial, MACs and IPs replaced. `demo/` has the replay server and renderer._
+
 A standalone terminal client for the three Hitron families this repository
 documents. It is a single static binary with no runtime, no config file, and no
 dependencies outside the Go standard library.
