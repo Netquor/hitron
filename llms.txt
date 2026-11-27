@@ -1,7 +1,8 @@
 # hitron
 
 > Reverse-engineered clients, a complete OpenAPI 3.0 description, and one
-> exporter for Hitron CODA6X (CODA-60 class), CODA-57, and HT-EM5 gateways.
+> exporter for Hitron CODA6X (CODA-60 class), CODA-57, and HT-EM5 gateways, plus
+> an experimental read-only CODA 4x8x client (not verified on live hardware).
 > The exporter emits Prometheus text, Influx line protocol (Telegraf),
 > OTLP/HTTP JSON (OpenTelemetry), and plain JSON from a single normalized
 > metric vocabulary.
@@ -29,7 +30,11 @@ firmware's own, including typos such as `Raidos_List`.
   `_method` tunnels PUT/DELETE/PATCH through POST.
 - HT-EM5 MoCA bridge: `specs/openapi-ht-em5.yaml`.
 - CODA-57 legacy `.asp` API: `specs/openapi-coda57-legacy.yaml`.
-- Rendered JSON for tooling: `site/openapi.json`.
+- CODA 4x8x (CODA-4582, CODA-4680), EXPERIMENTAL and read-only, not verified on
+  live hardware: `specs/openapi-coda4x8x.yaml` (31 reads plus login, no
+  `/1/Device` prefix). Route list and auth flow come from
+  hairyhenderson/hitron_coda (MIT). See docs/KB.md section 4.
+- Rendered JSON for tooling: `site/openapi.json`, `site/openapi-coda4x8x.json`.
 
 Base URLs: `http://192.168.100.1` (factory LAN), or the address your ISP build
 uses. Auth in the analyzed build is disabled for reads and for the two FEC
@@ -42,6 +47,7 @@ header.
 
     hitron coda60 192.168.100.1            # read everything, print JSON
     hitron coda57 192.168.100.2 --spec-check
+    hitron coda4x8x 192.168.0.1            # experimental, read-only
     hitron ht-em5 192.168.0.212
 
     hitron-cli 192.168.100.1               # Go binary: live TUI

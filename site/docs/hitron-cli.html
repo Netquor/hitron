@@ -89,6 +89,11 @@ dependencies outside the Go standard library.</p>
 <td><code>GET /1/Device/CM/Version</code></td>
 </tr>
 <tr>
+<td>CODA 4x8x (CODA-4582, CODA-4680; <strong>experimental, read-only</strong>)</td>
+<td>CODA6X-style JSON from the site root, no <code>/1/Device</code> prefix (hypothesis)</td>
+<td><code>GET /CM/Version</code></td>
+</tr>
+<tr>
 <td>CODA-57</td>
 <td><code>/data/*.asp</code> JSON</td>
 <td><code>GET /data/getSysInfo.asp</code></td>
@@ -100,9 +105,25 @@ dependencies outside the Go standard library.</p>
 </tr>
 </tbody>
 </table></div>
+<p>Detection tries the CODA6X, then the CODA 4x8x, then the CODA-57, then the
+HT-EM5. The CODA 4x8x probe never sends credentials, so a unit that gates its
+reads behind a login is not auto-detected.</p>
+<p><strong>CODA 4x8x status: experimental, not verified on live hardware.</strong> The working
+hypothesis is that these modems serve the same REST data model the CODA6X
+client already parses (<code>/CM/DsInfo</code>, <code>/CM/UsInfo</code>, <code>/CM/DsOfdm</code>, <code>/CM/UsOfdm</code>,
+<code>/CM/Log</code>, <code>/CM/SysInfo</code>, ...) from the site root. The route names and the
+login shape match; the field names are reconstructed, not confirmed. The
+family is read-only by policy: reboot, factory reset, hard reset, FEC reset,
+and the spectrum and constellation views return "not supported on CODA 4x8x
+(experimental, read-only)" and send nothing to the device. The endpoint list
+and login flow come from the MIT-licensed
+<a class="ext" href="https://github.com/hairyhenderson/hitron_coda">hairyhenderson/hitron_coda</a>
+project (facts only, no code); credit to it. Login, if a unit wants one, is
+<code>POST /Users/Login</code> with the same <code>model=&lt;json&gt;</code> form body.</p>
 <p>The Python package in <code>src/hitron/</code> remains the exporter and library. This
 binary exists for the case where you want to walk up to a modem and read it
 from a laptop with nothing installed.</p>
+<p>Per-release changes and fixes: <a class="ext" href="https://github.com/Netquor/hitron/blob/main/cli/CHANGELOG.md"><code>CHANGELOG.md</code></a>.</p>
 <h2 id="build">Build<a class="headerlink" href="#build" title="Link to this section">#</a></h2>
 <pre><code class="language-bash">cd cli
 go build -o hitron-cli ./cmd/hitron-cli
@@ -123,7 +144,7 @@ hitron-cli help
 <h2 id="commands">Commands<a class="headerlink" href="#commands" title="Link to this section">#</a></h2>
 <pre><code class="language-text">hitron-cli stats            one-shot report, or live TUI in a terminal (default)
 hitron-cli monitor          force the live TUI
-hitron-cli detect           identify CODA6X / CODA-57 / HT-EM5
+hitron-cli detect           identify CODA6X / CODA 4x8x / CODA-57 / HT-EM5
 hitron-cli system           identity, provisioning, Ethernet ports
 hitron-cli channels         downstream and upstream RF detail
 hitron-cli logs             DOCSIS event log
@@ -331,7 +352,9 @@ with no reply, the unit is unreachable ~5 s later and back ~122 s after that.</p
 credential requirement, and the CLI calls <code>Login</code> immediately before acting so
 the write is one traceable operation. Answering no exits 1.</p>
 <p>CODA-57 has no confirmed write path in this repository. The CLI says so and
-stops; it does not try a plausible-looking URL on a live modem.</p>
+stops; it does not try a plausible-looking URL on a live modem. The same is
+true of the experimental CODA 4x8x, where every write command fails with the
+typed read-only error before any request is made.</p>
 <h2 id="live-view">Live view<a class="headerlink" href="#live-view" title="Link to this section">#</a></h2>
 <p><code>monitor</code>, or <code>stats</code> in a terminal, draws a full-screen report and refreshes
 on <code>--interval</code> (default 5s; 1s on the CODA-57 and CODA-60).</p>

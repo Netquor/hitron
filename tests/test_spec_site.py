@@ -16,6 +16,8 @@ import yaml
 ROOT = Path(__file__).resolve().parents[1]
 SPEC_PATH = ROOT / "specs" / "openapi-coda60.yaml"
 SITE_SPEC_PATH = ROOT / "site" / "openapi.json"
+CODA4X8X_SPEC_PATH = ROOT / "specs" / "openapi-coda4x8x.yaml"
+CODA4X8X_SITE_SPEC_PATH = ROOT / "site" / "openapi-coda4x8x.json"
 
 
 @pytest.fixture(scope="module")
@@ -118,6 +120,49 @@ def test_site_spec_matches_yaml(spec):
     assert site_spec == spec, "run the YAML -> site/openapi.json conversion after editing the spec"
 
 
+@pytest.fixture(scope="module")
+def coda4x8x_spec():
+    return yaml.safe_load(CODA4X8X_SPEC_PATH.read_text())
+
+
+def test_coda4x8x_site_spec_matches_yaml(coda4x8x_spec):
+    site_spec = json.loads(CODA4X8X_SITE_SPEC_PATH.read_text())
+    assert site_spec == coda4x8x_spec, "run tools/gen_spec.py"
+
+
+def test_coda4x8x_spec_is_valid_openapi(coda4x8x_spec):
+    openapi_spec_validator = pytest.importorskip("openapi_spec_validator")
+    validate = getattr(openapi_spec_validator, "validate", None) or openapi_spec_validator.validate_spec
+    validate(coda4x8x_spec)
+
+
+def test_coda4x8x_spec_is_read_only_and_experimental(coda4x8x_spec):
+    assert "experimental" in coda4x8x_spec["x-hitron"]["status"]
+    assert "not verified on live hardware" in coda4x8x_spec["x-hitron"]["status"]
+    assert coda4x8x_spec["x-hitron"]["readOnly"] is True
+    operations = list(iter_operations(coda4x8x_spec))
+    assert len(operations) == 32
+    for path, method, op, _ in operations:
+        assert "/1/Device" not in path
+        assert op["x-hitron"]["status"] == coda4x8x_spec["x-hitron"]["status"]
+        assert op["x-hitron-destructive"] is False
+        # The only POST is the login; no action route is described.
+        assert method == "get" or (method, path) == ("post", "/Users/Login")
+    for banned in ("Reboot", "Restore", "Upload", "Manage", "Reset"):
+        assert not any(banned.lower() in path.lower() for path in coda4x8x_spec["paths"])
+    assert "hairyhenderson/hitron_coda" in coda4x8x_spec["info"]["description"]
+
+
+def test_coda4x8x_spec_reuses_the_registry_paths(coda4x8x_spec):
+    from hitron.adapters import ENDPOINTS
+
+    registry = {e.path for e in ENDPOINTS if e.read}
+    for path, item in coda4x8x_spec["paths"].items():
+        op = item.get("get")
+        if op and op["x-hitron"]["registryId"]:
+            assert "/1/Device" + path in registry, path
+
+
 def test_dashboards_are_valid_json():
     for name in ("hitron-coda6x.json", "hitron-ht-em5.json"):
         dashboard = json.loads((ROOT / "dashboards" / name).read_text())
@@ -148,7 +193,7 @@ def test_provisioning_bundle_exists():
 
 
 def test_site_assets_and_llms_present():
-    for name in ("index.html", "openapi.json", "llms.txt", "assets/app.js", "assets/style.css"):
+    for name in ("index.html", "openapi.json", "openapi-coda4x8x.json", "llms.txt", "assets/app.js", "assets/style.css"):
         assert (ROOT / "site" / name).is_file(), name
     # The root copy is what LLM crawlers fetch from the repo.
     assert (ROOT / "llms.txt").read_text().startswith("# hitron")

@@ -213,7 +213,7 @@
       "lte_backup": false,
       "router": true,
       "ethernet": [{"count": 4, "speed": "1G"}],
-      "notes": "WiFi 5 (4x4 5GHz + 3x3 2.4GHz), 4x GigE + USB 3.0."
+      "notes": "WiFi 5 (4x4 5GHz + 3x3 2.4GHz), 4x GigE + USB 3.0. Part of the experimental CODA 4x8x family: its REST layout (root paths, no /1/Device) is a hypothesis, not verified on live hardware; see docs/KB.md section 4. Catalog note: family \"coda4x\" groups this hardware; \"coda4x8x\" is the API kind string the clients use for the experimental root-path layout. CODA-4582 has no entry of its own (it appears only as an alias of coda4589_res)."
     },
     {
       "id": "coda5610q",

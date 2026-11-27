@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate specs/openapi-coda60.yaml from the endpoint registry.
+"""Generate specs/openapi-coda60.yaml and specs/openapi-coda4x8x.yaml.
 
 The registry in ``src/hitron/adapters.py`` is the single source of truth for
 paths, methods, capability requirements and per-firmware verification state.
@@ -8,8 +8,13 @@ spec can never describe a path the client does not call or omit one it does.
 
 Run from the repo root:
 
-    python tools/gen_spec.py           # rewrite specs/openapi-coda60.yaml
-    python tools/gen_spec.py --check   # fail if the file is out of date
+    python tools/gen_spec.py           # rewrite both specs and their site copies
+    python tools/gen_spec.py --check   # fail if any generated file is out of date
+
+The experimental CODA 4x8x spec is derived from the same registry: it selects
+the read routes that a third-party client lists for that family, strips the
+``/1/Device`` prefix, and adds the routes the registry has no entry for. It is a
+hypothesis, not a measurement; see docs/KB.md section 4.
 """
 
 from __future__ import annotations
@@ -29,6 +34,8 @@ from hitron.models import all_profiles  # noqa: E402
 
 SPEC_PATH = ROOT / "specs" / "openapi-coda60.yaml"
 SITE_SPEC_PATH = ROOT / "site" / "openapi.json"
+CODA4X8X_SPEC_PATH = ROOT / "specs" / "openapi-coda4x8x.yaml"
+CODA4X8X_SITE_SPEC_PATH = ROOT / "site" / "openapi-coda4x8x.json"
 GENERATED = date(2026, 11, 26).isoformat()
 
 
@@ -490,33 +497,261 @@ def build() -> dict[str, object]:
     }
 
 
+# --------------------------------------------------------------------------
+# Experimental CODA 4x8x spec (CODA-4582, CODA-4680 and relatives)
+# --------------------------------------------------------------------------
+
+EXPERIMENTAL = "experimental, not verified on live hardware"
+
+# The 31 read routes that hairyhenderson/hitron_coda (MIT) lists for this
+# family. Only facts are borrowed (route names, auth flow), not code. Paths are
+# relative to the site root, with no /1/Device prefix.
+CODA4X8X_ROUTES: tuple[str, ...] = (
+    "/CM/DocsisProvision", "/CM/DsInfo", "/CM/DsOfdm", "/CM/Log", "/CM/SysInfo",
+    "/CM/UsInfo", "/CM/UsOfdm", "/CM/Version",
+    "/Router/Capability", "/Router/DMZ", "/Router/Location",
+    "/Router/PortForward/Status", "/Router/PortForward/all",
+    "/Router/PortTrigger/Status", "/Router/PortTrigger/all",
+    "/Router/SysInfo", "/Router/TR069",
+    "/DDNS", "/DNS", "/Hosts", "/Time",
+    "/WiFi/AccessControl", "/WiFi/AccessControl/Status", "/WiFi/Client",
+    "/WiFi/GuestSSID", "/WiFi/Radios", "/WiFi/Radios/Advanced",
+    "/WiFi/Radios/Survey", "/WiFi/SSIDs", "/WiFi/WPS",
+    "/Users/CSRF",
+)
+
+# Routes the CODA6X registry has no read entry for. Summaries only; nothing
+# about their payloads is known here.
+_CODA4X8X_EXTRA_SUMMARY = {
+    "/Router/Capability": "Router capability flags",
+    "/Router/DMZ": "DMZ host setting",
+    "/Router/Location": "Device location setting",
+    "/Router/PortForward/all": "All port-forward rules",
+    "/Router/PortTrigger/all": "All port-trigger rules",
+    "/Router/TR069": "TR-069 client configuration",
+    "/Users/CSRF": "CSRF token for state-changing requests (unconfirmed; this client never sends one)",
+}
+
+_CODA4X8X_SCHEMAS = (
+    "DocsisDs", "DocsisUs", "DocsisDsOfdm", "DocsisUsOfdm", "DocsisLog", "RouterSysInfo",
+)
+
+_CODA4X8X_SCHEMA_NOTE = {
+    "RouterSysInfo": "Hardware/software version, serial, RF MAC and uptime as the CODA6X reports them.",
+}
+
+_CODA4X8X_TAG = {"CM": "CM", "Router": "Router", "WiFi": "WiFi", "Users": "Users"}
+
+
+def _coda4x8x_info() -> dict[str, object]:
+    return {
+        "title": "Hitron CODA 4x8x console REST API (experimental, reverse engineered)",
+        "version": "experimental",
+        "description": f"""\
+STATUS: {EXPERIMENTAL}. Nothing in this document has been captured from a
+CODA-4582, CODA-4680 or any other 4x8x unit by this project.
+
+Hypothesis: the CODA 4x8x serves the same REST data model that the CODA6X spec
+(openapi-coda60.yaml) describes, but from the site root, without the
+/1/Device prefix. Evidence for: the route names are identical (CM/DsInfo,
+CM/UsInfo, CM/DsOfdm, CM/UsOfdm, CM/Log, CM/SysInfo, Router/SysInfo, Hosts,
+WiFi/...), and the login shape matches (a form field `model` holding JSON).
+Evidence against: the field names here are reconstructed from a third-party
+client, not confirmed on hardware, and the source tested the 7.x firmware
+line while the CODA6X analyzed here is an 8.x PHP + RDK-B build, so the two may
+be different firmware generations. What the 4x8x runs is unknown.
+
+Source of the route list and auth flow: hairyhenderson/hitron_coda (Go, MIT),
+which targets a CODA-4680 on firmware 7.1.1.2.2b9. Only facts (endpoint names,
+the login and CSRF flow) are used; no code is copied. Credit goes to that
+project.
+
+Auth, unconfirmed: POST /Users/Login with a form body `model=<json
+{{"username","password"}}>` sets a session cookie. GET /Users/CSRF returns a
+token in `Csrf_token` or `token`; a state-changing request would send it as the
+`X-Csrf-Token` header. A 302 redirect on a data request means the session is
+missing or expired.
+
+Read-only policy: this document describes GET routes plus the login needed to
+reach them. It deliberately lists no reboot, factory-reset, password or WiFi
+write route. Those would act on in-service modems and nothing about them is
+confirmed. The hitron package exposes no write path for this family.
+
+Default LAN address on these units is often 192.168.0.1; many ISP builds use
+192.168.100.1. Paths and shapes are generated from the endpoint registry in
+src/hitron/adapters.py where it has a matching read entry, so they cannot drift
+from what the CODA6X client calls.
+""",
+        "contact": {"name": "Netquor SDN - internal reverse-engineering notes"},
+        "license": {"name": "Private - Netquor internal"},
+    }
+
+
+def _coda4x8x_operation(path: str, endpoint) -> dict[str, object]:
+    first = path.strip("/").split("/")[0]
+    tag = _CODA4X8X_TAG.get(first, "Network")
+    op_id = "coda4x8x_" + re.sub(r"[^a-z0-9]+", "_", path.strip("/").lower()).strip("_")
+    summary = endpoint.summary if endpoint else _CODA4X8X_EXTRA_SUMMARY[path]
+    operation: dict[str, object] = {
+        "operationId": op_id,
+        "summary": summary,
+        "tags": [tag],
+        "x-hitron": {
+            "status": EXPERIMENTAL,
+            "family": "coda4x8x",
+            "source": "hairyhenderson/hitron_coda endpoint list",
+            "registryId": endpoint.id if endpoint else None,
+            "destructive": False,
+        },
+        "x-hitron-destructive": False,
+        "security": [{"cookieAuth": []}],
+    }
+    schema = _RESPONSE_SCHEMA.get(endpoint.id) if endpoint else None
+    if schema not in _CODA4X8X_SCHEMAS:
+        schema = "Envelope" if path == "/Users/CSRF" else None
+    response: dict[str, object] = {
+        "description": "JSON payload, shape unconfirmed. A 302 redirect means not logged in."
+    }
+    if schema:
+        response["content"] = {"application/json": {"schema": {"$ref": f"#/components/schemas/{schema}"}}}
+    operation["responses"] = {"200": response}
+    return operation
+
+
+def build_coda4x8x() -> dict[str, object]:
+    reads: dict[str, object] = {}
+    for route in CODA4X8X_ROUTES:
+        match = [e for e in ENDPOINTS if e.path == "/1/Device" + route and e.read and "GET" in e.methods]
+        if len(match) > 1:
+            raise SystemExit(f"ambiguous registry match for {route}")
+        reads[route] = {"get": _coda4x8x_operation(route, match[0] if match else None)}
+
+    login: dict[str, object] = {
+        "operationId": "coda4x8x_users_login",
+        "summary": "Start a session (unconfirmed)",
+        "description": "Authentication only. The form field `model` carries the JSON object. Cookie name and error shape are unconfirmed.",
+        "tags": ["Users"],
+        "x-hitron": {
+            "status": EXPERIMENTAL,
+            "family": "coda4x8x",
+            "source": "hairyhenderson/hitron_coda login flow",
+            "registryId": None,
+            "destructive": False,
+        },
+        "x-hitron-destructive": False,
+        "requestBody": {
+            "required": True,
+            "content": {
+                "application/x-www-form-urlencoded": {
+                    "schema": {
+                        "type": "object",
+                        "required": ["model"],
+                        "properties": {
+                            "model": {
+                                "type": "string",
+                                "description": 'JSON string {"username": "...", "password": "..."}',
+                            }
+                        },
+                    }
+                }
+            },
+        },
+        "responses": {"200": {"description": "Session cookie set; body shape unconfirmed."}},
+    }
+
+    paths: dict[str, object] = {"/Users/Login": {"post": login}}
+    paths.update(reads)
+
+    schemas: dict[str, object] = {"Envelope": SCHEMAS["Envelope"]}
+    for name in _CODA4X8X_SCHEMAS:
+        schema = dict(SCHEMAS[name])
+        base = _CODA4X8X_SCHEMA_NOTE.get(name, str(schema.get("description", "")))
+        schema["description"] = (base + " " if base else "") + "Field set taken from the CODA6X client; unconfirmed for the 4x8x."
+        schemas[name] = schema
+
+    used_tags: list[str] = []
+    for item in paths.values():
+        for op in item.values():
+            tag = op["tags"][0]
+            if tag not in used_tags:
+                used_tags.append(tag)
+
+    return {
+        "openapi": "3.0.3",
+        "info": _coda4x8x_info(),
+        "externalDocs": {
+            "description": "Unified Hitron KB, section 4 (CODA 4x8x, experimental)",
+            "url": "./KB.md",
+        },
+        "servers": [
+            {
+                "url": "http://{host}",
+                "variables": {
+                    "host": {"default": "192.168.100.1", "description": "The gateway's LAN IP. 192.168.0.1 on some builds."}
+                },
+            }
+        ],
+        "components": {
+            "securitySchemes": {
+                "cookieAuth": {
+                    "type": "apiKey",
+                    "in": "cookie",
+                    "name": "SESSION",
+                    "description": "Cookie name unconfirmed. A client should carry whatever Set-Cookie the login returns.",
+                },
+            },
+            "schemas": schemas,
+        },
+        "x-hitron": {
+            "generated": GENERATED,
+            "generator": "tools/gen_spec.py",
+            "status": EXPERIMENTAL,
+            "family": "coda4x8x",
+            "models": ["CODA-4582", "CODA-4680"],
+            "sourceFirmware": "7.1.1.2.2b9 (per hairyhenderson/hitron_coda, unconfirmed)",
+            "attribution": "hairyhenderson/hitron_coda (MIT): endpoint list and auth flow only",
+            "readOnly": True,
+            "routeCount": len(CODA4X8X_ROUTES),
+            "modelCatalog": "./models.json",
+            "note": "Derived from src/hitron/adapters.py where the registry has a matching read route. Do not edit by hand; run tools/gen_spec.py.",
+        },
+        "tags": [{"name": name} for name in used_tags],
+        "paths": paths,
+    }
+
+
+def _targets() -> list[tuple[Path, str]]:
+    """Every generated file paired with its expected content."""
+    coda60 = build()
+    coda4x8x = build_coda4x8x()
+    return [
+        (SPEC_PATH, to_yaml(coda60)),
+        (SITE_SPEC_PATH, json.dumps(coda60, indent=2, ensure_ascii=False) + "\n"),
+        (CODA4X8X_SPEC_PATH, to_yaml(coda4x8x)),
+        (CODA4X8X_SITE_SPEC_PATH, json.dumps(coda4x8x, indent=2, ensure_ascii=False) + "\n"),
+    ]
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--check", action="store_true", help="exit 1 if the spec is stale")
+    ap.add_argument("--check", action="store_true", help="exit 1 if any generated file is stale")
     args = ap.parse_args()
 
-    document = build()
-    text = to_yaml(document)
-    site_json = json.dumps(document, indent=2, ensure_ascii=False) + "\n"
+    targets = _targets()
     if args.check:
-        stale = []
-        if not SPEC_PATH.exists() or SPEC_PATH.read_text() != text:
-            stale.append(SPEC_PATH.relative_to(ROOT))
-        if not SITE_SPEC_PATH.exists() or SITE_SPEC_PATH.read_text() != site_json:
-            stale.append(SITE_SPEC_PATH.relative_to(ROOT))
+        stale = [p.relative_to(ROOT) for p, text in targets if not p.exists() or p.read_text() != text]
         if stale:
             print(
                 "out of date: " + ", ".join(map(str, stale)) + "; run tools/gen_spec.py",
                 file=sys.stderr,
             )
             raise SystemExit(1)
-        print(f"{SPEC_PATH.relative_to(ROOT)} and {SITE_SPEC_PATH.relative_to(ROOT)} are current")
+        print(", ".join(str(p.relative_to(ROOT)) for p, _ in targets) + " are current")
         return
-    SPEC_PATH.write_text(text)
-    SITE_SPEC_PATH.parent.mkdir(parents=True, exist_ok=True)
-    SITE_SPEC_PATH.write_text(site_json)
-    print(f"wrote {SPEC_PATH.relative_to(ROOT)} ({len(text.splitlines())} lines)")
-    print(f"wrote {SITE_SPEC_PATH.relative_to(ROOT)}")
+    for path, text in targets:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text)
+        print(f"wrote {path.relative_to(ROOT)} ({len(text.splitlines())} lines)")
 
 
 if __name__ == "__main__":
