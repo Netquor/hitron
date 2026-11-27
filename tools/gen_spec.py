@@ -406,7 +406,7 @@ def _operation(endpoint, method: str, multi: bool) -> dict[str, object]:
         operation["parameters"] = [_QUERY_PARAMS[k] for k in endpoint.query if k in _QUERY_PARAMS]
     # Reads are anonymous on this build; only session-gated reads and writes
     # (or an app-token call) actually present credentials.
-    if not endpoint.read or endpoint.state == "session":
+    if (not endpoint.read and not endpoint.anonymous) or endpoint.state == "session":
         operation["security"] = [{"cookieAuth": []}]
     if endpoint.id == "api.register":
         operation["security"] = [{"appTokenAuth": []}]

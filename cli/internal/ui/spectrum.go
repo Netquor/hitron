@@ -98,7 +98,7 @@ func SpectrumFrame(header string, centerMHz float64, sweep *hitron.SpectrumSweep
 	}
 
 	lines = append(lines, "",
-		"  "+Dim("q quit  r refresh  a auto  1 stats  2 spectrum  3 constellation  [/] channel  , . tune  h help"))
+		"  "+Dim("q quit  r refresh  a auto  1 stats  2 spectrum  3 constellation  [/] channel  , . tune  z FEC reset  h help"))
 	return clipLines(lines, width, height)
 }
 
@@ -158,7 +158,7 @@ func ConstellationFrame(header string, cons *hitron.Constellation, channels []hi
 	lines = append(lines, constellationChart(cons.Points, cols, rows)...)
 
 	lines = append(lines, "",
-		"  "+Dim("q quit  r refresh  a auto  1 stats  2 spectrum  3 constellation  [/] channel  h help"))
+		"  "+Dim("q quit  r refresh  a auto  1 stats  2 spectrum  3 constellation  [/] channel  z FEC reset  h help"))
 	return clipLines(lines, width, height)
 }
 

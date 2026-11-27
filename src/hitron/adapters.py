@@ -68,6 +68,10 @@ class Endpoint:
     requires: tuple[str, ...] = ("always",)
     methods: tuple[str, ...] = ("GET",)
     read: bool = True
+    # Measured: this write answered 200 without a session cookie on the
+    # firmware in FIRMWARE_VERIFIED. Everything else that is not a read
+    # presents credentials.
+    anonymous: bool = False
     models: tuple[str, ...] = ()  # empty = every profile that satisfies `requires`
     state: str = _UNTESTED
     http_status: int | None = None
@@ -140,6 +144,19 @@ ENDPOINTS: tuple[Endpoint, ...] = (
       group="docsis", state=_PHP8, http_status=500, note="Creation of dynamic property LTEBackup::$LANClient"),
     E("cm.ready", "/1/Device/CM/Ready", summary="App-only CM readiness", group="docsis",
       state=_SESSION, http_status=400),
+    E("cm.ds.clear", "/1/Device/CM/DsInfo", summary="Clear DOCSIS 3.0 downstream FEC counters",
+      methods=("PUT",), read=False, anonymous=True, group="docsis", state=_OK, http_status=200,
+      note="ModelInfo::doClearDsFec sets Docsis.ClearAllDownstreamFECCounter. Bare PUT, no "
+           "body and no session; the handler ignores both. Measured on 8.7.1.0.1b4: all eight "
+           "channels read 0/0 immediately after one call. This is the only counter stop the "
+           "vendor's Reset FEC Counters button calls."),
+    E("cm.ds.ofdm.clear", "/1/Device/CM/DsOfdm", summary="Clear OFDM downstream FEC counters",
+      requires=("docsis31",), methods=("PUT",), read=False, anonymous=True, group="docsis",
+      state=_OK, http_status=200,
+      note="Bare PUT, no body or session. Measured on 8.7.1.0.1b4: unreliable - one call "
+           "zeroes zero to two of the four live channels, which ones vary, and the body/query "
+           "are ignored so there is no per-channel targeting. Repeat until the counters stop "
+           "improving (Client.ResetFEC / CODA60Client.reset_fec do eight attempts)."),
 
     # --- WiFi (gated; entirely dead on 8.7.1.0.1b4) ------------------------
     E("wifi.root", "/1/Device/WiFi", summary="WiFi overview", requires=("wifi",), group="wifi",
@@ -404,7 +421,14 @@ ENDPOINTS: tuple[Endpoint, ...] = (
     # --- writes / actions (never in plan() unless include_writes=True) ----
     E("cm.reboot", "/1/Device/CM/Reboot", summary="Reboot / factory-reset flag", methods=("POST",),
       read=False, state=_UNTESTED, group="write",
-      note="Body {reboot:1}, {factoryReset:1} or {restoreReset:1}; the last one execs reboot directly."),
+      note="Body must carry all three flags: ModelInfo::doRebootAction reads reboot, "
+           "factoryReset and restoreReset before choosing a branch, so a partial body is a "
+           "PHP 8 fatal (HTTP 500). Measured on 8.7.1.0.1b4: {reboot:1,...} answers 200 "
+           "{errCode:000} but the unit does not reboot (ICMP stays up, WAN lease and DOCSIS "
+           "counters unchanged, no CM Reboot Reason log entry). {reboot:0,factoryReset:0,"
+           "restoreReset:1} works: the connection drops with no reply, the unit is down ~5 s "
+           "later and back ~122 s after that, with CM Reboot Reason : POWER_ON. factoryReset "
+           "was not run."),
     E("adminremote.manage", "/1/Device/AdminRemoteManagement/Manage", summary="Enable/disable WAN admin",
       methods=("POST",), read=False, state=_UNTESTED, group="write"),
     E("adminremote.rlist.write", "/1/Device/AdminRemoteManagement/RList",

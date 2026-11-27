@@ -2,9 +2,12 @@ package hitron
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 )
 
@@ -277,12 +280,27 @@ func (c *Client) coda6xAction(ctx context.Context, model map[string]int) (map[st
 	return c.postModel(ctx, "/1/Device/CM/Reboot", model)
 }
 
-// Reboot asks the gateway to reboot. On the CODA6X this is the flag-based
-// ModelInfo path; the device acts on it asynchronously.
+// rebootBody builds the full ModelInfo body for /1/Device/CM/Reboot.
+//
+// doRebootAction() reads every flag in turn before it checks which one is set,
+// and on this build a missing key is a PHP fatal, not a warning. A body of
+// only {"restoreReset":1} therefore dies with `Undefined array key "reboot"`
+// and never reaches its branch, so all three keys must always be present with
+// the wanted one set to 1.
+func rebootBody(set string) map[string]int {
+	model := map[string]int{"reboot": 0, "factoryReset": 0, "restoreReset": 0}
+	model[set] = 1
+	return model
+}
+
+// Reboot asks the gateway to reboot through the TR-181 flag. Measured on
+// 8.7.1.0.1b4 the call answers errCode 000 and the unit never reboots: nothing
+// on the box consumes Device.DeviceInfo.X_HITRON_COM_MGMT.Reboot. HardReset is
+// the only measured-working reboot, and it resets the configuration first.
 func (c *Client) Reboot(ctx context.Context) (map[string]any, error) {
 	switch c.Kind {
 	case KindCoda6X:
-		return c.coda6xAction(ctx, map[string]int{"reboot": 1})
+		return c.coda6xAction(ctx, rebootBody("reboot"))
 	case KindMoca:
 		if _, err := c.rpc(ctx, 1, 0xb00, "PUT", []any{1}, nil); err != nil {
 			return nil, err
@@ -295,21 +313,41 @@ func (c *Client) Reboot(ctx context.Context) (map[string]any, error) {
 	}
 }
 
-// FactoryReset is the flag-based factory reset (CODA6X only).
+// FactoryReset is the flag-based factory reset (CODA6X only). It uses the same
+// X_HITRON_COM_MGMT.FactoryReset flag as Reboot uses for reboot, so expect the
+// same inert behaviour on 8.7.1.0.1b4; this variant has not been measured.
 func (c *Client) FactoryReset(ctx context.Context) (map[string]any, error) {
 	if c.Kind != KindCoda6X {
 		return nil, fmt.Errorf("factory reset on %s: %w (CODA6X only)", c.Kind.Label(), ErrUnsupported)
 	}
-	return c.coda6xAction(ctx, map[string]int{"factoryReset": 1})
+	return c.coda6xAction(ctx, rebootBody("factoryReset"))
 }
 
-// HardReset is the immediate restoreReset variant. On the analyzed firmware
-// its PHP handler execs `reboot` directly, with no TR-181 indirection.
+// HardReset is the restoreReset variant, and the only reboot that actually
+// works on 8.7.1.0.1b4. The PHP handler returns, sleeps 2 s, then execs
+// `ncpu_exec -e ht_reset_cmd.sh reboot` followed by `reboot`, so the socket
+// dies instead of answering: the connection close *is* the success signal.
+// Measured 2026-11-26: empty reply, ping down 5 s later, back after ~2 min
+// with fresh counters and a "CM Reboot Reason: POWER_ON" log entry. It clears
+// the local configuration on the way, so it is a factory reset, not a reboot.
 func (c *Client) HardReset(ctx context.Context) (map[string]any, error) {
 	if c.Kind != KindCoda6X {
 		return nil, fmt.Errorf("hard reset on %s: %w (CODA6X only)", c.Kind.Label(), ErrUnsupported)
 	}
-	return c.coda6xAction(ctx, map[string]int{"restoreReset": 1})
+	result, err := c.coda6xAction(ctx, rebootBody("restoreReset"))
+	if err != nil && isConnectionClosed(err) {
+		return map[string]any{
+			"result": "reboot requested; the device closed the connection",
+		}, nil
+	}
+	return result, err
+}
+
+// isConnectionClosed reports whether err is the transport-level EOF the
+// firmware produces when it reboots before finishing the response.
+func isConnectionClosed(err error) bool {
+	return errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) ||
+		errors.Is(err, syscall.ECONNRESET) || errors.Is(err, syscall.EPIPE)
 }
 
 // dsModulation names the raw downstream modulation code. Only "2" is confirmed

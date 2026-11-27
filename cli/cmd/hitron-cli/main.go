@@ -49,7 +49,7 @@ var commands = map[string]bool{
 	"stats": true, "status": true,
 	"monitor": true, "tui": true,
 	"detect": true, "system": true, "channels": true, "logs": true, "moca": true,
-	"reboot": true, "factory-reset": true, "hard-reset": true,
+	"reboot": true, "factory-reset": true, "hard-reset": true, "fec-reset": true,
 	"help": true, "version": true,
 }
 
@@ -99,6 +99,8 @@ func run(argv []string) int {
 	switch opts.command {
 	case "reboot", "factory-reset", "hard-reset":
 		return runAction(ctx, client, opts)
+	case "fec-reset":
+		return runFECReset(ctx, client, opts)
 	case "monitor", "tui":
 		if opts.once || opts.json || !ui.IsTerminal() {
 			return runSnapshot(ctx, client, opts)
@@ -273,6 +275,13 @@ func runMonitor(ctx context.Context, client *hitron.Client, opts options) int {
 		NoMouse:      opts.noMouse,
 		NoBackground: opts.noBg,
 	}
+	if client.Kind == hitron.KindCoda6X {
+		tui.ResetFEC = func(runCtx context.Context) (hitron.FECReset, error) {
+			callCtx, cancel := context.WithTimeout(runCtx, opts.timeout*3)
+			defer cancel()
+			return client.ResetFEC(callCtx)
+		}
+	}
 	// Reboot is offered where the CLI's own reboot command works. The CODA-57
 	// has no confirmed write endpoint, so it gets no button at all.
 	if client.Kind != hitron.KindCoda57 {
@@ -383,9 +392,46 @@ func runAction(ctx context.Context, client *hitron.Client, opts options) int {
 		return 0
 	}
 	fmt.Printf("%s sent to %s (%s)\n", action, client.Addr(), client.Kind.Label())
+	if note, ok := result["result"].(string); ok && note != "" {
+		fmt.Println(note)
+	}
 	if code := fmt.Sprint(result["errCode"]); code != "" && code != "000" && code != "<nil>" {
 		fmt.Printf("device answered errCode %s %v\n", code, result["errMsg"])
 	}
+	return 0
+}
+
+func runFECReset(ctx context.Context, client *hitron.Client, opts options) int {
+	callCtx, cancel := context.WithTimeout(ctx, opts.timeout*3)
+	defer cancel()
+	result, err := client.ResetFEC(callCtx)
+	if err != nil {
+		return fail(err)
+	}
+	stillCounting := result.OFDMNotZero
+	if stillCounting == nil {
+		stillCounting = []string{}
+	}
+	if opts.json {
+		writeJSON(map[string]any{
+			"action": "fec-reset",
+			"host":   client.Addr(),
+			"device": client.Kind.Label(),
+			"docsis": map[string]int{
+				"busy":    result.DOCSISBusy,
+				"cleared": result.DOCSISCleared,
+			},
+			"ofdm": map[string]any{
+				"busy":           result.OFDMBusy,
+				"cleared":        result.OFDMCleared,
+				"still_counting": stillCounting,
+			},
+			"summary": result.String(),
+		})
+		return 0
+	}
+	fmt.Printf("FEC reset on %s (%s)\n", client.Addr(), client.Kind.Label())
+	fmt.Println("  " + result.Detail())
 	return 0
 }
 
@@ -667,10 +713,11 @@ Keys:
   r        refresh now
   a        toggle automatic refresh
   g        toggle trend graphs
+  z        reset the downstream FEC counters (3.0 + OFDM; CODA6X)
   t        next theme (remembered for next time)
+  b        toggle the gradient background (24-bit colour terminals only)
   j / k    scroll (the mouse wheel works too)
   x        reboot, after a confirmation (also the Reboot button)
-  z        zero the FEC counters (counts since pressed; the modem has no reset)
   space    refresh now
   h        help overlay
   1        summary
@@ -700,10 +747,42 @@ The spectrum and constellation views exist only on the CODA6X family. Both read
 the same single hardware tuner, so captures are sequential: one 6 MHz window
 per refresh. Inactive constellation ports answer 200 with an empty cloud.
 
+z issues PUT /1/Device/CM/DsInfo and PUT /1/Device/CM/DsOfdm, then re-reads the
+counters. The status line reports how many of the channels that were counting
+before now read zero, so it never claims more than the device did. The 3.0 stop
+clears every channel in one call; the OFDM stop is unreliable (one PUT often
+zeroes a single channel), so it is retried eight times and the best result is
+reported. On a family with no confirmed FEC endpoint, z only zeroes the
+displayed counts.
+
+hitron-cli fec-reset runs the same clear without the TUI, for scripts.
+
 Examples:
   hitron-cli monitor --host 192.168.100.1 --interval 3s
   hitron-cli monitor --theme dracula
   hitron-cli monitor --once --no-color`
+	case "fec-reset":
+		return `hitron-cli fec-reset — clear the downstream FEC counters
+
+Usage:
+  hitron-cli fec-reset [host] [--json]
+
+CODA6X only. Sends one bare PUT /1/Device/CM/DsInfo (DOCSIS 3.0 counters) and
+then repeats a bare PUT /1/Device/CM/DsOfdm (OFDM counters), re-reading both.
+No body, no session, and no y/N question: it zeroes counters and changes
+nothing else.
+
+The report is relative to the channels that were counting before the clear, so
+an already-clean counter is never claimed as cleared. The 3.0 stop clears every
+busy channel in one call. The OFDM stop is unreliable on 8.7.1.0.1b4 - one PUT
+zeroes zero to two of the live channels and the handler ignores the body - so
+it is retried up to eight times and the best observation is kept.
+
+--json prints the counts, including the OFDM channels still counting.
+
+Examples:
+  hitron-cli fec-reset
+  hitron-cli fec-reset 192.168.100.1 --json | jq '.ofdm'`
 	case "detect":
 		return `hitron-cli detect — identify the device
 
@@ -764,11 +843,29 @@ Only meaningful on an HT-EM5. Prints link state, MoCA versions, adapter
 name, beacon/LOF, TX power index, Ethernet frame counters, per-band
 supported/enabled/privacy state, and every node with its MAC and role.`
 	case "reboot":
-		return destructiveHelp("reboot", "CODA6X: POST /1/Device/CM/Reboot {\"reboot\":1}\nHT-EM5: PUT /ms/1/0xb00 {\"data\":[1]}\nCODA-57: no confirmed reboot endpoint.")
+		return destructiveHelp("reboot", `CODA6X: POST /1/Device/CM/Reboot
+  {"reboot":1,"factoryReset":0,"restoreReset":0}
+HT-EM5: PUT /ms/1/0xb00 {"data":[1]}
+CODA-57: no confirmed reboot endpoint.
+
+The body always carries all three flags: the handler reads each one before
+it picks a branch, so a partial body is a PHP 8 fatal, not errCode 001.
+Measured on 8.7.1.0.1b4 this call answers errCode 000 and the unit does not
+reboot; nothing on the box acts on the flag. Use hard-reset.`)
 	case "factory-reset":
-		return destructiveHelp("factory-reset", "CODA6X: POST /1/Device/CM/Reboot {\"factoryReset\":1}.\nDestroys the device configuration. CODA6X only.")
+		return destructiveHelp("factory-reset", `CODA6X: POST /1/Device/CM/Reboot
+  {"reboot":0,"factoryReset":1,"restoreReset":0}
+
+Destroys the device configuration. CODA6X only. Not measured: it sets the
+same TR-181 flag as reboot, which is inert on 8.7.1.0.1b4.`)
 	case "hard-reset":
-		return destructiveHelp("hard-reset", "CODA6X: POST /1/Device/CM/Reboot {\"restoreReset\":1}.\nThe firmware handler execs reboot directly; the most immediate variant.\nCODA6X only.")
+		return destructiveHelp("hard-reset", `CODA6X: POST /1/Device/CM/Reboot
+  {"reboot":0,"factoryReset":0,"restoreReset":1}
+
+The firmware handler execs reboot directly, so the socket closes with no
+reply; that empty reply is success, not an error. Measured on 8.7.1.0.1b4:
+the unit is down ~5 s after the call and back ~2 min later, with its local
+configuration reset. CODA6X only.`)
 	case "auth":
 		return `Authentication
 
@@ -827,6 +924,7 @@ snapshot's warnings array.`
   hitron-cli 192.168.100.1
   hitron-cli stats --host 192.168.100.1 --once --no-color
   hitron-cli monitor --interval 3s
+  hitron-cli fec-reset --json
   hitron-cli detect 192.168.100.1
   hitron-cli channels --json | jq '.downstream[] | {id, power_dbmv}'
   hitron-cli logs --limit 50
@@ -838,11 +936,20 @@ snapshot's warnings array.`
 	case "safety", "writes":
 		return `Writes and safety
 
-Read commands never write. The three destructive commands are separate verbs:
+Read commands never write. The live TUI has two writes:
 
-  reboot         ask the modem to reboot
-  factory-reset  clear configuration and reboot
-  hard-reset     immediate restoreReset + reboot (CODA6X)
+  z            reset the downstream FEC counters (CODA6X; counters only)
+  x            reboot, only after typing the confirmation word
+
+fec-reset is the command-line form of z: bare PUTs to CM/DsInfo and CM/DsOfdm,
+no session and no prompt, and --json for scripts. It zeroes counters and
+changes nothing else.
+
+The destructive commands are separate verbs:
+
+  reboot         ask the modem to reboot (inert on 8.7.1.0.1b4)
+  factory-reset  clear configuration and reboot (not measured)
+  hard-reset     immediate restoreReset + reboot (CODA6X, measured working)
 
 Each one asks a y/N question unless --confirm is given. It also requires
 --user and --password (or HITRON_USERNAME/HITRON_PASSWORD), because the
@@ -895,6 +1002,7 @@ Commands:
   reboot           reboot (prompts, or --confirm)
   factory-reset    factory reset + reboot (CODA6X)
   hard-reset       immediate restoreReset + reboot (CODA6X)
+  fec-reset        clear the downstream FEC counters (CODA6X)
   help [topic]     this text, or a topic
   version          print the version
 
@@ -919,7 +1027,7 @@ Global flags:
 
 Help topics:
   stats monitor detect system channels logs moca
-  reboot factory-reset hard-reset
+  reboot factory-reset hard-reset fec-reset
   auth environment examples safety exit-codes
 
 Examples:
@@ -927,6 +1035,7 @@ Examples:
   hitron-cli stats --once
   hitron-cli channels --json
   hitron-cli monitor --interval 3s
+  hitron-cli fec-reset --json
   hitron-cli help auth
 `
 }
