@@ -1,5 +1,8 @@
 """Unified CLI: `hitron <device> <host> [options]`. Read subcommands print JSON to stdout.
 
+The "coda4x8x" subcommand is read-only and experimental (not verified on live hardware);
+it has no action subcommands.
+
 Write/action subcommands (coda60-reboot, coda60-factory-reset, coda60-hard-reset,
 coda60-set-password, coda60-set-username) are separate, explicitly-named subcommands -
 never a flag on the read command - so a write is never one typo away from a read.
@@ -15,6 +18,7 @@ import asyncio
 import json
 import sys
 
+from .coda4x8x import STATUS as CODA4X8X_STATUS, Coda4x8xClient
 from .coda57 import Coda57Client
 from .coda60 import Coda60Client
 from .ht_em5 import HitronMocaClient
@@ -87,6 +91,15 @@ async def _coda57(args: argparse.Namespace) -> dict:
     return data
 
 
+async def _coda4x8x(args: argparse.Namespace) -> dict:
+    async with Coda4x8xClient(args.host) as client:
+        if args.username is not None:
+            await client.login(args.username, args.password or "")
+        data = await client.get_all()
+    data["metadata"]["experimental"] = CODA4X8X_STATUS
+    return data
+
+
 async def _coda60_action(args: argparse.Namespace) -> dict:
     async with Coda60Client(args.host) as client:
         if not await client.login(args.username, args.password):
@@ -145,6 +158,12 @@ def main() -> None:
     p.add_argument("host", default="192.168.100.1", nargs="?")
     p.add_argument("--spec-check", action="store_true", help="include the Midco in-spec power-range check")
     p.set_defaults(run=_coda57)
+
+    p = sub.add_parser("coda4x8x", help="CODA 4x8x gateway (CODA-4582/4680, root-path REST API) - read only, experimental: not verified on live hardware")
+    p.add_argument("host", default="192.168.0.1", nargs="?")
+    p.add_argument("--username", help="log in first (unconfirmed flow) for authenticated reads")
+    p.add_argument("--password", help="password for --username")
+    p.set_defaults(run=_coda4x8x)
 
     _add_destructive_action(sub, "coda60-reboot", "reboot", "flag-based reboot request")
     _add_destructive_action(sub, "coda60-factory-reset", "factory-reset", "flag-based factory reset - destroys all configuration")

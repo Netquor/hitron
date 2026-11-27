@@ -55,12 +55,15 @@
     <p class="lede">
       Every route, field, and quirk of the <code>/1/Device</code> console API — plus a
       single exporter that speaks Prometheus, Telegraf, Grafana, and OpenTelemetry
-      for <strong>CODA6X</strong>, <strong>CODA-57</strong>, and <strong>HT-EM5</strong>.
+      for <strong>CODA6X</strong>, <strong>CODA-57</strong>, and <strong>HT-EM5</strong>,
+      with experimental, read-only support for the <strong>CODA 4x8x</strong>
+      (not verified on live hardware).
     </p>
     <div class="cta-row">
       <a class="btn primary" href="#cli">Try the terminal dashboard</a>
       <a class="btn" href="#explorer">Open API console</a>
       <a class="btn" href="openapi.json" download>OpenAPI JSON</a>
+      <a class="btn" href="openapi-coda4x8x.json" download>CODA 4x8x spec (experimental)</a>
       <a class="quiet-link" href="https://github.com/Netquor/hitron">GitHub ↗</a>
     </div>
     <div class="cmd" role="group" aria-label="Install command">
@@ -89,15 +92,15 @@
 
 <div class="marquee" aria-hidden="true">
   <div class="marquee-track">
-    <span class="chip">CODA6X</span><span class="chip">CODA-57</span><span class="chip">HT-EM5</span><span class="chip">Prometheus</span><span class="chip">Telegraf</span><span class="chip">OpenTelemetry</span><span class="chip">Grafana</span><span class="chip">OpenAPI 3</span><span class="chip">DOCSIS 3.1</span><span class="chip">OFDM / OFDMA</span><span class="chip">MoCA</span><span class="chip">Terminal UI</span>
-    <span class="chip">CODA6X</span><span class="chip">CODA-57</span><span class="chip">HT-EM5</span><span class="chip">Prometheus</span><span class="chip">Telegraf</span><span class="chip">OpenTelemetry</span><span class="chip">Grafana</span><span class="chip">OpenAPI 3</span><span class="chip">DOCSIS 3.1</span><span class="chip">OFDM / OFDMA</span><span class="chip">MoCA</span><span class="chip">Terminal UI</span>
+    <span class="chip">CODA6X</span><span class="chip">CODA-57</span><span class="chip">HT-EM5</span><span class="chip">CODA 4x8x (experimental)</span><span class="chip">Prometheus</span><span class="chip">Telegraf</span><span class="chip">OpenTelemetry</span><span class="chip">Grafana</span><span class="chip">OpenAPI 3</span><span class="chip">DOCSIS 3.1</span><span class="chip">OFDM / OFDMA</span><span class="chip">MoCA</span><span class="chip">Terminal UI</span>
+    <span class="chip">CODA6X</span><span class="chip">CODA-57</span><span class="chip">HT-EM5</span><span class="chip">CODA 4x8x (experimental)</span><span class="chip">Prometheus</span><span class="chip">Telegraf</span><span class="chip">OpenTelemetry</span><span class="chip">Grafana</span><span class="chip">OpenAPI 3</span><span class="chip">DOCSIS 3.1</span><span class="chip">OFDM / OFDMA</span><span class="chip">MoCA</span><span class="chip">Terminal UI</span>
   </div>
 </div>
 
 <section class="stats" aria-label="Coverage">
   <div><strong id="stat-paths">116</strong><span>documented paths</span></div>
   <div><strong id="stat-ops">171</strong><span>operations</span></div>
-  <div><strong>3</strong><span>device families</span></div>
+  <div><strong>4</strong><span>device families (one experimental)</span></div>
   <div><strong>4</strong><span>metric formats</span></div>
   <div><strong>0</strong><span>extra Python deps</span></div>
 </section>
@@ -107,7 +110,7 @@
     <div class="cli-hero-copy">
       <p class="eyebrow">hitron-cli</p>
       <h2>Your modem's signal, live in the terminal.</h2>
-      <p class="lede">One static binary and no login. Power, SNR, and codeword errors update every second, with trend graphs and a channel table that turns red when something is wrong. Works on the CODA6X, CODA-57, and HT-EM5.</p>
+      <p class="lede">One static binary and no login. Power, SNR, and codeword errors update every second, with trend graphs and a channel table that turns red when something is wrong. Works on the CODA6X, CODA-57, and HT-EM5, and reads the experimental CODA 4x8x (not verified on live hardware).</p>
       <div class="cmd" role="group" aria-label="Install command">
         <code id="cli-install-cmd">go install github.com/Netquor/hitron/cli/cmd/hitron-cli@latest</code>
         <button class="copy" data-copy="#cli-install-cmd" type="button">Copy</button>
@@ -225,7 +228,7 @@ hitron coda60 192.168.100.1 | head</code></pre>
   --coda60 192.168.100.1 \
   --ht-em5 192.168.0.212 \
   --coda57 192.168.100.2</code></pre>
-        <p class="muted">Also serves <code>/healthz</code>, <code>/api/v1/samples</code>, and <code>/api/v1/logs</code>.</p>
+        <p class="muted">Also serves <code>/healthz</code>, <code>/api/v1/samples</code>, and <code>/api/v1/logs</code>. An experimental CODA 4x8x is polled read-only with <code>--coda4x8x HOST</code> (not verified on live hardware).</p>
       </div>
     </li>
     <li>
@@ -532,7 +535,7 @@ curl -s http://127.0.0.1:9877/api/v1/samples | jq '.[0]'</code></pre>
 </main>
 
 <footer class="footer">
-  <p>Not official Hitron documentation. Field names come from the device; mistakes are ours. <a href="llms.txt">llms.txt</a> · <a href="openapi.json">OpenAPI</a> · <a href="https://github.com/Netquor/hitron">Source</a></p>
+  <p>Not official Hitron documentation. Field names come from the device; mistakes are ours. <a href="llms.txt">llms.txt</a> · <a href="openapi.json">OpenAPI</a> · <a href="openapi-coda4x8x.json">CODA 4x8x (experimental)</a> · <a href="https://github.com/Netquor/hitron">Source</a></p>
 </footer>
 
 <div id="toast" class="toast" role="status" aria-live="polite"></div>

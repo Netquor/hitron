@@ -58,6 +58,7 @@ If you only want the API reference, open the">
         <a href="#0-what-you-need" class="toc-l2">0. What you need</a>
         <a href="#1-install" class="toc-l2">1. Install</a>
         <a href="#2-prove-the-device-answers" class="toc-l2">2. Prove the device answers</a>
+        <a href="#experimental-coda-4x8x-coda-4582-coda-4680" class="toc-l3">Experimental: CODA 4x8x (CODA-4582, CODA-4680)</a>
         <a href="#firmware-quirks-you-will-meet" class="toc-l3">Firmware quirks you will meet</a>
         <a href="#3-run-the-exporter" class="toc-l2">3. Run the exporter</a>
         <a href="#one-shot-output-in-every-format" class="toc-l3">One-shot output in every format</a>
@@ -111,7 +112,7 @@ prepared to lose.</p>
 </tr>
 <tr>
 <td>A device you are allowed to poll</td>
-<td>CODA6X, CODA-57, or HT-EM5</td>
+<td>CODA6X, CODA-57, HT-EM5, or (experimental) CODA 4x8x</td>
 </tr>
 </tbody>
 </table></div>
@@ -128,9 +129,10 @@ pip install -e &quot;.[dev]&quot;
 <pre><code class="language-bash">hitron --help
 hitron-exporter --help
 </code></pre>
-<p><code>hitron</code> has read subcommands (<code>coda60</code>, <code>coda57</code>, <code>ht-em5</code>) and guarded write
-subcommands (<code>coda60-reboot</code>, <code>coda60-set-password</code>, …). <code>hitron-exporter</code> is
-the long-running process.</p>
+<p><code>hitron</code> has read subcommands (<code>coda60</code>, <code>coda57</code>, <code>ht-em5</code>, and the experimental
+<code>coda4x8x</code>) and guarded write subcommands (<code>coda60-reboot</code>,
+<code>coda60-set-password</code>, …). The <code>coda4x8x</code> family has no write subcommands.
+<code>hitron-exporter</code> is the long-running process.</p>
 <hr>
 <h2 id="2-prove-the-device-answers">2. Prove the device answers<a class="headerlink" href="#2-prove-the-device-answers" title="Link to this section">#</a></h2>
 <pre><code class="language-bash">hitron coda60 192.168.100.1
@@ -144,6 +146,18 @@ hitron coda60 192.168.100.1 | jq '.cm_dsofdm.Freq_List[0].SNR'
 hitron ht-em5 192.168.0.212
 hitron coda57 192.168.100.2 --spec-check
 </code></pre>
+<h3 id="experimental-coda-4x8x-coda-4582-coda-4680">Experimental: CODA 4x8x (CODA-4582, CODA-4680)<a class="headerlink" href="#experimental-coda-4x8x-coda-4582-coda-4680" title="Link to this section">#</a></h3>
+<pre><code class="language-bash">hitron coda4x8x 192.168.0.1                       # unauthenticated reads
+hitron coda4x8x 192.168.0.1 --username USER --password PASS   # log in first
+</code></pre>
+<p>Status: <strong>experimental, not verified on live hardware.</strong> This family is read-only.
+It is a hypothesis that the 4x8x serves the CODA6X data model from the site root
+(no <code>/1/Device</code> prefix); the route list and login flow come from
+<a class="ext" href="https://github.com/hairyhenderson/hitron_coda">hairyhenderson/hitron_coda</a> (MIT).
+See <a href="kb.html"><code>KB.md</code></a> section 4 for the evidence, the unconfirmed auth flow, and the
+checklist a real capture would need to answer. If you run it against a unit you own,
+a sanitized capture helps. There is no reboot, reset, password or WiFi write for
+this family.</p>
 <p>If the CODA6X is on a different subnet, move your machine onto that subnet or
 add a route. The console API has no cloud fallback.</p>
 <h3 id="firmware-quirks-you-will-meet">Firmware quirks you will meet<a class="headerlink" href="#firmware-quirks-you-will-meet" title="Link to this section">#</a></h3>
@@ -166,6 +180,10 @@ add a route. The console API has no cloud fallback.</p>
   --coda57 192.168.100.2 \
   --ht-em5 192.168.0.212
 </code></pre>
+<p>Add <code>--coda4x8x HOST</code> to poll an experimental CODA 4x8x the same way (read-only).
+The exporter does not log in, so a unit that requires a login is reported down.
+The Go <code>hitron-cli</code> has no <code>--coda4x8x</code> flag: it selects the family by detection
+only (root <code>/CM/Version</code>), and detection never sends credentials.</p>
 <p>Give a target a friendly label with <code>name=host</code>:</p>
 <pre><code class="language-bash">hitron-exporter --coda60 edge=192.168.100.1
 </code></pre>
@@ -201,7 +219,7 @@ add a route. The console API has no cloud fallback.</p>
 curl -s http://127.0.0.1:9877/metrics | grep modem_downstream_channel_power
 </code></pre>
 <p>Environment variables work too: <code>HITRON_CODA60_HOSTS</code>,
-<code>HITRON_CODA57_HOSTS</code>, <code>HITRON_HT_EM5_HOSTS</code> (comma-separated), plus
+<code>HITRON_CODA57_HOSTS</code>, <code>HITRON_CODA4X8X_HOSTS</code>, <code>HITRON_HT_EM5_HOSTS</code> (comma-separated), plus
 <code>HITRON_EXPORTER_PORT</code>, <code>HITRON_EXPORTER_INTERVAL</code>, <code>HITRON_OTLP_ENDPOINT</code>.</p>
 <h3 id="one-shot-output-in-every-format">One-shot output in every format<a class="headerlink" href="#one-shot-output-in-every-format" title="Link to this section">#</a></h3>
 <pre><code class="language-bash"># Prometheus text
@@ -398,6 +416,7 @@ curl -s http://127.0.0.1:9877/api/v1/logs &gt; /tmp/exporter-logs.json
 <pre><code>specs/openapi-coda60.yaml     full CODA6X API, 116 paths / 171 operations
 specs/openapi-ht-em5.yaml     HT-EM5 MoCA API
 specs/openapi-coda57-legacy.yaml  CODA-57 .asp API
+specs/openapi-coda4x8x.yaml       CODA 4x8x API (experimental)
 src/hitron/metrics.py         one normalized metric vocabulary
 src/hitron/formats.py         Prometheus / Influx / OTLP / JSON encoders
 src/hitron/exporter.py        poll loop, HTTP surface, OTLP push

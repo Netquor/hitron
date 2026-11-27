@@ -23,6 +23,10 @@ const (
 	KindCoda6X  Kind = "coda6x"
 	KindCoda57  Kind = "coda57"
 	KindMoca    Kind = "moca"
+
+	// KindCoda4x8x is the experimental, read-only CODA-4582 / CODA-4680 family.
+	// Nothing about it has been verified on live hardware.
+	KindCoda4x8x Kind = "coda4x8x"
 )
 
 // Label is the human-facing family name.
@@ -32,6 +36,8 @@ func (k Kind) Label() string {
 		return "CODA-60 / CODA6X"
 	case KindCoda57:
 		return "CODA-57"
+	case KindCoda4x8x:
+		return "CODA 4x8x (experimental)"
 	case KindMoca:
 		return "HT-EM5 (MoCA)"
 	default:
@@ -382,3 +388,10 @@ func (e *AuthRequiredError) Error() string {
 // ErrUnsupported is returned for actions a family has no confirmed write
 // endpoint for. It is never silently ignored.
 var ErrUnsupported = fmt.Errorf("action not supported on this device")
+
+// ErrCoda4x8xReadOnly is returned for every analyzer, counter-reset, reboot or
+// other write a user could expect on the CODA 4x8x family. That family is
+// experimental and read-only: its endpoints are reconstructed from a public
+// project and have not been verified on live hardware, so nothing here may
+// change state on a modem that is in service. It wraps ErrUnsupported.
+var ErrCoda4x8xReadOnly = fmt.Errorf("not supported on CODA 4x8x (experimental, read-only): %w", ErrUnsupported)

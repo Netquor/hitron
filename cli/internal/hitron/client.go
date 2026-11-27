@@ -94,6 +94,28 @@ func (c *Client) Addr() string {
 	return host
 }
 
+// api maps a CODA data route such as "/CM/DsInfo" onto the family's API root.
+// The CODA6X serves its JSON under /1/Device. The CODA 4x8x is hypothesized to
+// serve the same data model from the site root (unverified on hardware).
+func (c *Client) api(path string) string {
+	if !strings.HasPrefix(path, "/") {
+		path = "/" + path
+	}
+	if c.Kind == KindCoda4x8x {
+		return path
+	}
+	return "/1/Device" + path
+}
+
+// readOnlyGuard returns the typed error when the client is a CODA 4x8x, for
+// every operation that is not a plain read.
+func (c *Client) readOnlyGuard() error {
+	if c.Kind == KindCoda4x8x {
+		return ErrCoda4x8xReadOnly
+	}
+	return nil
+}
+
 func (c *Client) url(path string) string {
 	if !strings.HasPrefix(path, "/") {
 		path = "/" + path
@@ -259,6 +281,8 @@ func (c *Client) Login(ctx context.Context) error {
 	switch c.Kind {
 	case KindCoda6X:
 		return c.loginCoda6X(ctx)
+	case KindCoda4x8x:
+		return c.loginCoda4x8x(ctx)
 	case KindCoda57:
 		// The legacy API's login page is primed with a GET; no credential
 		// POST has been confirmed against a real unit.
@@ -290,7 +314,30 @@ func (c *Client) loginCoda6X(ctx context.Context) error {
 		"username": c.Creds.Username,
 		"password": c.Creds.Password,
 	})
-	object, err := c.postModel(ctx, "/1/Device/Users/Login", json.RawMessage(payload))
+	object, err := c.postModel(ctx, c.api("/Users/Login"), json.RawMessage(payload))
+	if err != nil {
+		return fmt.Errorf("login failed: %w", err)
+	}
+	if result := str(object["result"]); result != "" &&
+		!strings.EqualFold(result, "success") {
+		return fmt.Errorf("login failed: %s", result)
+	}
+	return nil
+}
+
+// loginCoda4x8x posts the same model=<json> login body as the CODA6X, but to
+// the site root. This flow comes from a public project and is unconfirmed on
+// hardware. Reads do not need it, and no CSRF token is fetched because the
+// client never sends a state-changing request for this family.
+func (c *Client) loginCoda4x8x(ctx context.Context) error {
+	if !c.Creds.Complete() {
+		return fmt.Errorf("CODA 4x8x login needs --username and --password")
+	}
+	payload, _ := json.Marshal(map[string]string{
+		"username": c.Creds.Username,
+		"password": c.Creds.Password,
+	})
+	object, err := c.postModel(ctx, c.api("/Users/Login"), json.RawMessage(payload))
 	if err != nil {
 		return fmt.Errorf("login failed: %w", err)
 	}

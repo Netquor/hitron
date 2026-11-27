@@ -1,7 +1,7 @@
 """Unified exporter for every Hitron device this project knows about.
 
 One process can poll any number of HT-EM5 MoCA bridges, CODA6X gateways, and
-CODA-57 legacy gateways, then expose the result as:
+CODA-57 legacy gateways (and, experimentally, CODA 4x8x gateways), then expose the result as:
 
 * Prometheus text on ``/metrics`` (default),
 * Influx line protocol for Telegraf (``--once --format telegraf``),
@@ -18,7 +18,8 @@ Usage::
     hitron-exporter --port 9877 \\
         --ht-em5 192.168.0.212 --ht-em5 192.168.0.241 \\
         --coda60 192.168.100.1 \\
-        --coda57 192.168.100.2
+        --coda57 192.168.100.2 \\
+        --coda4x8x 192.168.0.1
 
     hitron-exporter --coda60 192.168.100.1 --once --format telegraf
 
@@ -43,6 +44,7 @@ from typing import Any
 
 import aiohttp
 
+from .coda4x8x import Coda4x8xClient
 from .coda57 import Coda57Client
 from .coda60 import Coda60Client
 from .formats import (
@@ -54,7 +56,7 @@ from .formats import (
 )
 from .grafana import write_bundle
 from .ht_em5 import HitronMocaClient
-from .metrics import Sample, SpecRange, coda57_samples, coda60_samples, dedupe, ht_em5_samples
+from .metrics import Sample, SpecRange, coda4x8x_samples, coda57_samples, coda60_samples, dedupe, ht_em5_samples
 from .models import ModelProfile, get_profile
 
 log = logging.getLogger("hitron.exporter")
@@ -117,6 +119,7 @@ class Config:
     ht_em5: list[Target] = field(default_factory=list)
     coda60: list[Target] = field(default_factory=list)
     coda57: list[Target] = field(default_factory=list)
+    coda4x8x: list[Target] = field(default_factory=list)
     interval: float = 30.0
     phy_rates: bool = False
     spec: SpecRange = field(default_factory=SpecRange)
@@ -150,6 +153,9 @@ class Collector:
         for target in self.config.ht_em5:
             tasks.append(asyncio.create_task(self._ht_em5(target)))
             keys.append(("ht-em5", target.name))
+        for target in self.config.coda4x8x:
+            tasks.append(asyncio.create_task(self._coda4x8x(target)))
+            keys.append(("coda4x8x", target.name))
 
         results = await asyncio.gather(*tasks, return_exceptions=True)
         samples: list[Sample] = []
@@ -218,6 +224,14 @@ class Collector:
         try:
             data = await Coda57Client(target.host).get_all()
             return coda57_samples(data, source=target.name, spec=self.config.spec), ""
+        except Exception as exc:  # noqa: BLE001
+            return [], str(exc)
+
+    async def _coda4x8x(self, target: Target) -> tuple[list[Sample], str]:
+        # Experimental, read-only: not verified on live hardware.
+        try:
+            snapshot = await Coda4x8xClient(target.host).get_all()
+            return coda4x8x_samples(snapshot, source=target.name), ""
         except Exception as exc:  # noqa: BLE001
             return [], str(exc)
 
@@ -366,10 +380,12 @@ def build_config(args: argparse.Namespace) -> Config:
     ht = args.ht_em5 or _split_env("HITRON_HT_EM5_HOSTS")
     c60 = args.coda60 or _split_env("HITRON_CODA60_HOSTS") or _split_env("HITRON_CODA60_HOST")
     c57 = args.coda57 or _split_env("HITRON_CODA57_HOSTS") or _split_env("HITRON_CODA57_HOST")
+    c4x8x = args.coda4x8x or _split_env("HITRON_CODA4X8X_HOSTS") or _split_env("HITRON_CODA4X8X_HOST")
     return Config(
         ht_em5=[parse_target(x) for x in ht],
         coda60=[parse_target(x) for x in c60],
         coda57=[parse_target(x) for x in c57],
+        coda4x8x=[parse_target(x) for x in c4x8x],
         interval=args.interval,
         phy_rates=args.phy_rates,
         spec=SpecRange(args.ds_spec_min, args.ds_spec_max, args.us_spec_min, args.us_spec_max),
@@ -414,6 +430,8 @@ def main(argv: list[str] | None = None) -> None:
     ap.add_argument("--coda60-model", default=os.environ.get("HITRON_CODA60_MODEL") or None,
                     help="force a CODA6X model profile (e.g. coda6011uv) instead of detecting it")
     ap.add_argument("--coda57", action="append", default=[], metavar="[NAME=]HOST", help="CODA-57 legacy gateway; repeatable")
+    ap.add_argument("--coda4x8x", action="append", default=[], metavar="[NAME=]HOST",
+                    help="CODA 4x8x gateway (experimental, read-only, not verified on live hardware); polled WITHOUT a login, so a unit that requires one is reported down; repeatable")
     ap.add_argument("--phy-rates", action="store_true", help="also collect the HT-EM5 PHY-rate matrix (slow)")
     ap.add_argument("--ds-spec-min", type=float, default=float(os.environ.get("HITRON_DS_SPEC_MIN", "-6")))
     ap.add_argument("--ds-spec-max", type=float, default=float(os.environ.get("HITRON_DS_SPEC_MAX", "15")))
@@ -427,8 +445,8 @@ def main(argv: list[str] | None = None) -> None:
     args = ap.parse_args(argv)
 
     config = build_config(args)
-    if not (config.ht_em5 or config.coda60 or config.coda57):
-        ap.error("give at least one of --ht-em5 / --coda60 / --coda57 (or the matching env var)")
+    if not (config.ht_em5 or config.coda60 or config.coda57 or config.coda4x8x):
+        ap.error("give at least one of --ht-em5 / --coda60 / --coda57 / --coda4x8x (or the matching env var)")
 
     if args.grafana_dir:
         written = write_bundle(args.grafana_dir)
@@ -450,10 +468,11 @@ def main(argv: list[str] | None = None) -> None:
 
     log.info("serving /metrics on %s:%d, polling every %ss", args.listen, args.port, config.interval)
     log.info(
-        "HT-EM5: %s | CODA6X: %s | CODA-57: %s | OTLP: %s",
+        "HT-EM5: %s | CODA6X: %s | CODA-57: %s | CODA 4x8x (experimental): %s | OTLP: %s",
         [t.name for t in config.ht_em5] or "(none)",
         [t.name for t in config.coda60] or "(none)",
         [t.name for t in config.coda57] or "(none)",
+        [t.name for t in config.coda4x8x] or "(none)",
         args.otlp_endpoint or "(disabled)",
     )
 

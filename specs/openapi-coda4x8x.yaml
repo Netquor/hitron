@@ -1,0 +1,823 @@
+openapi: "3.0.3"
+info:
+  title: "Hitron CODA 4x8x console REST API (experimental, reverse engineered)"
+  version: experimental
+  description: |
+    STATUS: experimental, not verified on live hardware. Nothing in this document has been captured from a
+    CODA-4582, CODA-4680 or any other 4x8x unit by this project.
+
+    Hypothesis: the CODA 4x8x serves the same REST data model that the CODA6X spec
+    (openapi-coda60.yaml) describes, but from the site root, without the
+    /1/Device prefix. Evidence for: the route names are identical (CM/DsInfo,
+    CM/UsInfo, CM/DsOfdm, CM/UsOfdm, CM/Log, CM/SysInfo, Router/SysInfo, Hosts,
+    WiFi/...), and the login shape matches (a form field `model` holding JSON).
+    Evidence against: the field names here are reconstructed from a third-party
+    client, not confirmed on hardware, and the source tested the 7.x firmware
+    line while the CODA6X analyzed here is an 8.x PHP + RDK-B build, so the two may
+    be different firmware generations. What the 4x8x runs is unknown.
+
+    Source of the route list and auth flow: hairyhenderson/hitron_coda (Go, MIT),
+    which targets a CODA-4680 on firmware 7.1.1.2.2b9. Only facts (endpoint names,
+    the login and CSRF flow) are used; no code is copied. Credit goes to that
+    project.
+
+    Auth, unconfirmed: POST /Users/Login with a form body `model=<json
+    {"username","password"}>` sets a session cookie. GET /Users/CSRF returns a
+    token in `Csrf_token` or `token`; a state-changing request would send it as the
+    `X-Csrf-Token` header. A 302 redirect on a data request means the session is
+    missing or expired.
+
+    Read-only policy: this document describes GET routes plus the login needed to
+    reach them. It deliberately lists no reboot, factory-reset, password or WiFi
+    write route. Those would act on in-service modems and nothing about them is
+    confirmed. The hitron package exposes no write path for this family.
+
+    Default LAN address on these units is often 192.168.0.1; many ISP builds use
+    192.168.100.1. Paths and shapes are generated from the endpoint registry in
+    src/hitron/adapters.py where it has a matching read entry, so they cannot drift
+    from what the CODA6X client calls.
+  contact:
+    name: "Netquor SDN - internal reverse-engineering notes"
+  license:
+    name: "Private - Netquor internal"
+externalDocs:
+  description: "Unified Hitron KB, section 4 (CODA 4x8x, experimental)"
+  url: "./KB.md"
+servers:
+  - url: "http://{host}"
+    variables:
+      host:
+        default: "192.168.100.1"
+        description: "The gateway's LAN IP. 192.168.0.1 on some builds."
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: SESSION
+      description: "Cookie name unconfirmed. A client should carry whatever Set-Cookie the login returns."
+  schemas:
+    Envelope:
+      type: object
+      description: "Every response wraps its payload in this envelope. errCode 000 is success; 001 is a rejected parameter or missing session; 005 is a verb the model does not support."
+      properties:
+        errCode:
+          type: string
+          example: "000"
+        errMsg:
+          type: string
+    DocsisDs:
+      type: object
+      description: "One locked downstream SC-QAM channel. Field set taken from the CODA6X client; unconfirmed for the 4x8x."
+      properties:
+        portId:
+          type: integer
+        frequency:
+          type: string
+          description: Hz
+        modulation:
+          type: string
+        signalStrength:
+          type: string
+          description: dBmV
+        snr:
+          type: string
+          description: dB
+        channelId:
+          type: string
+        dsoctets:
+          type: string
+        correcteds:
+          type: string
+        uncorrect:
+          type: string
+    DocsisUs:
+      type: object
+      properties:
+        portId:
+          type: integer
+        frequency:
+          type: string
+        modtype:
+          type: string
+        signalStrength:
+          type: string
+        bandwidth:
+          type: string
+        channelId:
+          type: string
+        scdmaMode:
+          type: string
+      description: "Field set taken from the CODA6X client; unconfirmed for the 4x8x."
+    DocsisDsOfdm:
+      type: object
+      properties:
+        receive:
+          type: string
+        ffttype:
+          type: string
+        Subcarr0freqFreq:
+          type: string
+        plclock:
+          type: string
+        ncplock:
+          type: string
+        mdc1lock:
+          type: string
+        plcpower:
+          type: string
+        SNR:
+          type: string
+        dsoctets:
+          type: string
+        correcteds:
+          type: string
+        uncorrect:
+          type: string
+        index:
+          type: string
+      description: "Field set taken from the CODA6X client; unconfirmed for the 4x8x."
+    DocsisUsOfdm:
+      type: object
+      properties:
+        uschindex:
+          type: string
+        state:
+          type: string
+        frequency:
+          type: string
+        digAtten:
+          type: string
+        channelBw:
+          type: string
+        repPower:
+          type: string
+          description: dBmV
+        repPower1_6:
+          type: string
+          description: "DOCSIS 3.0-equivalent reported power"
+        fftVal:
+          type: string
+      description: "Field set taken from the CODA6X client; unconfirmed for the 4x8x."
+    DocsisLog:
+      type: object
+      properties:
+        index:
+          type: string
+        time:
+          type: string
+        type:
+          type: string
+        priority:
+          type: string
+        event:
+          type: string
+      description: "Field set taken from the CODA6X client; unconfirmed for the 4x8x."
+    RouterSysInfo:
+      type: object
+      description: "Hardware/software version, serial, RF MAC and uptime as the CODA6X reports them. Field set taken from the CODA6X client; unconfirmed for the 4x8x."
+      properties:
+        hwVersion:
+          type: string
+        swVersion:
+          type: string
+        serialNumber:
+          type: string
+        systemTime:
+          type: string
+        rfMac:
+          type: string
+        systemUptime:
+          type: string
+x-hitron:
+  generated: "2026-11-26"
+  generator: tools/gen_spec.py
+  status: "experimental, not verified on live hardware"
+  family: coda4x8x
+  models:
+    - CODA-4582
+    - CODA-4680
+  sourceFirmware: "7.1.1.2.2b9 (per hairyhenderson/hitron_coda, unconfirmed)"
+  attribution: "hairyhenderson/hitron_coda (MIT): endpoint list and auth flow only"
+  readOnly: true
+  routeCount: 31
+  modelCatalog: "./models.json"
+  note: "Derived from src/hitron/adapters.py where the registry has a matching read route. Do not edit by hand; run tools/gen_spec.py."
+tags:
+  - name: Users
+  - name: CM
+  - name: Router
+  - name: Network
+  - name: WiFi
+paths:
+  "/Users/Login":
+    post:
+      operationId: coda4x8x_users_login
+      summary: "Start a session (unconfirmed)"
+      description: "Authentication only. The form field `model` carries the JSON object. Cookie name and error shape are unconfirmed."
+      tags:
+        - Users
+      x-hitron:
+        status: "experimental, not verified on live hardware"
+        family: coda4x8x
+        source: "hairyhenderson/hitron_coda login flow"
+        registryId: null
+        destructive: false
+      x-hitron-destructive: false
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required:
+                - model
+              properties:
+                model:
+                  type: string
+                  description: "JSON string {\"username\": \"...\", \"password\": \"...\"}"
+      responses:
+        "200":
+          description: "Session cookie set; body shape unconfirmed."
+  "/CM/DocsisProvision":
+    get:
+      operationId: coda4x8x_cm_docsisprovision
+      summary: "DOCSIS provisioning state machine"
+      tags:
+        - CM
+      x-hitron:
+        status: "experimental, not verified on live hardware"
+        family: coda4x8x
+        source: "hairyhenderson/hitron_coda endpoint list"
+        registryId: cm.provision
+        destructive: false
+      x-hitron-destructive: false
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: "JSON payload, shape unconfirmed. A 302 redirect means not logged in."
+  "/CM/DsInfo":
+    get:
+      operationId: coda4x8x_cm_dsinfo
+      summary: "Downstream SC-QAM channels"
+      tags:
+        - CM
+      x-hitron:
+        status: "experimental, not verified on live hardware"
+        family: coda4x8x
+        source: "hairyhenderson/hitron_coda endpoint list"
+        registryId: cm.ds
+        destructive: false
+      x-hitron-destructive: false
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: "JSON payload, shape unconfirmed. A 302 redirect means not logged in."
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/DocsisDs"
+  "/CM/DsOfdm":
+    get:
+      operationId: coda4x8x_cm_dsofdm
+      summary: "Downstream OFDM channels"
+      tags:
+        - CM
+      x-hitron:
+        status: "experimental, not verified on live hardware"
+        family: coda4x8x
+        source: "hairyhenderson/hitron_coda endpoint list"
+        registryId: cm.ds.ofdm
+        destructive: false
+      x-hitron-destructive: false
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: "JSON payload, shape unconfirmed. A 302 redirect means not logged in."
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/DocsisDsOfdm"
+  "/CM/Log":
+    get:
+      operationId: coda4x8x_cm_log
+      summary: "DOCSIS event log"
+      tags:
+        - CM
+      x-hitron:
+        status: "experimental, not verified on live hardware"
+        family: coda4x8x
+        source: "hairyhenderson/hitron_coda endpoint list"
+        registryId: cm.log
+        destructive: false
+      x-hitron-destructive: false
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: "JSON payload, shape unconfirmed. A 302 redirect means not logged in."
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/DocsisLog"
+  "/CM/SysInfo":
+    get:
+      operationId: coda4x8x_cm_sysinfo
+      summary: "CM IP/subnet/gateway, lease and provisioned config name"
+      tags:
+        - CM
+      x-hitron:
+        status: "experimental, not verified on live hardware"
+        family: coda4x8x
+        source: "hairyhenderson/hitron_coda endpoint list"
+        registryId: cm.sysinfo
+        destructive: false
+      x-hitron-destructive: false
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: "JSON payload, shape unconfirmed. A 302 redirect means not logged in."
+  "/CM/UsInfo":
+    get:
+      operationId: coda4x8x_cm_usinfo
+      summary: "Upstream SC-QAM channels"
+      tags:
+        - CM
+      x-hitron:
+        status: "experimental, not verified on live hardware"
+        family: coda4x8x
+        source: "hairyhenderson/hitron_coda endpoint list"
+        registryId: cm.us
+        destructive: false
+      x-hitron-destructive: false
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: "JSON payload, shape unconfirmed. A 302 redirect means not logged in."
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/DocsisUs"
+  "/CM/UsOfdm":
+    get:
+      operationId: coda4x8x_cm_usofdm
+      summary: "Upstream OFDMA channels"
+      tags:
+        - CM
+      x-hitron:
+        status: "experimental, not verified on live hardware"
+        family: coda4x8x
+        source: "hairyhenderson/hitron_coda endpoint list"
+        registryId: cm.us.ofdm
+        destructive: false
+      x-hitron-destructive: false
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: "JSON payload, shape unconfirmed. A 302 redirect means not logged in."
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/DocsisUsOfdm"
+  "/CM/Version":
+    get:
+      operationId: coda4x8x_cm_version
+      summary: "CM version screen"
+      tags:
+        - CM
+      x-hitron:
+        status: "experimental, not verified on live hardware"
+        family: coda4x8x
+        source: "hairyhenderson/hitron_coda endpoint list"
+        registryId: cm.version
+        destructive: false
+      x-hitron-destructive: false
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: "JSON payload, shape unconfirmed. A 302 redirect means not logged in."
+  "/Router/Capability":
+    get:
+      operationId: coda4x8x_router_capability
+      summary: "Router capability flags"
+      tags:
+        - Router
+      x-hitron:
+        status: "experimental, not verified on live hardware"
+        family: coda4x8x
+        source: "hairyhenderson/hitron_coda endpoint list"
+        registryId: null
+        destructive: false
+      x-hitron-destructive: false
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: "JSON payload, shape unconfirmed. A 302 redirect means not logged in."
+  "/Router/DMZ":
+    get:
+      operationId: coda4x8x_router_dmz
+      summary: "DMZ host setting"
+      tags:
+        - Router
+      x-hitron:
+        status: "experimental, not verified on live hardware"
+        family: coda4x8x
+        source: "hairyhenderson/hitron_coda endpoint list"
+        registryId: null
+        destructive: false
+      x-hitron-destructive: false
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: "JSON payload, shape unconfirmed. A 302 redirect means not logged in."
+  "/Router/Location":
+    get:
+      operationId: coda4x8x_router_location
+      summary: "Device location setting"
+      tags:
+        - Router
+      x-hitron:
+        status: "experimental, not verified on live hardware"
+        family: coda4x8x
+        source: "hairyhenderson/hitron_coda endpoint list"
+        registryId: null
+        destructive: false
+      x-hitron-destructive: false
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: "JSON payload, shape unconfirmed. A 302 redirect means not logged in."
+  "/Router/PortForward/Status":
+    get:
+      operationId: coda4x8x_router_portforward_status
+      summary: "Port-forward enabled"
+      tags:
+        - Router
+      x-hitron:
+        status: "experimental, not verified on live hardware"
+        family: coda4x8x
+        source: "hairyhenderson/hitron_coda endpoint list"
+        registryId: router.portforward.status
+        destructive: false
+      x-hitron-destructive: false
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: "JSON payload, shape unconfirmed. A 302 redirect means not logged in."
+  "/Router/PortForward/all":
+    get:
+      operationId: coda4x8x_router_portforward_all
+      summary: "All port-forward rules"
+      tags:
+        - Router
+      x-hitron:
+        status: "experimental, not verified on live hardware"
+        family: coda4x8x
+        source: "hairyhenderson/hitron_coda endpoint list"
+        registryId: null
+        destructive: false
+      x-hitron-destructive: false
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: "JSON payload, shape unconfirmed. A 302 redirect means not logged in."
+  "/Router/PortTrigger/Status":
+    get:
+      operationId: coda4x8x_router_porttrigger_status
+      summary: "Port-trigger enabled"
+      tags:
+        - Router
+      x-hitron:
+        status: "experimental, not verified on live hardware"
+        family: coda4x8x
+        source: "hairyhenderson/hitron_coda endpoint list"
+        registryId: router.porttrigger.status
+        destructive: false
+      x-hitron-destructive: false
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: "JSON payload, shape unconfirmed. A 302 redirect means not logged in."
+  "/Router/PortTrigger/all":
+    get:
+      operationId: coda4x8x_router_porttrigger_all
+      summary: "All port-trigger rules"
+      tags:
+        - Router
+      x-hitron:
+        status: "experimental, not verified on live hardware"
+        family: coda4x8x
+        source: "hairyhenderson/hitron_coda endpoint list"
+        registryId: null
+        destructive: false
+      x-hitron-destructive: false
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: "JSON payload, shape unconfirmed. A 302 redirect means not logged in."
+  "/Router/SysInfo":
+    get:
+      operationId: coda4x8x_router_sysinfo
+      summary: "hw/sw version, serial, rfMac, uptime"
+      tags:
+        - Router
+      x-hitron:
+        status: "experimental, not verified on live hardware"
+        family: coda4x8x
+        source: "hairyhenderson/hitron_coda endpoint list"
+        registryId: router.sysinfo
+        destructive: false
+      x-hitron-destructive: false
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: "JSON payload, shape unconfirmed. A 302 redirect means not logged in."
+  "/Router/TR069":
+    get:
+      operationId: coda4x8x_router_tr069
+      summary: "TR-069 client configuration"
+      tags:
+        - Router
+      x-hitron:
+        status: "experimental, not verified on live hardware"
+        family: coda4x8x
+        source: "hairyhenderson/hitron_coda endpoint list"
+        registryId: null
+        destructive: false
+      x-hitron-destructive: false
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: "JSON payload, shape unconfirmed. A 302 redirect means not logged in."
+  "/DDNS":
+    get:
+      operationId: coda4x8x_ddns
+      summary: "Dynamic DNS config"
+      tags:
+        - Network
+      x-hitron:
+        status: "experimental, not verified on live hardware"
+        family: coda4x8x
+        source: "hairyhenderson/hitron_coda endpoint list"
+        registryId: ddns
+        destructive: false
+      x-hitron-destructive: false
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: "JSON payload, shape unconfirmed. A 302 redirect means not logged in."
+  "/DNS":
+    get:
+      operationId: coda4x8x_dns
+      summary: "DNS config"
+      tags:
+        - Network
+      x-hitron:
+        status: "experimental, not verified on live hardware"
+        family: coda4x8x
+        source: "hairyhenderson/hitron_coda endpoint list"
+        registryId: dns
+        destructive: false
+      x-hitron-destructive: false
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: "JSON payload, shape unconfirmed. A 302 redirect means not logged in."
+  "/Hosts":
+    get:
+      operationId: coda4x8x_hosts
+      summary: "Connected LAN hosts"
+      tags:
+        - Network
+      x-hitron:
+        status: "experimental, not verified on live hardware"
+        family: coda4x8x
+        source: "hairyhenderson/hitron_coda endpoint list"
+        registryId: hosts
+        destructive: false
+      x-hitron-destructive: false
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: "JSON payload, shape unconfirmed. A 302 redirect means not logged in."
+  "/Time":
+    get:
+      operationId: coda4x8x_time
+      summary: "NTP/time configuration"
+      tags:
+        - Network
+      x-hitron:
+        status: "experimental, not verified on live hardware"
+        family: coda4x8x
+        source: "hairyhenderson/hitron_coda endpoint list"
+        registryId: time
+        destructive: false
+      x-hitron-destructive: false
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: "JSON payload, shape unconfirmed. A 302 redirect means not logged in."
+  "/WiFi/AccessControl":
+    get:
+      operationId: coda4x8x_wifi_accesscontrol
+      summary: "MAC allow/deny list"
+      tags:
+        - WiFi
+      x-hitron:
+        status: "experimental, not verified on live hardware"
+        family: coda4x8x
+        source: "hairyhenderson/hitron_coda endpoint list"
+        registryId: wifi.accesscontrol
+        destructive: false
+      x-hitron-destructive: false
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: "JSON payload, shape unconfirmed. A 302 redirect means not logged in."
+  "/WiFi/AccessControl/Status":
+    get:
+      operationId: coda4x8x_wifi_accesscontrol_status
+      summary: "Access-control enabled"
+      tags:
+        - WiFi
+      x-hitron:
+        status: "experimental, not verified on live hardware"
+        family: coda4x8x
+        source: "hairyhenderson/hitron_coda endpoint list"
+        registryId: wifi.accesscontrol.status
+        destructive: false
+      x-hitron-destructive: false
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: "JSON payload, shape unconfirmed. A 302 redirect means not logged in."
+  "/WiFi/Client":
+    get:
+      operationId: coda4x8x_wifi_client
+      summary: "Associated WiFi clients"
+      tags:
+        - WiFi
+      x-hitron:
+        status: "experimental, not verified on live hardware"
+        family: coda4x8x
+        source: "hairyhenderson/hitron_coda endpoint list"
+        registryId: wifi.client
+        destructive: false
+      x-hitron-destructive: false
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: "JSON payload, shape unconfirmed. A 302 redirect means not logged in."
+  "/WiFi/GuestSSID":
+    get:
+      operationId: coda4x8x_wifi_guestssid
+      summary: "Guest + primary SSID summary"
+      tags:
+        - WiFi
+      x-hitron:
+        status: "experimental, not verified on live hardware"
+        family: coda4x8x
+        source: "hairyhenderson/hitron_coda endpoint list"
+        registryId: wifi.guestssid
+        destructive: false
+      x-hitron-destructive: false
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: "JSON payload, shape unconfirmed. A 302 redirect means not logged in."
+  "/WiFi/Radios":
+    get:
+      operationId: coda4x8x_wifi_radios
+      summary: "All radios"
+      tags:
+        - WiFi
+      x-hitron:
+        status: "experimental, not verified on live hardware"
+        family: coda4x8x
+        source: "hairyhenderson/hitron_coda endpoint list"
+        registryId: wifi.radios
+        destructive: false
+      x-hitron-destructive: false
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: "JSON payload, shape unconfirmed. A 302 redirect means not logged in."
+  "/WiFi/Radios/Advanced":
+    get:
+      operationId: coda4x8x_wifi_radios_advanced
+      summary: "Per-radio advanced settings"
+      tags:
+        - WiFi
+      x-hitron:
+        status: "experimental, not verified on live hardware"
+        family: coda4x8x
+        source: "hairyhenderson/hitron_coda endpoint list"
+        registryId: wifi.radios.advanced
+        destructive: false
+      x-hitron-destructive: false
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: "JSON payload, shape unconfirmed. A 302 redirect means not logged in."
+  "/WiFi/Radios/Survey":
+    get:
+      operationId: coda4x8x_wifi_radios_survey
+      summary: "Neighbour scan / ACS input"
+      tags:
+        - WiFi
+      x-hitron:
+        status: "experimental, not verified on live hardware"
+        family: coda4x8x
+        source: "hairyhenderson/hitron_coda endpoint list"
+        registryId: wifi.radios.survey
+        destructive: false
+      x-hitron-destructive: false
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: "JSON payload, shape unconfirmed. A 302 redirect means not logged in."
+  "/WiFi/SSIDs":
+    get:
+      operationId: coda4x8x_wifi_ssids
+      summary: "All SSIDs"
+      tags:
+        - WiFi
+      x-hitron:
+        status: "experimental, not verified on live hardware"
+        family: coda4x8x
+        source: "hairyhenderson/hitron_coda endpoint list"
+        registryId: wifi.ssids
+        destructive: false
+      x-hitron-destructive: false
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: "JSON payload, shape unconfirmed. A 302 redirect means not logged in."
+  "/WiFi/WPS":
+    get:
+      operationId: coda4x8x_wifi_wps
+      summary: "WPS state per band"
+      tags:
+        - WiFi
+      x-hitron:
+        status: "experimental, not verified on live hardware"
+        family: coda4x8x
+        source: "hairyhenderson/hitron_coda endpoint list"
+        registryId: wifi.wps
+        destructive: false
+      x-hitron-destructive: false
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: "JSON payload, shape unconfirmed. A 302 redirect means not logged in."
+  "/Users/CSRF":
+    get:
+      operationId: coda4x8x_users_csrf
+      summary: "CSRF token for state-changing requests (unconfirmed; this client never sends one)"
+      tags:
+        - Users
+      x-hitron:
+        status: "experimental, not verified on live hardware"
+        family: coda4x8x
+        source: "hairyhenderson/hitron_coda endpoint list"
+        registryId: null
+        destructive: false
+      x-hitron-destructive: false
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: "JSON payload, shape unconfirmed. A 302 redirect means not logged in."
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Envelope"

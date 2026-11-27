@@ -34,7 +34,11 @@ type endpointResult struct {
 // is small, so requests are bounded to two in flight, exactly like the Python
 // client.
 func (c *Client) snapshotCoda6X(ctx context.Context) (*Snapshot, error) {
-	snap := &Snapshot{Kind: KindCoda6X, Host: c.Addr(), At: time.Now()}
+	kind := KindCoda6X
+	if c.Kind == KindCoda4x8x {
+		kind = KindCoda4x8x
+	}
+	snap := &Snapshot{Kind: kind, Host: c.Addr(), At: time.Now()}
 	results := make(map[string]map[string]any, len(coda6xEndpoints))
 
 	sem := make(chan struct{}, 2)
@@ -46,7 +50,7 @@ func (c *Client) snapshotCoda6X(ctx context.Context) (*Snapshot, error) {
 			defer wg.Done()
 			sem <- struct{}{}
 			defer func() { <-sem }()
-			value, err := c.getJSON(ctx, "/1/Device/"+path)
+			value, err := c.getJSON(ctx, c.api("/"+path))
 			if err != nil {
 				out <- endpointResult{path: path, err: err}
 				return
@@ -73,7 +77,7 @@ func (c *Client) snapshotCoda6X(ctx context.Context) (*Snapshot, error) {
 		results[result.path] = result.data
 	}
 	if _, ok := results["CM/Version"]; !ok && len(results) == 0 {
-		return nil, fmt.Errorf("no CODA6X endpoint answered")
+		return nil, fmt.Errorf("no %s endpoint answered", kind.Label())
 	}
 
 	version := results["CM/Version"]
@@ -83,6 +87,9 @@ func (c *Client) snapshotCoda6X(ctx context.Context) (*Snapshot, error) {
 	snap.Model = firstNonEmpty(str(version["modelName"]), str(router["modelName"]))
 	if snap.Model == "" {
 		snap.Model = "CODA6X"
+		if kind == KindCoda4x8x {
+			snap.Model = "CODA 4x8x"
+		}
 	}
 	snap.Vendor = firstNonEmpty(str(version["vendorName"]), str(router["vendorName"]))
 	snap.Firmware = firstNonEmpty(str(version["swVersion"]), str(router["swVersion"]))
@@ -298,7 +305,10 @@ func parseCodaEthernet(snap *Snapshot, data map[string]any) {
 // Action performs a CODA6X write. The caller has already authenticated and
 // shown the user a confirmation prompt.
 func (c *Client) coda6xAction(ctx context.Context, model map[string]int) (map[string]any, error) {
-	return c.postModel(ctx, "/1/Device/CM/Reboot", model)
+	if c.Kind != KindCoda6X {
+		return nil, fmt.Errorf("%s: %w", c.Kind.Label(), ErrCoda4x8xReadOnly)
+	}
+	return c.postModel(ctx, c.api("/CM/Reboot"), model)
 }
 
 // rebootBody builds the full ModelInfo body for /1/Device/CM/Reboot.
@@ -320,6 +330,8 @@ func rebootBody(set string) map[string]int {
 // the only measured-working reboot, and it resets the configuration first.
 func (c *Client) Reboot(ctx context.Context) (map[string]any, error) {
 	switch c.Kind {
+	case KindCoda4x8x:
+		return nil, fmt.Errorf("reboot: %w", ErrCoda4x8xReadOnly)
 	case KindCoda6X:
 		return c.coda6xAction(ctx, rebootBody("reboot"))
 	case KindMoca:
@@ -338,6 +350,9 @@ func (c *Client) Reboot(ctx context.Context) (map[string]any, error) {
 // X_HITRON_COM_MGMT.FactoryReset flag as Reboot uses for reboot, so expect the
 // same inert behavior on 8.7.1.0.1b4; this variant has not been measured.
 func (c *Client) FactoryReset(ctx context.Context) (map[string]any, error) {
+	if c.Kind == KindCoda4x8x {
+		return nil, fmt.Errorf("factory reset: %w", ErrCoda4x8xReadOnly)
+	}
 	if c.Kind != KindCoda6X {
 		return nil, fmt.Errorf("factory reset on %s: %w (CODA6X only)", c.Kind.Label(), ErrUnsupported)
 	}
@@ -352,6 +367,9 @@ func (c *Client) FactoryReset(ctx context.Context) (map[string]any, error) {
 // with fresh counters and a "CM Reboot Reason: POWER_ON" log entry. It clears
 // the local configuration on the way, so it is a factory reset, not a reboot.
 func (c *Client) HardReset(ctx context.Context) (map[string]any, error) {
+	if c.Kind == KindCoda4x8x {
+		return nil, fmt.Errorf("hard reset: %w", ErrCoda4x8xReadOnly)
+	}
 	if c.Kind != KindCoda6X {
 		return nil, fmt.Errorf("hard reset on %s: %w (CODA6X only)", c.Kind.Label(), ErrUnsupported)
 	}

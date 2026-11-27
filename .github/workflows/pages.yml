@@ -9,6 +9,7 @@ on:
       - "cli/README.md"
       - "tools/build_docs.py"
       - "specs/openapi-coda60.yaml"
+      - "specs/openapi-coda4x8x.yaml"
       - "dashboards/**"
       - ".github/workflows/pages.yml"
   workflow_dispatch:
@@ -38,6 +39,8 @@ jobs:
           site = root / "site"
           spec = yaml.safe_load((root / "specs/openapi-coda60.yaml").read_text())
           (site / "openapi.json").write_text(json.dumps(spec, indent=2) + "\n")
+          experimental = yaml.safe_load((root / "specs/openapi-coda4x8x.yaml").read_text())
+          (site / "openapi-coda4x8x.json").write_text(json.dumps(experimental, indent=2) + "\n")
 
           (site / "dashboards").mkdir(exist_ok=True)
           for name in ("hitron-coda6x.json", "hitron-ht-em5.json"):
@@ -63,8 +66,9 @@ jobs:
           import json
           from openapi_spec_validator import validate
 
-          validate(json.load(open("site/openapi.json")))
-          print("site/openapi.json is valid OpenAPI 3.0")
+          for name in ("site/openapi.json", "site/openapi-coda4x8x.json"):
+              validate(json.load(open(name)))
+              print(f"{name} is valid OpenAPI 3.0")
           PY
 
       - uses: actions/configure-pages@v5

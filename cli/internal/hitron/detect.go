@@ -16,6 +16,10 @@ import (
 // on the same devices. The HT-EM5 answers only its /ms/<type>/<reg> RPC, which
 // needs Basic auth, so it is tried last with the documented default
 // admin/admin unless the caller supplied credentials.
+//
+// The CODA 4x8x (experimental, read-only) is tried second: it is hypothesized
+// to serve the CODA6X data model from the site root instead of /1/Device, so a
+// root /CM/Version probe only runs after the /1/Device one has failed.
 func Detect(ctx context.Context, host string, creds Credentials, timeout time.Duration) (*Client, error) {
 	c, err := NewClient(host, creds, timeout)
 	if err != nil {
@@ -35,7 +39,18 @@ func Detect(ctx context.Context, host string, creds Credentials, timeout time.Du
 				}
 			}
 		}
+		// A login gate that redirects every path (including /1/Device) also
+		// hides a 4x8x. Give that family a chance before reporting the gate.
+		if c4, ok := detectCoda4x8x(ctx, host, creds, timeout); ok {
+			return c4, nil
+		}
 		return nil, err
+	}
+
+	// A root login gate alone is not proof of this family (other devices
+	// redirect unknown paths to a login page), so only a match returns here.
+	if c4, ok := detectCoda4x8x(ctx, host, creds, timeout); ok {
+		return c4, nil
 	}
 
 	c.Kind = KindCoda57
@@ -69,7 +84,7 @@ func Detect(ctx context.Context, host string, creds Credentials, timeout time.Du
 		return nil, err
 	}
 
-	return nil, fmt.Errorf("no Hitron device answered at %s (tried CODA6X, CODA-57, and HT-EM5)", c.Addr())
+	return nil, fmt.Errorf("no Hitron device answered at %s (tried CODA6X, CODA 4x8x, CODA-57, and HT-EM5)", c.Addr())
 }
 
 func isAuthErr(err error) bool {
@@ -97,6 +112,44 @@ func probeCoda6X(ctx context.Context, c *Client) error {
 		return nil
 	}
 	return fmt.Errorf("not a CODA6X version object")
+}
+
+// detectCoda4x8x probes the site root and returns (client, true) only when
+// /CM/Version answers a JSON object with real CM version fields. It never
+// logs in: a bare 401 or login page at the root is not proof of this family,
+// and POSTing credentials to an unknown device could count toward a lockout.
+// A 4x8x that gates its reads is therefore not auto-detected (experimental).
+func detectCoda4x8x(ctx context.Context, host string, creds Credentials, timeout time.Duration) (*Client, bool) {
+	c4, err := NewClient(host, creds, timeout)
+	if err != nil {
+		return nil, false
+	}
+	c4.Kind = KindCoda4x8x
+	if probeCoda4x8x(ctx, c4) != nil {
+		return nil, false
+	}
+	return c4, true
+}
+
+// probeCoda4x8x asks the site root for /CM/Version. It is strict on purpose:
+// the root of many unrelated devices answers HTML or 404, and only a JSON
+// object that carries at least one real CM version field counts (an errCode
+// alone does not: a generic error envelope has one).
+func probeCoda4x8x(ctx context.Context, c *Client) error {
+	value, err := c.getJSON(ctx, c.api("/CM/Version"))
+	if err != nil {
+		return err
+	}
+	object, ok := value.(map[string]any)
+	if !ok {
+		return fmt.Errorf("not a CODA 4x8x version object")
+	}
+	for _, key := range []string{"modelName", "swVersion", "hwVersion", "serialNumber", "deploymentName"} {
+		if strings.TrimSpace(str(object[key])) != "" {
+			return nil
+		}
+	}
+	return fmt.Errorf("not a CODA 4x8x version object")
 }
 
 func probeCoda57(ctx context.Context, c *Client) error {

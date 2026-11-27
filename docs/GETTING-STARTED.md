@@ -20,7 +20,7 @@ or read [`specs/openapi-coda60.yaml`](../specs/openapi-coda60.yaml).
 | Python 3.11+ | clients, exporter, docs server |
 | Network access to the gateway | usually `192.168.100.1` on the LAN side |
 | Docker (optional) | the one-command Prometheus + Grafana stack in `deploy/` |
-| A device you are allowed to poll | CODA6X, CODA-57, or HT-EM5 |
+| A device you are allowed to poll | CODA6X, CODA-57, HT-EM5, or (experimental) CODA 4x8x |
 
 You do **not** need Node, a bundler, or a build step. The site is plain HTML.
 
@@ -43,9 +43,10 @@ hitron --help
 hitron-exporter --help
 ```
 
-`hitron` has read subcommands (`coda60`, `coda57`, `ht-em5`) and guarded write
-subcommands (`coda60-reboot`, `coda60-set-password`, …). `hitron-exporter` is
-the long-running process.
+`hitron` has read subcommands (`coda60`, `coda57`, `ht-em5`, and the experimental
+`coda4x8x`) and guarded write subcommands (`coda60-reboot`,
+`coda60-set-password`, …). The `coda4x8x` family has no write subcommands.
+`hitron-exporter` is the long-running process.
 
 ---
 
@@ -67,6 +68,22 @@ hitron coda60 192.168.100.1 | jq '.cm_dsofdm.Freq_List[0].SNR'
 hitron ht-em5 192.168.0.212
 hitron coda57 192.168.100.2 --spec-check
 ```
+
+### Experimental: CODA 4x8x (CODA-4582, CODA-4680)
+
+```bash
+hitron coda4x8x 192.168.0.1                       # unauthenticated reads
+hitron coda4x8x 192.168.0.1 --username USER --password PASS   # log in first
+```
+
+Status: **experimental, not verified on live hardware.** This family is read-only.
+It is a hypothesis that the 4x8x serves the CODA6X data model from the site root
+(no `/1/Device` prefix); the route list and login flow come from
+[hairyhenderson/hitron_coda](https://github.com/hairyhenderson/hitron_coda) (MIT).
+See [`KB.md`](KB.md) section 4 for the evidence, the unconfirmed auth flow, and the
+checklist a real capture would need to answer. If you run it against a unit you own,
+a sanitized capture helps. There is no reboot, reset, password or WiFi write for
+this family.
 
 If the CODA6X is on a different subnet, move your machine onto that subnet or
 add a route. The console API has no cloud fallback.
@@ -95,6 +112,11 @@ hitron-exporter \
   --ht-em5 192.168.0.212
 ```
 
+Add `--coda4x8x HOST` to poll an experimental CODA 4x8x the same way (read-only).
+The exporter does not log in, so a unit that requires a login is reported down.
+The Go `hitron-cli` has no `--coda4x8x` flag: it selects the family by detection
+only (root `/CM/Version`), and detection never sends credentials.
+
 Give a target a friendly label with `name=host`:
 
 ```bash
@@ -118,7 +140,7 @@ curl -s http://127.0.0.1:9877/metrics | grep modem_downstream_channel_power
 ```
 
 Environment variables work too: `HITRON_CODA60_HOSTS`,
-`HITRON_CODA57_HOSTS`, `HITRON_HT_EM5_HOSTS` (comma-separated), plus
+`HITRON_CODA57_HOSTS`, `HITRON_CODA4X8X_HOSTS`, `HITRON_HT_EM5_HOSTS` (comma-separated), plus
 `HITRON_EXPORTER_PORT`, `HITRON_EXPORTER_INTERVAL`, `HITRON_OTLP_ENDPOINT`.
 
 ### One-shot output in every format
@@ -333,6 +355,7 @@ Redact serial numbers, MAC addresses, and public IPs before attaching them.
 specs/openapi-coda60.yaml     full CODA6X API, 116 paths / 171 operations
 specs/openapi-ht-em5.yaml     HT-EM5 MoCA API
 specs/openapi-coda57-legacy.yaml  CODA-57 .asp API
+specs/openapi-coda4x8x.yaml       CODA 4x8x API (experimental)
 src/hitron/metrics.py         one normalized metric vocabulary
 src/hitron/formats.py         Prometheus / Influx / OTLP / JSON encoders
 src/hitron/exporter.py        poll loop, HTTP surface, OTLP push
